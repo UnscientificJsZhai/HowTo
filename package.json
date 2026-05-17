@@ -1,13 +1,23 @@
 {
-  "name": "HowTo",
+  "name": "howto",
   "version": "1.0.0",
   "description": "",
   "main": "dist/index.js",
-  "scripts": {
-    "build": "tsc"
+  "bin": {
+    "howto": "dist/index.js"
   },
-  "dependencies": {},
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run test:unit",
+    "test:unit": "tsc -p tsconfig.test.json && node --test dist-test/tests/unit/*.test.js dist-test/tests/unit/**/*.test.js"
+  },
+  "dependencies": {
+    "@google/genai": "^1.0.0",
+    "@inquirer/prompts": "^7.0.0",
+    "openai": "^4.0.0"
+  },
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "typescript": "^5.5.3"
   },
   "private": true
