@@ -4,8 +4,8 @@ import test from "node:test";
 import {
   candidateUsesRequestedCommand,
   validateUseCommandCandidates,
-} from "../../../src/validation/command-tool";
-import { AiResponseValidationError } from "../../../src/validation/ai-response";
+} from "../../../src/validation/command-tool.js";
+import { AiResponseValidationError } from "../../../src/validation/ai-response.js";
 
 test("candidateUsesRequestedCommand accepts direct requested command", () => {
   assert.equal(candidateUsesRequestedCommand("git status", "git"), true);

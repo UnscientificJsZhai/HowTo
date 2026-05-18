@@ -1,22 +1,21 @@
 #!/usr/bin/env node
 
-import { parseCliArgs } from "./cli";
-import { loadConfig } from "./config";
-import { createCommandProvider } from "./ai";
-import { buildCommandGenerationPrompt, createProviderPromptRequest } from "./prompt";
-import { parseAndValidateAiResponse } from "./validation/ai-response";
+import React from "react";
+import { fileURLToPath } from "node:url";
+import { render } from "ink";
+import { parseCliArgs } from "./cli.js";
+import { loadConfig } from "./config.js";
+import { createCommandProvider } from "./ai/index.js";
+import { buildCommandGenerationPrompt, createProviderPromptRequest } from "./prompt.js";
+import { parseAndValidateAiResponse } from "./validation/ai-response.js";
 import {
   checkCommandInPath,
   type CommandPathCheck,
-  validateUseCommandCandidates,
-} from "./validation/command-tool";
-import { ensureInteractiveTty, selectCommandCandidate } from "./ui/interactive";
-import { confirmFinalCommand } from "./ui/confirm";
-import { resolveCommandPlaceholders } from "./ui/placeholders";
-import { detectDangerousCommand } from "./safety/dangerous-command";
-import { confirmDangerousCommand } from "./ui/confirm";
-import { executeCommand } from "./execute";
-import { toAppError } from "./errors";
+} from "./validation/command-tool.js";
+import { ensureInteractiveTty } from "./ui/tty.js";
+import { executeCommand } from "./execute.js";
+import { toAppError } from "./errors.js";
+import { App } from "./ui/App.js";
 
 interface CliResult {
   exitCode: number;
@@ -42,14 +41,13 @@ async function run(argv: string[]): Promise<CliResult> {
     });
     const prompt = buildCommandGenerationPrompt(promptRequest);
     const provider = createCommandProvider(config);
-    const aiResult = await provider.generateCommands({
-      ...promptRequest,
-      prompt,
-    });
-    const aiResponse = parseAndValidateAiResponse(aiResult.rawText);
-    validateUseCommandCandidates(aiResponse, parsedCli.useCommand);
 
     if (parsedCli.options.print) {
+      const aiResult = await provider.generateCommands({
+        ...promptRequest,
+        prompt,
+      });
+      const aiResponse = parseAndValidateAiResponse(aiResult.rawText);
       aiResponse.commands.forEach((candidate) => {
         console.log(candidate.command);
       });
@@ -62,14 +60,33 @@ async function run(argv: string[]): Promise<CliResult> {
       );
     }
 
-    const selectedCandidate = await selectCommandCandidate(aiResponse.commands);
-    const finalCommand = await resolveCommandPlaceholders(selectedCandidate);
-    const dangerousCommandMatch = detectDangerousCommand(finalCommand);
+    let finalCommand: string | undefined;
+    let appError: Error | undefined;
 
-    if (dangerousCommandMatch === undefined) {
-      await confirmFinalCommand(finalCommand);
-    } else {
-      await confirmDangerousCommand(finalCommand, dangerousCommandMatch);
+    const { waitUntilExit, unmount } = render(
+      <App
+        provider={provider}
+        request={{ ...promptRequest, prompt }}
+        useCommand={parsedCli.useCommand}
+        onSuccess={(command) => {
+          finalCommand = command;
+          unmount();
+        }}
+        onError={(error) => {
+          appError = error;
+          unmount();
+        }}
+      />
+    );
+
+    await waitUntilExit();
+
+    if (appError) {
+      throw appError;
+    }
+
+    if (finalCommand === undefined) {
+      return { exitCode: 1 };
     }
 
     const exitCode = await executeCommand(finalCommand);
@@ -84,7 +101,9 @@ async function run(argv: string[]): Promise<CliResult> {
   }
 }
 
-if (require.main === module) {
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+
+if (isMain) {
   run(process.argv.slice(2))
     .then((result) => {
       process.exitCode = result.exitCode;

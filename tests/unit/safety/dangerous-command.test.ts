@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { detectDangerousCommand, isDangerousCommand } from "../../../src/safety/dangerous-command";
+import { detectDangerousCommand, isDangerousCommand } from "../../../src/safety/dangerous-command.js";
 
 const dangerousCommands = [
   "rm -rf /",

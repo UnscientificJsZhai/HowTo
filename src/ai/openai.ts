@@ -1,8 +1,8 @@
 import OpenAI from "openai";
 
-import type { AppConfig } from "../config";
-import type { CommandProvider, GenerateCommandsRequest, GenerateCommandsResult } from "./types";
-import { AiProviderError } from "./errors";
+import type { AppConfig } from "../config.js";
+import type { CommandProvider, GenerateCommandsRequest, GenerateCommandsResult } from "./types.js";
+import { AiProviderError } from "./errors.js";
 
 export class OpenAiCommandProvider implements CommandProvider {
   private readonly client: OpenAI;

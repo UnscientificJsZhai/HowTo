@@ -1,7 +1,7 @@
-import type { AppConfig } from "../config";
-import { GeminiCommandProvider } from "./gemini";
-import { OpenAiCommandProvider } from "./openai";
-import type { CommandProvider } from "./types";
+import type { AppConfig } from "../config.js";
+import { GeminiCommandProvider } from "./gemini.js";
+import { OpenAiCommandProvider } from "./openai.js";
+import type { CommandProvider } from "./types.js";
 
 export function createCommandProvider(config: AppConfig): CommandProvider {
   switch (config.aiProvider) {
@@ -16,4 +16,4 @@ export function createCommandProvider(config: AppConfig): CommandProvider {
   }
 }
 
-export { AiProviderError } from "./errors";
+export { AiProviderError } from "./errors.js";

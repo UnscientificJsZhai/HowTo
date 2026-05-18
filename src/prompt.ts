@@ -1,4 +1,4 @@
-import type { CommandGenerationRequest, ProviderPromptRequest } from "./ai/types";
+import type { CommandGenerationRequest, ProviderPromptRequest } from "./ai/types.js";
 
 export const OUTPUT_CONTRACT = `Return exactly one JSON object and no natural-language body, markdown, or code fences.
 The JSON object must match this schema:

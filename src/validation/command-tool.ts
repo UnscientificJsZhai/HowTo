@@ -1,8 +1,8 @@
 import { accessSync, constants } from "fs";
 import { delimiter, isAbsolute, join } from "path";
 
-import type { CommandGenerationContract } from "../ai/types";
-import { AiResponseValidationError } from "./ai-response";
+import type { CommandGenerationContract } from "../ai/types.js";
+import { AiResponseValidationError } from "./ai-response.js";
 
 export interface CommandPathCheck {
   command: string;

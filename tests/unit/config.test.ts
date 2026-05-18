@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ConfigError, loadConfig } from "../../src/config";
+import { ConfigError, loadConfig } from "../../src/config.js";
 
 test("loadConfig uses defaults for OpenAI provider", () => {
   assert.deepEqual(loadConfig({ print: false }, {}), {

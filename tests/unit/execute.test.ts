@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import test from "node:test";
 import type { ChildProcess } from "node:child_process";
 
-import { executeCommand, resolveProcessExitCode } from "../../src/execute";
+import { executeCommand, resolveProcessExitCode } from "../../src/execute.js";
 
 test("executeCommand runs the command through the configured shell with inherited stdio", async () => {
   const child = new EventEmitter() as ChildProcess;

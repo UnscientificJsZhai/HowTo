@@ -1,4 +1,4 @@
-import type { GlobalOptions } from "./cli";
+import type { GlobalOptions } from "./cli.js";
 
 export type AiProvider = "openai" | "gemini";
 

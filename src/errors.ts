@@ -1,9 +1,9 @@
-import { AiProviderError } from "./ai";
-import { CliParseError, USAGE } from "./cli";
-import { ConfigError } from "./config";
-import { AiResponseValidationError } from "./validation/ai-response";
-import { InteractionCancelledError, InteractiveTtyError } from "./ui/interactive";
-import { PlaceholderResolutionError } from "./ui/placeholders";
+import { AiProviderError } from "./ai/index.js";
+import { CliParseError, USAGE } from "./cli.js";
+import { ConfigError } from "./config.js";
+import { AiResponseValidationError } from "./validation/ai-response.js";
+import { InteractionCancelledError, InteractiveTtyError } from "./ui/tty.js";
+import { PlaceholderResolutionError } from "./ui/placeholder-logic.js";
 
 export class AppError extends Error {
   readonly exitCode: number;

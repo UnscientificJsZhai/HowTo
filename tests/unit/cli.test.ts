@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { CliParseError, parseCliArgs } from "../../src/cli";
+import { CliParseError, parseCliArgs } from "../../src/cli.js";
 
 test("parseCliArgs parses use mode with global options before positionals", () => {
   assert.deepEqual(

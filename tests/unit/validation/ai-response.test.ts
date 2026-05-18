@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   AiResponseValidationError,
   parseAndValidateAiResponse,
-} from "../../../src/validation/ai-response";
+} from "../../../src/validation/ai-response.js";
 
 test("parseAndValidateAiResponse accepts a valid command contract", () => {
   assert.deepEqual(

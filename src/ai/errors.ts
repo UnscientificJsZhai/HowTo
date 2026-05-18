@@ -1,4 +1,4 @@
-import type { AiProvider } from "../config";
+import type { AiProvider } from "../config.js";
 
 export class AiProviderError extends Error {
   readonly provider: AiProvider;

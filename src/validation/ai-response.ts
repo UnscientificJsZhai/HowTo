@@ -2,7 +2,7 @@ import type {
   CommandCandidateContract,
   CommandGenerationContract,
   CommandPlaceholderContract,
-} from "../ai/types";
+} from "../ai/types.js";
 
 export class AiResponseValidationError extends Error {
   constructor(message: string) {

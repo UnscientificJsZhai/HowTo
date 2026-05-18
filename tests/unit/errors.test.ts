@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { AiProviderError } from "../../src/ai";
-import { CliParseError } from "../../src/cli";
-import { ConfigError } from "../../src/config";
-import { AppError, toAppError } from "../../src/errors";
-import { InteractionCancelledError, InteractiveTtyError } from "../../src/ui/interactive";
-import { PlaceholderResolutionError } from "../../src/ui/placeholders";
-import { AiResponseValidationError } from "../../src/validation/ai-response";
+import { AiProviderError } from "../../src/ai/index.js";
+import { CliParseError } from "../../src/cli.js";
+import { ConfigError } from "../../src/config.js";
+import { AppError, toAppError } from "../../src/errors.js";
+import { InteractionCancelledError, InteractiveTtyError } from "../../src/ui/tty.js";
+import { PlaceholderResolutionError } from "../../src/ui/placeholder-logic.js";
+import { AiResponseValidationError } from "../../src/validation/ai-response.js";
 
 test("toAppError keeps existing AppError instances", () => {
   const error = new AppError("already mapped", 7);
