@@ -17,8 +17,9 @@ export class GeminiCommandProvider implements CommandProvider {
     try {
       const response = await this.client.models.generateContent({
         model: this.model,
-        contents: request.prompt,
+        contents: request.userPrompt,
         config: {
+          systemInstruction: request.systemPrompt,
           responseMimeType: "application/json",
         },
       });

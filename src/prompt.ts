@@ -18,7 +18,7 @@ The JSON object must match this schema:
   ]
 }
 The commands array must contain 1 to 3 items. Do not return more than 3 candidate commands.
-Use placeholders in commands only as {{name}}, and declare every placeholder in the placeholders array.`;
+Use placeholders in commands only as {{name}}, and declare every placeholder in the placeholders array. User may provide argument. If the user's intent is clear, try to use the provided arguments as parameters in the generated commands instead of placeholders. If the intent is unclear, do not fill them.`;
 
 export const SAFETY_CONSTRAINTS = `Prefer read-only, reversible, and low-risk commands.
 When a task could involve deletion, overwrite, privilege escalation, network download, or executing downloaded content, prefer a safer alternative or inspection command when possible.
@@ -36,25 +36,39 @@ export function createProviderPromptRequest(
   };
 }
 
-export function buildCommandGenerationPrompt(request: ProviderPromptRequest): string {
-  const useCommandState =
-    request.useCommand === undefined
-      ? "No use <command> restriction is active."
-      : `The user specified use <command>: ${JSON.stringify(request.useCommand)}. Generate candidate commands only around this command-line tool. Each candidate command must clearly use ${JSON.stringify(request.useCommand)} as the requested tool.`;
-
-  return [
+export function buildCommandGenerationPrompt(request: ProviderPromptRequest): {
+  systemPrompt: string;
+  userPrompt: string;
+} {
+  const systemLines = [
     "You are generating shell command candidates for a CLI named howto.",
-    "",
-    "User request:",
-    `question: ${JSON.stringify(request.question)}`,
-    `argument: ${JSON.stringify(request.arguments)}`,
-    `useCommand: ${request.useCommand === undefined ? "null" : JSON.stringify(request.useCommand)}`,
-    useCommandState,
     "",
     "Output contract:",
     request.outputContract,
     "",
     "Safety constraints:",
     request.safetyConstraints,
-  ].join("\n");
+  ];
+
+  const userLines = ["User request:", `question: ${JSON.stringify(request.question)}`];
+
+  if (request.useCommand !== undefined) {
+    userLines.push(`useCommand: ${JSON.stringify(request.useCommand)}`);
+    userLines.push(
+      `The user specified use <command>: ${JSON.stringify(
+        request.useCommand,
+      )}. Generate candidate commands only around this command-line tool. Each candidate command must clearly use ${JSON.stringify(
+        request.useCommand,
+      )} as the requested tool.`,
+    );
+  }
+
+  if (request.arguments && request.arguments.length > 0) {
+    userLines.push(`argument: ${JSON.stringify(request.arguments)}`);
+  }
+
+  return {
+    systemPrompt: systemLines.join("\n"),
+    userPrompt: userLines.join("\n"),
+  };
 }

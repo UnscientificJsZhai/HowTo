@@ -74,9 +74,14 @@ export const App: React.FC<Props> = ({ provider, request, useCommand, onSuccess,
     setStatus('confirming');
   };
 
+  useEffect(() => {
+    if (status === 'done') {
+      onSuccess(finalCommand);
+    }
+  }, [status, finalCommand, onSuccess]);
+
   const handleConfirm = () => {
     setStatus('done');
-    onSuccess(finalCommand);
   };
 
   const handleCancel = () => {
@@ -106,7 +111,7 @@ export const App: React.FC<Props> = ({ provider, request, useCommand, onSuccess,
           onCancel={handleCancel}
         />
       )}
-      {status === 'confirming' && selectedCandidate && (
+      {(status === 'confirming' || status === 'done') && selectedCandidate && (
         <ConfirmView
           candidate={selectedCandidate}
           resolvedValues={resolvedValues}
@@ -114,6 +119,7 @@ export const App: React.FC<Props> = ({ provider, request, useCommand, onSuccess,
           danger={danger}
           onConfirm={handleConfirm}
           onCancel={handleCancel}
+          isDone={status === 'done'}
         />
       )}
       {status === 'error' && (

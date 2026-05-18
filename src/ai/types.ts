@@ -26,7 +26,8 @@ export interface ProviderPromptRequest extends CommandGenerationRequest {
 }
 
 export interface GenerateCommandsRequest extends ProviderPromptRequest {
-  prompt: string;
+  systemPrompt: string;
+  userPrompt: string;
 }
 
 export interface GenerateCommandsResult {

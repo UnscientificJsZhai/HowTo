@@ -11,6 +11,7 @@ interface Props {
   danger?: DangerousCommandMatch;
   onConfirm: () => void;
   onCancel: () => void;
+  isDone?: boolean;
 }
 
 export const ConfirmView: React.FC<Props> = ({
@@ -20,10 +21,13 @@ export const ConfirmView: React.FC<Props> = ({
   danger,
   onConfirm,
   onCancel,
+  isDone = false,
 }) => {
   const [buffer, setBuffer] = useState('');
 
   useInput((input: string, key: Key) => {
+    if (isDone) return;
+
     if (key.ctrl && input === 'c') {
       onCancel();
       return;
@@ -71,14 +75,18 @@ export const ConfirmView: React.FC<Props> = ({
             resolvedValues={resolvedValues}
           />
         </Box>
-        <Box marginTop={1}>
-          <Text>Type <Text color="yellow">EXECUTE</Text> to continue, or anything else to cancel.</Text>
-        </Box>
-        <Box>
-          <Text color="cyan">{'> '}</Text>
-          <Text>{buffer}</Text>
-          <Text backgroundColor="white"> </Text>
-        </Box>
+        {!isDone && (
+          <>
+            <Box marginTop={1}>
+              <Text>Type <Text color="yellow">EXECUTE</Text> to continue, or anything else to cancel.</Text>
+            </Box>
+            <Box>
+              <Text color="cyan">{'> '}</Text>
+              <Text>{buffer}</Text>
+              <Text backgroundColor="white"> </Text>
+            </Box>
+          </>
+        )}
       </Box>
     );
   }
@@ -89,9 +97,11 @@ export const ConfirmView: React.FC<Props> = ({
         candidate={candidate}
         resolvedValues={resolvedValues}
       />
-      <Box marginTop={1}>
-        <Text>Press <Text color="green">Enter</Text> to execute, <Text color="gray">Esc</Text> or <Text color="gray">Ctrl+C</Text> to cancel.</Text>
-      </Box>
+      {!isDone && (
+        <Box marginTop={1}>
+          <Text>Press <Text color="green">Enter</Text> to execute, <Text color="gray">Esc</Text> or <Text color="gray">Ctrl+C</Text> to cancel.</Text>
+        </Box>
+      )}
     </Box>
   );
 };

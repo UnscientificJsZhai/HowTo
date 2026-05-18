@@ -18,13 +18,17 @@ export class OpenAiCommandProvider implements CommandProvider {
 
   async generateCommands(request: GenerateCommandsRequest): Promise<GenerateCommandsResult> {
     try {
-      const response = await this.client.responses.create({
+      const response = await this.client.chat.completions.create({
         model: this.model,
-        input: request.prompt,
+        messages: [
+          { role: "system", content: request.systemPrompt },
+          { role: "user", content: request.userPrompt },
+        ],
+        response_format: { type: "json_object" },
       });
 
-      const rawText = response.output_text;
-      if (rawText === undefined || rawText.trim() === "") {
+      const rawText = response.choices[0]?.message?.content;
+      if (rawText === undefined || rawText === null || rawText.trim() === "") {
         throw new Error("provider returned an empty response");
       }
 

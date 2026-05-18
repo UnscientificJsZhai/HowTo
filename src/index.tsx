@@ -39,13 +39,14 @@ async function run(argv: string[]): Promise<CliResult> {
       arguments: parsedCli.arguments,
       useCommand: parsedCli.useCommand,
     });
-    const prompt = buildCommandGenerationPrompt(promptRequest);
+    const { systemPrompt, userPrompt } = buildCommandGenerationPrompt(promptRequest);
     const provider = createCommandProvider(config);
 
     if (parsedCli.options.print) {
       const aiResult = await provider.generateCommands({
         ...promptRequest,
-        prompt,
+        systemPrompt,
+        userPrompt,
       });
       const aiResponse = parseAndValidateAiResponse(aiResult.rawText);
       aiResponse.commands.forEach((candidate) => {
@@ -63,10 +64,10 @@ async function run(argv: string[]): Promise<CliResult> {
     let finalCommand: string | undefined;
     let appError: Error | undefined;
 
-    const { waitUntilExit, unmount } = render(
+    const { waitUntilExit, unmount, clear } = render(
       <App
         provider={provider}
-        request={{ ...promptRequest, prompt }}
+        request={{ ...promptRequest, systemPrompt, userPrompt }}
         useCommand={parsedCli.useCommand}
         onSuccess={(command) => {
           finalCommand = command;
@@ -74,6 +75,7 @@ async function run(argv: string[]): Promise<CliResult> {
         }}
         onError={(error) => {
           appError = error;
+          clear();
           unmount();
         }}
       />
