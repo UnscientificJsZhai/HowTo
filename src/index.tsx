@@ -89,6 +89,9 @@ async function run(argv: string[]): Promise<CliResult> {
       return { exitCode: 1 };
     }
 
+    console.log("=".repeat(process.stdout.columns || 80));
+    console.log();
+
     const exitCode = await executeCommand(finalCommand);
 
     return { exitCode };

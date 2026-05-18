@@ -1,15 +1,26 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput, type Key } from 'ink';
 import type { DangerousCommandMatch } from '../safety/dangerous-command.js';
+import type { CommandCandidateContract } from '../ai/types.js';
+import { SelectedCommandDisplay } from './SelectedCommandDisplay.js';
 
 interface Props {
+  candidate: CommandCandidateContract;
+  resolvedValues: Map<string, string>;
   command: string;
   danger?: DangerousCommandMatch;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-export const ConfirmView: React.FC<Props> = ({ command, danger, onConfirm, onCancel }) => {
+export const ConfirmView: React.FC<Props> = ({
+  candidate,
+  resolvedValues,
+  command,
+  danger,
+  onConfirm,
+  onCancel,
+}) => {
   const [buffer, setBuffer] = useState('');
 
   useInput((input: string, key: Key) => {
@@ -55,8 +66,10 @@ export const ConfirmView: React.FC<Props> = ({ command, danger, onConfirm, onCan
         <Text>Rule: {danger.rule}</Text>
         <Text>Risk: {danger.reason}</Text>
         <Box marginTop={1} flexDirection="column">
-          <Text bold>Final command:</Text>
-          <Text>{command}</Text>
+          <SelectedCommandDisplay
+            candidate={candidate}
+            resolvedValues={resolvedValues}
+          />
         </Box>
         <Box marginTop={1}>
           <Text>Type <Text color="yellow">EXECUTE</Text> to continue, or anything else to cancel.</Text>
@@ -72,8 +85,10 @@ export const ConfirmView: React.FC<Props> = ({ command, danger, onConfirm, onCan
 
   return (
     <Box flexDirection="column" marginY={1}>
-      <Text bold>Final command:</Text>
-      <Text>{command}</Text>
+      <SelectedCommandDisplay
+        candidate={candidate}
+        resolvedValues={resolvedValues}
+      />
       <Box marginTop={1}>
         <Text>Press <Text color="green">Enter</Text> to execute, <Text color="gray">Esc</Text> or <Text color="gray">Ctrl+C</Text> to cancel.</Text>
       </Box>

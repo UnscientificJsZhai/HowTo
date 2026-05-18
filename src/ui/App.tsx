@@ -29,6 +29,7 @@ export const App: React.FC<Props> = ({ provider, request, useCommand, onSuccess,
   const [status, setStatus] = useState<Status>('loading');
   const [candidates, setCandidates] = useState<CommandCandidateContract[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState<CommandCandidateContract | null>(null);
+  const [resolvedValues, setResolvedValues] = useState<Map<string, string>>(new Map());
   const [finalCommand, setFinalCommand] = useState('');
   const [danger, setDanger] = useState<DangerousCommandMatch | undefined>(undefined);
   const [errorMessage, setErrorMessage] = useState('');
@@ -53,6 +54,7 @@ export const App: React.FC<Props> = ({ provider, request, useCommand, onSuccess,
 
   const handleSelect = (candidate: CommandCandidateContract) => {
     setSelectedCandidate(candidate);
+    setResolvedValues(new Map());
     if (candidate.placeholders.length > 0) {
       setStatus('resolving');
     } else {
@@ -65,6 +67,7 @@ export const App: React.FC<Props> = ({ provider, request, useCommand, onSuccess,
 
   const handleResolve = (values: Map<string, string>) => {
     if (!selectedCandidate) return;
+    setResolvedValues(values);
     const command = replaceCommandPlaceholders(selectedCandidate.command, values);
     setFinalCommand(command);
     setDanger(detectDangerousCommand(command));
@@ -96,14 +99,17 @@ export const App: React.FC<Props> = ({ provider, request, useCommand, onSuccess,
       )}
       {status === 'resolving' && selectedCandidate && (
         <ResolvePlaceholdersView
+          candidate={selectedCandidate}
           placeholders={selectedCandidate.placeholders}
           onResolve={handleResolve}
           onBack={handleBackToSelection}
           onCancel={handleCancel}
         />
       )}
-      {status === 'confirming' && (
+      {status === 'confirming' && selectedCandidate && (
         <ConfirmView
+          candidate={selectedCandidate}
+          resolvedValues={resolvedValues}
           command={finalCommand}
           danger={danger}
           onConfirm={handleConfirm}

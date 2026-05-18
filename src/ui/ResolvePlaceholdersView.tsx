@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Box, Text, useInput, type Key } from 'ink';
-import type { CommandPlaceholderContract } from '../ai/types.js';
+import type { CommandCandidateContract, CommandPlaceholderContract } from '../ai/types.js';
+import { SelectedCommandDisplay } from './SelectedCommandDisplay.js';
 
 interface Props {
+  candidate: CommandCandidateContract;
   placeholders: CommandPlaceholderContract[];
   onResolve: (values: Map<string, string>) => void;
   onBack: () => void;
@@ -10,6 +12,7 @@ interface Props {
 }
 
 export const ResolvePlaceholdersView: React.FC<Props> = ({
+  candidate,
   placeholders,
   onResolve,
   onBack,
@@ -18,6 +21,21 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
   const [activeIndex, setActiveIndex] = useState(0);
   const [values, setValues] = useState<string[]>(placeholders.map(() => ''));
   const [buffer, setBuffer] = useState('');
+
+  const resolvedValuesMap = useMemo(() => {
+    const map = new Map<string, string>();
+    placeholders.forEach((p, i) => {
+      if (i < activeIndex) {
+        map.set(p.name, values[i]);
+      }
+    });
+    return map;
+  }, [placeholders, activeIndex, values]);
+
+  const currentBuffer = useMemo(() => ({
+    name: placeholders[activeIndex].name,
+    value: buffer,
+  }), [placeholders, activeIndex, buffer]);
 
   useInput((input: string, key: Key) => {
     if (key.ctrl && input === 'c') {
@@ -70,21 +88,22 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
 
   return (
     <Box flexDirection="column" marginY={1}>
+      <SelectedCommandDisplay
+        candidate={candidate}
+        resolvedValues={resolvedValuesMap}
+        currentBuffer={currentBuffer}
+      />
+      
       <Text color="green">? Fill command placeholders</Text>
       <Box flexDirection="column" marginTop={1}>
-        {placeholders.slice(0, activeIndex + 1).map((placeholder, index) => {
-          const isCurrent = index === activeIndex;
-          return (
-            <Box key={index} flexDirection="column" marginBottom={1}>
-              <Text>{placeholder.name}: {placeholder.description}</Text>
-              <Box>
-                <Text color="cyan">{'> '}</Text>
-                <Text>{isCurrent ? buffer : values[index]}</Text>
-                {isCurrent && <Text backgroundColor="white"> </Text>}
-              </Box>
-            </Box>
-          );
-        })}
+        <Box flexDirection="column" marginBottom={1}>
+          <Text>{placeholders[activeIndex].name}: {placeholders[activeIndex].description}</Text>
+          <Box>
+            <Text color="cyan">{'> '}</Text>
+            <Text>{buffer}</Text>
+            <Text backgroundColor="white"> </Text>
+          </Box>
+        </Box>
       </Box>
       <Text dimColor>
         Press Enter for next value, Esc to go back, Ctrl+C to cancel.
