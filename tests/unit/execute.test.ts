@@ -5,21 +5,75 @@ import type { ChildProcess } from "node:child_process";
 
 import { executeCommand, resolveProcessExitCode } from "../../src/execute.js";
 
-test("executeCommand runs the command through the configured shell with inherited stdio", async () => {
+test("executeCommand uses POSIX shell exec semantics with inherited stdio", async () => {
   const child = new EventEmitter() as ChildProcess;
   let receivedCommand: string | undefined;
+  let receivedArgs: string[] | undefined;
   let receivedOptions:
     | {
-        shell: string | boolean;
         stdio: "inherit";
       }
     | undefined;
 
   const execution = executeCommand("echo hello", {
     env: { SHELL: "/bin/zsh" },
-    spawnCommand(command, options) {
+    platform: "darwin",
+    spawnCommand(command, args, options) {
       receivedCommand = command;
+      receivedArgs = Array.isArray(args) ? args : undefined;
       receivedOptions = options;
+      return child;
+    },
+  });
+
+  child.emit("close", 0, null);
+
+  assert.equal(await execution, 0);
+  assert.equal(receivedCommand, "/bin/zsh");
+  assert.deepEqual(receivedArgs, ["-lc", "exec echo hello"]);
+  assert.deepEqual(receivedOptions, {
+    stdio: "inherit",
+  });
+});
+
+test("executeCommand falls back to /bin/sh when SHELL is empty on Unix", async () => {
+  const child = new EventEmitter() as ChildProcess;
+  let receivedCommand: string | undefined;
+  let receivedArgs: string[] | undefined;
+
+  const execution = executeCommand("echo hello", {
+    env: {},
+    platform: "linux",
+    spawnCommand(command, args) {
+      receivedCommand = command;
+      receivedArgs = Array.isArray(args) ? args : undefined;
+      return child;
+    },
+  });
+
+  child.emit("close", 0, null);
+
+  assert.equal(await execution, 0);
+  assert.equal(receivedCommand, "/bin/sh");
+  assert.deepEqual(receivedArgs, ["-lc", "exec echo hello"]);
+});
+
+test("executeCommand keeps spawn-shell fallback on Windows", async () => {
+  const child = new EventEmitter() as ChildProcess;
+  let receivedCommand: string | undefined;
+  let receivedOptions:
+    | {
+        shell?: string | boolean;
+        stdio: "inherit";
+      }
+    | undefined;
+
+  const execution = executeCommand("echo hello", {
+    env: { SHELL: "C:\\Windows\\System32\\cmd.exe" },
+    platform: "win32",
+    spawnCommand(command, args) {
+      receivedCommand = command;
+      receivedOptions = Array.isArray(args) ? undefined : args;
       return child;
     },
   });
@@ -29,27 +83,9 @@ test("executeCommand runs the command through the configured shell with inherite
   assert.equal(await execution, 0);
   assert.equal(receivedCommand, "echo hello");
   assert.deepEqual(receivedOptions, {
-    shell: "/bin/zsh",
+    shell: "C:\\Windows\\System32\\cmd.exe",
     stdio: "inherit",
   });
-});
-
-test("executeCommand falls back to Node shell handling when SHELL is empty", async () => {
-  const child = new EventEmitter() as ChildProcess;
-  let receivedShell: string | boolean | undefined;
-
-  const execution = executeCommand("echo hello", {
-    env: {},
-    spawnCommand(_command, options) {
-      receivedShell = options.shell;
-      return child;
-    },
-  });
-
-  child.emit("close", 0, null);
-
-  assert.equal(await execution, 0);
-  assert.equal(receivedShell, true);
 });
 
 test("executeCommand returns the child process exit code", async () => {

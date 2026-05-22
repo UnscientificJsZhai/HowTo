@@ -68,6 +68,7 @@ async function run(argv: string[]): Promise<CliResult> {
         useCommand={parsedCli.useCommand}
         onSuccess={(command) => {
           finalCommand = command;
+          clear();
           unmount();
         }}
         onError={(error) => {
@@ -88,8 +89,7 @@ async function run(argv: string[]): Promise<CliResult> {
       return { exitCode: 1 };
     }
 
-    console.log("=".repeat(process.stdout.columns || 80));
-    console.log();
+    clearTerminalOutput(process.stdout);
 
     const exitCode = await executeCommand(finalCommand);
 
@@ -100,6 +100,12 @@ async function run(argv: string[]): Promise<CliResult> {
       console.error(appError.message);
     }
     return { exitCode: appError.exitCode };
+  }
+}
+
+function clearTerminalOutput(stdout: NodeJS.WriteStream): void {
+  if (stdout.isTTY) {
+    stdout.write("\x1b[2J\x1b[H");
   }
 }
 
@@ -119,4 +125,4 @@ if (isMain) {
     });
 }
 
-export { run };
+export { clearTerminalOutput, run };
