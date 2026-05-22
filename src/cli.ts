@@ -1,4 +1,4 @@
-export type AiProviderOption = "openai" | "gemini" | string;
+export type AiProviderOption = string;
 
 export interface GlobalOptions {
   print: boolean;

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Box, Text, useInput, type Key } from 'ink';
-import type { CommandCandidateContract } from '../ai/types.js';
+import React, { useState } from "react";
+import { Box, Text, useInput, type Key } from "ink";
+import type { CommandCandidateContract } from "../ai/types.js";
 
 interface Props {
   candidates: CommandCandidateContract[];
@@ -12,7 +12,7 @@ export const SelectCommandView: React.FC<Props> = ({ candidates, onSelect, onCan
   const [activeIndex, setActiveIndex] = useState(0);
 
   useInput((input: string, key: Key) => {
-    if (key.escape || (key.ctrl && input === 'c')) {
+    if (key.escape || (key.ctrl && input === "c")) {
       onCancel();
       return;
     }
@@ -39,9 +39,7 @@ export const SelectCommandView: React.FC<Props> = ({ candidates, onSelect, onCan
           return (
             <Box key={index} flexDirection="column" marginBottom={1}>
               <Box>
-                <Text color={isSelected ? 'cyan' : undefined}>
-                  {isSelected ? '> ' : '  '}
-                </Text>
+                <Text color={isSelected ? "cyan" : undefined}>{isSelected ? "> " : "  "}</Text>
                 <Text inverse={isSelected} bold={isSelected}>
                   {candidate.title}
                 </Text>
@@ -50,15 +48,15 @@ export const SelectCommandView: React.FC<Props> = ({ candidates, onSelect, onCan
                 <Text color="gray">{candidate.command}</Text>
               </Box>
               <Box paddingLeft={4}>
-                <Text italic color="dim">{candidate.description}</Text>
+                <Text italic color="dim">
+                  {candidate.description}
+                </Text>
               </Box>
             </Box>
           );
         })}
       </Box>
-      <Text dimColor>
-        Use Up/Down to move, Enter to select, Esc or Ctrl+C to cancel.
-      </Text>
+      <Text dimColor>Use Up/Down to move, Enter to select, Esc or Ctrl+C to cancel.</Text>
     </Box>
   );
 };

@@ -1,13 +1,12 @@
-import React, { useState } from 'react';
-import { Box, Text, useInput, type Key } from 'ink';
-import type { DangerousCommandMatch } from '../safety/dangerous-command.js';
-import type { CommandCandidateContract } from '../ai/types.js';
-import { SelectedCommandDisplay } from './SelectedCommandDisplay.js';
+import React, { useState } from "react";
+import { Box, Text, useInput, type Key } from "ink";
+import type { DangerousCommandMatch } from "../safety/dangerous-command.js";
+import type { CommandCandidateContract } from "../ai/types.js";
+import { SelectedCommandDisplay } from "./SelectedCommandDisplay.js";
 
 interface Props {
   candidate: CommandCandidateContract;
   resolvedValues: Map<string, string>;
-  command: string;
   danger?: DangerousCommandMatch;
   onConfirm: () => void;
   onCancel: () => void;
@@ -17,18 +16,17 @@ interface Props {
 export const ConfirmView: React.FC<Props> = ({
   candidate,
   resolvedValues,
-  command,
   danger,
   onConfirm,
   onCancel,
   isDone = false,
 }) => {
-  const [buffer, setBuffer] = useState('');
+  const [buffer, setBuffer] = useState("");
 
   useInput((input: string, key: Key) => {
     if (isDone) return;
 
-    if (key.ctrl && input === 'c') {
+    if (key.ctrl && input === "c") {
       onCancel();
       return;
     }
@@ -40,7 +38,7 @@ export const ConfirmView: React.FC<Props> = ({
 
     if (danger) {
       if (key.return) {
-        if (buffer === 'EXECUTE') {
+        if (buffer === "EXECUTE") {
           onConfirm();
         } else {
           onCancel();
@@ -66,22 +64,23 @@ export const ConfirmView: React.FC<Props> = ({
   if (danger) {
     return (
       <Box flexDirection="column" marginY={1}>
-        <Text color="red" bold>Dangerous command detected.</Text>
+        <Text color="red" bold>
+          Dangerous command detected.
+        </Text>
         <Text>Rule: {danger.rule}</Text>
         <Text>Risk: {danger.reason}</Text>
         <Box marginTop={1} flexDirection="column">
-          <SelectedCommandDisplay
-            candidate={candidate}
-            resolvedValues={resolvedValues}
-          />
+          <SelectedCommandDisplay candidate={candidate} resolvedValues={resolvedValues} />
         </Box>
         {!isDone && (
           <>
             <Box marginTop={1}>
-              <Text>Type <Text color="yellow">EXECUTE</Text> to continue, or anything else to cancel.</Text>
+              <Text>
+                Type <Text color="yellow">EXECUTE</Text> to continue, or anything else to cancel.
+              </Text>
             </Box>
             <Box>
-              <Text color="cyan">{'> '}</Text>
+              <Text color="cyan">{"> "}</Text>
               <Text>{buffer}</Text>
               <Text backgroundColor="white"> </Text>
             </Box>
@@ -93,13 +92,13 @@ export const ConfirmView: React.FC<Props> = ({
 
   return (
     <Box flexDirection="column" marginY={1}>
-      <SelectedCommandDisplay
-        candidate={candidate}
-        resolvedValues={resolvedValues}
-      />
+      <SelectedCommandDisplay candidate={candidate} resolvedValues={resolvedValues} />
       {!isDone && (
         <Box marginTop={1}>
-          <Text>Press <Text color="green">Enter</Text> to execute, <Text color="gray">Esc</Text> or <Text color="gray">Ctrl+C</Text> to cancel.</Text>
+          <Text>
+            Press <Text color="green">Enter</Text> to execute, <Text color="gray">Esc</Text> or{" "}
+            <Text color="gray">Ctrl+C</Text> to cancel.
+          </Text>
         </Box>
       )}
     </Box>

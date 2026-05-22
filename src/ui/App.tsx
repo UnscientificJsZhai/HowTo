@@ -1,21 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { Box, Text } from 'ink';
-import { LoadingView } from './LoadingView.js';
-import { SelectCommandView } from './SelectCommandView.js';
-import { ResolvePlaceholdersView } from './ResolvePlaceholdersView.js';
-import { ConfirmView } from './ConfirmView.js';
+import React, { useState, useEffect } from "react";
+import { Box, Text } from "ink";
+import { LoadingView } from "./LoadingView.js";
+import { SelectCommandView } from "./SelectCommandView.js";
+import { ResolvePlaceholdersView } from "./ResolvePlaceholdersView.js";
+import { ConfirmView } from "./ConfirmView.js";
 import type {
   CommandCandidateContract,
   CommandProvider,
   GenerateCommandsRequest,
-} from '../ai/types.js';
-import { parseAndValidateAiResponse } from '../validation/ai-response.js';
-import { validateUseCommandCandidates } from '../validation/command-tool.js';
-import { detectDangerousCommand, type DangerousCommandMatch } from '../safety/dangerous-command.js';
-import { replaceCommandPlaceholders } from './placeholder-logic.js';
-import { InteractionCancelledError } from './tty.js';
+} from "../ai/types.js";
+import { parseAndValidateAiResponse } from "../validation/ai-response.js";
+import { validateUseCommandCandidates } from "../validation/command-tool.js";
+import { detectDangerousCommand, type DangerousCommandMatch } from "../safety/dangerous-command.js";
+import { replaceCommandPlaceholders } from "./placeholder-logic.js";
+import { InteractionCancelledError } from "./tty.js";
 
-type Status = 'loading' | 'selecting' | 'resolving' | 'confirming' | 'error' | 'done';
+type Status = "loading" | "selecting" | "resolving" | "confirming" | "error" | "done";
 
 interface Props {
   provider: CommandProvider;
@@ -26,28 +26,29 @@ interface Props {
 }
 
 export const App: React.FC<Props> = ({ provider, request, useCommand, onSuccess, onError }) => {
-  const [status, setStatus] = useState<Status>('loading');
+  const [status, setStatus] = useState<Status>("loading");
   const [candidates, setCandidates] = useState<CommandCandidateContract[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState<CommandCandidateContract | null>(null);
   const [resolvedValues, setResolvedValues] = useState<Map<string, string>>(new Map());
-  const [finalCommand, setFinalCommand] = useState('');
+  const [finalCommand, setFinalCommand] = useState("");
   const [danger, setDanger] = useState<DangerousCommandMatch | undefined>(undefined);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    if (status === 'loading') {
+    if (status === "loading") {
       provider
         .generateCommands(request)
         .then((result) => {
           const aiResponse = parseAndValidateAiResponse(result.rawText);
           validateUseCommandCandidates(aiResponse, useCommand);
           setCandidates(aiResponse.commands);
-          setStatus('selecting');
+          setStatus("selecting");
         })
-        .catch((error) => {
-          setErrorMessage(error.message);
-          setStatus('error');
-          onError(error);
+        .catch((error: unknown) => {
+          const appError = normalizeError(error);
+          setErrorMessage(appError.message);
+          setStatus("error");
+          onError(appError);
         });
     }
   }, [status, provider, request, useCommand, onError]);
@@ -56,12 +57,12 @@ export const App: React.FC<Props> = ({ provider, request, useCommand, onSuccess,
     setSelectedCandidate(candidate);
     setResolvedValues(new Map());
     if (candidate.placeholders.length > 0) {
-      setStatus('resolving');
+      setStatus("resolving");
     } else {
       const command = candidate.command;
       setFinalCommand(command);
       setDanger(detectDangerousCommand(command));
-      setStatus('confirming');
+      setStatus("confirming");
     }
   };
 
@@ -71,17 +72,17 @@ export const App: React.FC<Props> = ({ provider, request, useCommand, onSuccess,
     const command = replaceCommandPlaceholders(selectedCandidate.command, values);
     setFinalCommand(command);
     setDanger(detectDangerousCommand(command));
-    setStatus('confirming');
+    setStatus("confirming");
   };
 
   useEffect(() => {
-    if (status === 'done') {
+    if (status === "done") {
       onSuccess(finalCommand);
     }
   }, [status, finalCommand, onSuccess]);
 
   const handleConfirm = () => {
-    setStatus('done');
+    setStatus("done");
   };
 
   const handleCancel = () => {
@@ -89,20 +90,20 @@ export const App: React.FC<Props> = ({ provider, request, useCommand, onSuccess,
   };
 
   const handleBackToSelection = () => {
-    setStatus('selecting');
+    setStatus("selecting");
   };
 
   return (
     <Box flexDirection="column">
-      {status === 'loading' && <LoadingView />}
-      {status === 'selecting' && (
+      {status === "loading" && <LoadingView />}
+      {status === "selecting" && (
         <SelectCommandView
           candidates={candidates}
           onSelect={handleSelect}
           onCancel={handleCancel}
         />
       )}
-      {status === 'resolving' && selectedCandidate && (
+      {status === "resolving" && selectedCandidate && (
         <ResolvePlaceholdersView
           candidate={selectedCandidate}
           placeholders={selectedCandidate.placeholders}
@@ -111,20 +112,29 @@ export const App: React.FC<Props> = ({ provider, request, useCommand, onSuccess,
           onCancel={handleCancel}
         />
       )}
-      {(status === 'confirming' || status === 'done') && selectedCandidate && (
+      {(status === "confirming" || status === "done") && selectedCandidate && (
         <ConfirmView
           candidate={selectedCandidate}
           resolvedValues={resolvedValues}
-          command={finalCommand}
           danger={danger}
           onConfirm={handleConfirm}
           onCancel={handleCancel}
-          isDone={status === 'done'}
+          isDone={status === "done"}
         />
       )}
-      {status === 'error' && (
-        <Text color="red">Error: {errorMessage}</Text>
-      )}
+      {status === "error" && <Text color="red">Error: {errorMessage}</Text>}
     </Box>
   );
 };
+
+function normalizeError(error: unknown): Error {
+  if (error instanceof Error) {
+    return error;
+  }
+
+  if (typeof error === "string" && error.trim() !== "") {
+    return new Error(error);
+  }
+
+  return new Error("unknown error");
+}

@@ -1,6 +1,6 @@
-import React from 'react';
-import { Box, Text } from 'ink';
-import type { CommandCandidateContract } from '../ai/types.js';
+import React from "react";
+import { Box, Text } from "ink";
+import type { CommandCandidateContract } from "../ai/types.js";
 
 interface Props {
   candidate: CommandCandidateContract;
@@ -17,10 +17,16 @@ export const SelectedCommandDisplay: React.FC<Props> = ({
   const parts = candidate.command.split(/({{.*?}})/);
 
   return (
-    <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor="cyan" paddingX={1}>
+    <Box
+      flexDirection="column"
+      marginBottom={1}
+      borderStyle="round"
+      borderColor="cyan"
+      paddingX={1}
+    >
       <Box>
         <Text color="cyan" bold>
-          {'> '}
+          {"> "}
         </Text>
         <Text bold>{candidate.title}</Text>
       </Box>
@@ -31,7 +37,7 @@ export const SelectedCommandDisplay: React.FC<Props> = ({
             const match = part.match(/^{{(.*)}}$/);
             if (match) {
               const placeholderName = match[1];
-              
+
               // If it's the current buffer, show the buffer in yellow
               if (currentBuffer && currentBuffer.name === placeholderName) {
                 return (

@@ -12,7 +12,8 @@ interface DangerousCommandRule {
 const SHELL_COMMAND_PREFIX = String.raw`(?:^|[;&|]\s*|\|\s*)`;
 const SUDO_PREFIX = String.raw`(?:sudo\s+)?`;
 const COMMAND_PREFIX = `${SHELL_COMMAND_PREFIX}${SUDO_PREFIX}`;
-const RISKY_TARGET_PATTERN = /(^|\s)(?:\/|~(?:\/|\s|$)|\*|\.\.\/|\.\/\*|\/(?:bin|boot|dev|etc|home|lib|opt|private|sbin|System|usr|var)(?:\/|\s|$))/;
+const RISKY_TARGET_PATTERN =
+  /(^|\s)(?:\/|~(?:\/|\s|$)|\*|\.\.\/|\.\/\*|\/(?:bin|boot|dev|etc|home|lib|opt|private|sbin|System|usr|var)(?:\/|\s|$))/;
 
 const RULES: DangerousCommandRule[] = [
   {
@@ -20,7 +21,8 @@ const RULES: DangerousCommandRule[] = [
     reason: "recursive or forced rm against a high-risk target",
     matches(command) {
       return findCommandSegments(command, "rm").some((segment) => {
-        const hasDangerousFlag = /(^|\s)(?:-[A-Za-z]*[rRfF][A-Za-z]*|--recursive|--force)(\s|$)/.test(segment);
+        const hasDangerousFlag =
+          /(^|\s)(?:-[A-Za-z]*[rRfF][A-Za-z]*|--recursive|--force)(\s|$)/.test(segment);
         return hasDangerousFlag && RISKY_TARGET_PATTERN.test(segment);
       });
     },
@@ -30,9 +32,13 @@ const RULES: DangerousCommandRule[] = [
     reason: "disk, partition, filesystem, or raw block-device operation",
     matches(command) {
       return (
-        new RegExp(`${COMMAND_PREFIX}(?:mkfs(?:\\.[\\w-]+)?|fdisk|parted)(?:\\s|$)`).test(command) ||
+        new RegExp(`${COMMAND_PREFIX}(?:mkfs(?:\\.[\\w-]+)?|fdisk|parted)(?:\\s|$)`).test(
+          command,
+        ) ||
         new RegExp(`${COMMAND_PREFIX}diskutil\\s+erase\\w*\\b`).test(command) ||
-        new RegExp(`${COMMAND_PREFIX}dd\\s+[^;&|]*\\bif=\\S+\\s+[^;&|]*\\bof=/dev/\\S*`).test(command)
+        new RegExp(`${COMMAND_PREFIX}dd\\s+[^;&|]*\\bif=\\S+\\s+[^;&|]*\\bof=/dev/\\S*`).test(
+          command,
+        )
       );
     },
   },
@@ -62,10 +68,16 @@ const RULES: DangerousCommandRule[] = [
     reason: "package manager upgrade, uninstall, or global install operation",
     matches(command) {
       return (
-        new RegExp(`${COMMAND_PREFIX}(?:apt|apt-get|yum|dnf)\\s+(?:dist-upgrade|full-upgrade|upgrade|remove|purge|autoremove)\\b`).test(command) ||
+        new RegExp(
+          `${COMMAND_PREFIX}(?:apt|apt-get|yum|dnf)\\s+(?:dist-upgrade|full-upgrade|upgrade|remove|purge|autoremove)\\b`,
+        ).test(command) ||
         new RegExp(`${COMMAND_PREFIX}brew\\s+(?:upgrade|uninstall|remove)\\b`).test(command) ||
-        new RegExp(`${COMMAND_PREFIX}npm\\s+(?:install|uninstall|remove|rm)\\b[^;&|]*(?:^|\\s)(?:-g|--global)(?:\\s|$)`).test(command) ||
-        new RegExp(`${COMMAND_PREFIX}(?:pip|pip3)\\s+(?:install|uninstall)\\b[^;&|]*(?:^|\\s)(?:-g|--user|--break-system-packages)(?:\\s|$)`).test(command)
+        new RegExp(
+          `${COMMAND_PREFIX}npm\\s+(?:install|uninstall|remove|rm)\\b[^;&|]*(?:^|\\s)(?:-g|--global)(?:\\s|$)`,
+        ).test(command) ||
+        new RegExp(
+          `${COMMAND_PREFIX}(?:pip|pip3)\\s+(?:install|uninstall)\\b[^;&|]*(?:^|\\s)(?:-g|--user|--break-system-packages)(?:\\s|$)`,
+        ).test(command)
       );
     },
   },

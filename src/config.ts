@@ -44,8 +44,7 @@ export function loadConfig(options: GlobalOptions, env: ConfigEnvironment): AppC
     aiProvider,
     gemini: {
       apiKey: pickConfigValue(options.geminiApiKey, env.HOWTO_GEMINI_API_KEY),
-      model:
-        pickConfigValue(options.geminiModel, env.HOWTO_GEMINI_MODEL) ?? DEFAULT_GEMINI_MODEL,
+      model: pickConfigValue(options.geminiModel, env.HOWTO_GEMINI_MODEL) ?? DEFAULT_GEMINI_MODEL,
     },
     openai: {
       apiKey: pickConfigValue(options.openaiApiKey, env.HOWTO_OPENAI_API_KEY) ?? "",
@@ -61,7 +60,10 @@ export function loadConfig(options: GlobalOptions, env: ConfigEnvironment): AppC
   return config;
 }
 
-function pickConfigValue(cliValue: string | undefined, envValue: string | undefined): string | undefined {
+function pickConfigValue(
+  cliValue: string | undefined,
+  envValue: string | undefined,
+): string | undefined {
   return cliValue ?? envValue;
 }
 

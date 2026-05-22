@@ -20,7 +20,7 @@ test("candidateUsesRequestedCommand accepts env prefixes", () => {
 });
 
 test("candidateUsesRequestedCommand rejects shell wrappers", () => {
-  assert.equal(candidateUsesRequestedCommand("sh -c \"git status\"", "git"), false);
+  assert.equal(candidateUsesRequestedCommand('sh -c "git status"', "git"), false);
 });
 
 test("validateUseCommandCandidates rejects commands that do not use requested tool", () => {

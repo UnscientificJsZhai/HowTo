@@ -33,10 +33,7 @@ export async function executeCommand(
   });
 }
 
-export function resolveProcessExitCode(
-  code: number | null,
-  signal: NodeJS.Signals | null,
-): number {
+export function resolveProcessExitCode(code: number | null, signal: NodeJS.Signals | null): number {
   if (typeof code === "number") {
     return code;
   }

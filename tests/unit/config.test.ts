@@ -49,10 +49,7 @@ test("loadConfig lets CLI options override environment values", () => {
 });
 
 test("loadConfig rejects invalid provider", () => {
-  assert.throws(
-    () => loadConfig({ print: false, aiProvider: "anthropic" }, {}),
-    ConfigError,
-  );
+  assert.throws(() => loadConfig({ print: false, aiProvider: "anthropic" }, {}), ConfigError);
 });
 
 test("loadConfig requires Gemini API key when Gemini is selected", () => {

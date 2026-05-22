@@ -13,7 +13,7 @@ test("parseAndValidateAiResponse accepts a valid command contract", () => {
         commands: [
           {
             title: "Find by filename",
-            command: "find . -name \"{{filename}}\"",
+            command: 'find . -name "{{filename}}"',
             description: "Search from the current directory",
             placeholders: [
               {
@@ -29,7 +29,7 @@ test("parseAndValidateAiResponse accepts a valid command contract", () => {
       commands: [
         {
           title: "Find by filename",
-          command: "find . -name \"{{filename}}\"",
+          command: 'find . -name "{{filename}}"',
           description: "Search from the current directory",
           placeholders: [
             {
@@ -44,10 +44,7 @@ test("parseAndValidateAiResponse accepts a valid command contract", () => {
 });
 
 test("parseAndValidateAiResponse rejects non JSON text", () => {
-  assert.throws(
-    () => parseAndValidateAiResponse("not-json"),
-    AiResponseValidationError,
-  );
+  assert.throws(() => parseAndValidateAiResponse("not-json"), AiResponseValidationError);
 });
 
 test("parseAndValidateAiResponse rejects more than three commands", () => {
@@ -70,7 +67,7 @@ test("parseAndValidateAiResponse rejects undeclared placeholders", () => {
           commands: [
             {
               ...validCommand("Find"),
-              command: "find . -name \"{{filename}}\"",
+              command: 'find . -name "{{filename}}"',
               placeholders: [],
             },
           ],

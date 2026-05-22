@@ -1,5 +1,7 @@
 export class InteractiveTtyError extends Error {
-  constructor(message = "Interactive mode requires a TTY. Run howto in an interactive terminal or use --print.") {
+  constructor(
+    message = "Interactive mode requires a TTY. Run howto in an interactive terminal or use --print.",
+  ) {
     super(message);
     this.name = "InteractiveTtyError";
   }

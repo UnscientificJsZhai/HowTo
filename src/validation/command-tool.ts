@@ -52,7 +52,10 @@ export function validateUseCommandCandidates(
   });
 }
 
-export function candidateUsesRequestedCommand(commandText: string, requestedCommand: string): boolean {
+export function candidateUsesRequestedCommand(
+  commandText: string,
+  requestedCommand: string,
+): boolean {
   const tokens = tokenizeShellPrefix(commandText);
 
   if (tokens === undefined || tokens.length === 0) {
@@ -177,7 +180,7 @@ function skipEnv(tokens: string[], startIndex: number): number {
 function tokenizeShellPrefix(commandText: string): string[] | undefined {
   const tokens: string[] = [];
   let current = "";
-  let quote: "\"" | "'" | undefined;
+  let quote: '"' | "'" | undefined;
 
   for (let index = 0; index < commandText.length; index += 1) {
     const character = commandText[index];
@@ -185,7 +188,7 @@ function tokenizeShellPrefix(commandText: string): string[] | undefined {
     if (quote !== undefined) {
       if (character === quote) {
         quote = undefined;
-      } else if (character === "\\" && quote === "\"" && index + 1 < commandText.length) {
+      } else if (character === "\\" && quote === '"' && index + 1 < commandText.length) {
         index += 1;
         current += commandText[index];
       } else {
@@ -194,7 +197,7 @@ function tokenizeShellPrefix(commandText: string): string[] | undefined {
       continue;
     }
 
-    if (character === "\"" || character === "'") {
+    if (character === '"' || character === "'") {
       quote = character;
       continue;
     }
@@ -238,5 +241,11 @@ function tokenizeShellPrefix(commandText: string): string[] | undefined {
 }
 
 function isShellControlOperator(character: string): boolean {
-  return character === "|" || character === ";" || character === "&" || character === "(" || character === ")";
+  return (
+    character === "|" ||
+    character === ";" ||
+    character === "&" ||
+    character === "(" ||
+    character === ")"
+  );
 }

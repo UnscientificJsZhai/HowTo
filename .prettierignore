@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dist-test/
+coverage/
+lib/
+out/
+build/
+*.tsbuildinfo
+
+.git/
+.idea/
+.vscode/
+.codex/
+.gemini/

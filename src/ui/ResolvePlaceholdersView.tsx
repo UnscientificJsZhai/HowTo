@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
-import { Box, Text, useInput, type Key } from 'ink';
-import type { CommandCandidateContract, CommandPlaceholderContract } from '../ai/types.js';
-import { SelectedCommandDisplay } from './SelectedCommandDisplay.js';
+import React, { useState, useMemo } from "react";
+import { Box, Text, useInput, type Key } from "ink";
+import type { CommandCandidateContract, CommandPlaceholderContract } from "../ai/types.js";
+import { SelectedCommandDisplay } from "./SelectedCommandDisplay.js";
 
 interface Props {
   candidate: CommandCandidateContract;
@@ -19,8 +19,8 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
   onCancel,
 }) => {
   const [activeIndex, setActiveIndex] = useState(0);
-  const [values, setValues] = useState<string[]>(placeholders.map(() => ''));
-  const [buffer, setBuffer] = useState('');
+  const [values, setValues] = useState<string[]>(placeholders.map(() => ""));
+  const [buffer, setBuffer] = useState("");
 
   const resolvedValuesMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -32,13 +32,16 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
     return map;
   }, [placeholders, activeIndex, values]);
 
-  const currentBuffer = useMemo(() => ({
-    name: placeholders[activeIndex].name,
-    value: buffer,
-  }), [placeholders, activeIndex, buffer]);
+  const currentBuffer = useMemo(
+    () => ({
+      name: placeholders[activeIndex].name,
+      value: buffer,
+    }),
+    [placeholders, activeIndex, buffer],
+  );
 
   useInput((input: string, key: Key) => {
-    if (key.ctrl && input === 'c') {
+    if (key.ctrl && input === "c") {
       onCancel();
       return;
     }
@@ -48,7 +51,7 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
         onBack();
       } else {
         const newValues = [...values];
-        newValues[activeIndex] = '';
+        newValues[activeIndex] = "";
         setValues(newValues);
         setActiveIndex((prev) => prev - 1);
         setBuffer(values[activeIndex - 1]);
@@ -80,7 +83,7 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
     }
 
     if (input && !Object.values(key).some(Boolean)) {
-       setBuffer((prev) => prev + input);
+      setBuffer((prev) => prev + input);
     }
     // Handle space and other printable characters that might be in key but not in input if needed
     // However ink's useInput input is usually the string.
@@ -93,21 +96,21 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
         resolvedValues={resolvedValuesMap}
         currentBuffer={currentBuffer}
       />
-      
+
       <Text color="green">? Fill command placeholders</Text>
       <Box flexDirection="column" marginTop={1}>
         <Box flexDirection="column" marginBottom={1}>
-          <Text>{placeholders[activeIndex].name}: {placeholders[activeIndex].description}</Text>
+          <Text>
+            {placeholders[activeIndex].name}: {placeholders[activeIndex].description}
+          </Text>
           <Box>
-            <Text color="cyan">{'> '}</Text>
+            <Text color="cyan">{"> "}</Text>
             <Text>{buffer}</Text>
             <Text backgroundColor="white"> </Text>
           </Box>
         </Box>
       </Box>
-      <Text dimColor>
-        Press Enter for next value, Esc to go back, Ctrl+C to cancel.
-      </Text>
+      <Text dimColor>Press Enter for next value, Esc to go back, Ctrl+C to cancel.</Text>
     </Box>
   );
 };

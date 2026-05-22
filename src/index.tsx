@@ -8,10 +8,7 @@ import { loadConfig } from "./config.js";
 import { createCommandProvider } from "./ai/index.js";
 import { buildCommandGenerationPrompt, createProviderPromptRequest } from "./prompt.js";
 import { parseAndValidateAiResponse } from "./validation/ai-response.js";
-import {
-  checkCommandInPath,
-  type CommandPathCheck,
-} from "./validation/command-tool.js";
+import { checkCommandInPath, type CommandPathCheck } from "./validation/command-tool.js";
 import { ensureInteractiveTty } from "./ui/tty.js";
 import { executeCommand } from "./execute.js";
 import { toAppError } from "./errors.js";
@@ -78,7 +75,7 @@ async function run(argv: string[]): Promise<CliResult> {
           clear();
           unmount();
         }}
-      />
+      />,
     );
 
     await waitUntilExit();

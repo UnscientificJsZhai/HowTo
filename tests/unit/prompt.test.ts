@@ -14,14 +14,14 @@ describe("buildCommandGenerationPrompt", () => {
 
   it("should separate system and user prompts and not include empty fields", () => {
     const { systemPrompt, userPrompt } = buildCommandGenerationPrompt(baseRequest);
-    
+
     // System prompt should have core constraints
     assert.ok(systemPrompt.includes("CONTRACT"));
     assert.ok(systemPrompt.includes("SAFETY"));
-    
+
     // User prompt should have the question
-    assert.ok(userPrompt.includes("question: \"how to list files\""));
-    
+    assert.ok(userPrompt.includes('question: "how to list files"'));
+
     // Should not include optional fields
     assert.strictEqual(userPrompt.includes("useCommand:"), false);
     assert.strictEqual(userPrompt.includes("argument:"), false);
@@ -30,20 +30,20 @@ describe("buildCommandGenerationPrompt", () => {
   it("should include arguments in userPrompt when provided", () => {
     const request = { ...baseRequest, arguments: ["-la"] };
     const { userPrompt } = buildCommandGenerationPrompt(request);
-    assert.ok(userPrompt.includes("argument: [\"-la\"]"));
+    assert.ok(userPrompt.includes('argument: ["-la"]'));
   });
 
   it("should include useCommand in userPrompt when provided", () => {
     const request = { ...baseRequest, useCommand: "ls" };
     const { userPrompt } = buildCommandGenerationPrompt(request);
-    assert.ok(userPrompt.includes("useCommand: \"ls\""));
-    assert.ok(userPrompt.includes("The user specified use <command>: \"ls\""));
+    assert.ok(userPrompt.includes('useCommand: "ls"'));
+    assert.ok(userPrompt.includes('The user specified use <command>: "ls"'));
   });
 
   it("should include both in userPrompt when both are provided", () => {
     const request = { ...baseRequest, arguments: ["-la"], useCommand: "ls" };
     const { userPrompt } = buildCommandGenerationPrompt(request);
-    assert.ok(userPrompt.includes("argument: [\"-la\"]"));
-    assert.ok(userPrompt.includes("useCommand: \"ls\""));
+    assert.ok(userPrompt.includes('argument: ["-la"]'));
+    assert.ok(userPrompt.includes('useCommand: "ls"'));
   });
 });

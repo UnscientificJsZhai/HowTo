@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { detectDangerousCommand, isDangerousCommand } from "../../../src/safety/dangerous-command.js";
+import {
+  detectDangerousCommand,
+  isDangerousCommand,
+} from "../../../src/safety/dangerous-command.js";
 
 const dangerousCommands = [
   "rm -rf /",
@@ -9,7 +12,7 @@ const dangerousCommands = [
   "rm -rf *",
   "rm -rf ../*",
   "sudo rm -rf /",
-  "sudo sh -c \"rm -rf /\"",
+  'sudo sh -c "rm -rf /"',
   "mkfs /dev/disk2",
   "fdisk /dev/sda",
   "parted /dev/sda",

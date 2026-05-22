@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Text } from 'ink';
+import React, { useState, useEffect } from "react";
+import { Text } from "ink";
 
-const FRAMES = ['|', '/', '-', '\\'];
+const FRAMES = ["|", "/", "-", "\\"];
 
 export const LoadingView: React.FC = () => {
   const [frameIndex, setFrameIndex] = useState(0);
