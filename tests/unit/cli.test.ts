@@ -43,3 +43,18 @@ test("parseCliArgs rejects incomplete use mode", () => {
 test("parseCliArgs rejects missing option value", () => {
   assert.throws(() => parseCliArgs(["--ai-provider"]), CliParseError);
 });
+
+test("parseCliArgs parses init without question", () => {
+  assert.deepEqual(parseCliArgs(["--init"]), {
+    options: {
+      print: false,
+      init: true,
+    },
+    arguments: [],
+  });
+});
+
+test("parseCliArgs rejects init with print or question", () => {
+  assert.throws(() => parseCliArgs(["--init", "--print"]), CliParseError);
+  assert.throws(() => parseCliArgs(["--init", "question"]), CliParseError);
+});

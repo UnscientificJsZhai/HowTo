@@ -1,10 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ConfigError, loadConfig } from "../../src/config.js";
+import { ConfigError, hasExplicitAiProvider, loadConfig } from "../../src/config.js";
 
-test("loadConfig uses defaults for OpenAI provider", () => {
-  assert.deepEqual(loadConfig({ print: false }, {}), {
+test("hasExplicitAiProvider detects missing provider", () => {
+  assert.equal(hasExplicitAiProvider({ print: false }, {}), false);
+});
+
+test("hasExplicitAiProvider detects CLI provider", () => {
+  assert.equal(hasExplicitAiProvider({ print: false, aiProvider: "openai" }, {}), true);
+});
+
+test("hasExplicitAiProvider detects environment provider", () => {
+  assert.equal(hasExplicitAiProvider({ print: false }, { HOWTO_AI_PROVIDER: "gemini" }), true);
+});
+
+test("hasExplicitAiProvider detects config file provider", () => {
+  assert.equal(hasExplicitAiProvider({ print: false }, {}, { aiProvider: "openai" }), true);
+});
+
+test("loadConfig requires an explicit provider", () => {
+  assert.throws(() => loadConfig({ print: false }, {}), ConfigError);
+});
+
+test("loadConfig uses model defaults after provider is configured", () => {
+  assert.deepEqual(loadConfig({ print: false, aiProvider: "openai" }, {}), {
     aiProvider: "openai",
     gemini: {
       apiKey: undefined,
@@ -42,6 +62,58 @@ test("loadConfig lets CLI options override environment values", () => {
       openai: {
         apiKey: "",
         model: "gpt-5.4-mini",
+        baseUrl: undefined,
+      },
+    },
+  );
+});
+
+test("loadConfig applies priority CLI over env over config file over defaults", () => {
+  assert.deepEqual(
+    loadConfig(
+      {
+        print: false,
+        aiProvider: "openai",
+        openaiModel: "cli-openai-model",
+      },
+      {
+        HOWTO_AI_PROVIDER: "gemini",
+        HOWTO_OPENAI_API_KEY: "env-openai-key",
+      },
+      {
+        aiProvider: "gemini",
+        openaiApiKey: "file-openai-key",
+        openaiModel: "file-openai-model",
+        openaiApiUrl: "https://file.example/v1",
+      },
+    ),
+    {
+      aiProvider: "openai",
+      gemini: {
+        apiKey: undefined,
+        model: "gemini-3.1-flash-lite",
+      },
+      openai: {
+        apiKey: "env-openai-key",
+        model: "cli-openai-model",
+        baseUrl: "https://file.example/v1",
+      },
+    },
+  );
+});
+
+test("loadConfig lets config file override defaults", () => {
+  assert.deepEqual(
+    loadConfig({ print: false }, {}, { aiProvider: "openai", openaiModel: "file-model" }),
+    {
+      aiProvider: "openai",
+      gemini: {
+        apiKey: undefined,
+        model: "gemini-3.1-flash-lite",
+      },
+      openai: {
+        apiKey: "",
+        model: "file-model",
         baseUrl: undefined,
       },
     },

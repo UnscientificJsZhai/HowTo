@@ -3,8 +3,9 @@
 import React from "react";
 import { fileURLToPath } from "node:url";
 import { render } from "ink";
-import { parseCliArgs } from "./cli.js";
-import { loadConfig } from "./config.js";
+import { CliParseError, parseCliArgs } from "./cli.js";
+import { ConfigError, hasExplicitAiProvider, loadConfig } from "./config.js";
+import { readUserConfigFile } from "./config-file.js";
 import { createCommandProvider } from "./ai/index.js";
 import { buildCommandGenerationPrompt, createProviderPromptRequest } from "./prompt.js";
 import { parseAndValidateAiResponse } from "./validation/ai-response.js";
@@ -13,6 +14,7 @@ import { ensureInteractiveTty } from "./ui/tty.js";
 import { executeCommand } from "./execute.js";
 import { toAppError } from "./errors.js";
 import { App } from "./ui/App.js";
+import { initializeConfig } from "./init/index.js";
 
 interface CliResult {
   exitCode: number;
@@ -21,7 +23,42 @@ interface CliResult {
 async function run(argv: string[]): Promise<CliResult> {
   try {
     const parsedCli = parseCliArgs(argv);
-    const config = loadConfig(parsedCli.options, process.env);
+
+    if (parsedCli.options.init) {
+      ensureInteractiveTty(process.stdin, process.stdout);
+      await initializeConfig({
+        cliOptions: parsedCli.options,
+        env: process.env,
+        input: process.stdin,
+        output: process.stdout,
+      });
+      return { exitCode: 0 };
+    }
+
+    const fileConfig = await readUserConfigFile();
+
+    if (parsedCli.question === undefined) {
+      throw new CliParseError("missing question");
+    }
+
+    if (!hasExplicitAiProvider(parsedCli.options, process.env, fileConfig)) {
+      if (parsedCli.options.print) {
+        throw new ConfigError(
+          "AI provider is not configured. --print cannot run initialization; run howto --init or set --ai-provider, HOWTO_AI_PROVIDER, or ~/.howto/config.json.",
+        );
+      }
+
+      ensureInteractiveTty(process.stdin, process.stdout);
+    }
+
+    const config = hasExplicitAiProvider(parsedCli.options, process.env, fileConfig)
+      ? loadConfig(parsedCli.options, process.env, fileConfig)
+      : await initializeConfig({
+          cliOptions: parsedCli.options,
+          env: process.env,
+          input: process.stdin,
+          output: process.stdout,
+        });
     const useCommandPathCheck: CommandPathCheck | undefined =
       parsedCli.useCommand === undefined
         ? undefined
@@ -89,8 +126,6 @@ async function run(argv: string[]): Promise<CliResult> {
       return { exitCode: 1 };
     }
 
-    clearTerminalOutput(process.stdout);
-
     const exitCode = await executeCommand(finalCommand);
 
     return { exitCode };
@@ -100,12 +135,6 @@ async function run(argv: string[]): Promise<CliResult> {
       console.error(appError.message);
     }
     return { exitCode: appError.exitCode };
-  }
-}
-
-function clearTerminalOutput(stdout: NodeJS.WriteStream): void {
-  if (stdout.isTTY) {
-    stdout.write("\x1b[2J\x1b[H");
   }
 }
 
@@ -125,4 +154,4 @@ if (isMain) {
     });
 }
 
-export { clearTerminalOutput, run };
+export { run };

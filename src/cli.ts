@@ -2,6 +2,7 @@ export type AiProviderOption = string;
 
 export interface GlobalOptions {
   print: boolean;
+  init?: boolean;
   aiProvider?: AiProviderOption;
   geminiApiKey?: string;
   geminiModel?: string;
@@ -13,7 +14,7 @@ export interface GlobalOptions {
 export interface ParsedCli {
   options: GlobalOptions;
   useCommand?: string;
-  question: string;
+  question?: string;
   arguments: string[];
 }
 
@@ -33,11 +34,13 @@ const VALUE_OPTIONS = new Set([
   "--openai-model",
 ]);
 
-const BOOLEAN_OPTIONS = new Set(["--print"]);
+const BOOLEAN_OPTIONS = new Set(["--print", "--init"]);
 
 export const USAGE = `Usage: howto [options] [use <command>] <question> [<argument>...]
+       howto --init
 
 Options:
+  --init
   --print
   --ai-provider <openai|gemini>
   --gemini-api-key <key>
@@ -70,7 +73,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         if (inlineValue !== undefined) {
           throw new CliParseError(`${optionName} does not accept a value`);
         }
-        options.print = true;
+        assignBooleanOption(options, optionName);
         continue;
       }
 
@@ -130,7 +133,32 @@ function assignOptionValue(options: GlobalOptions, optionName: string, value: st
   }
 }
 
+function assignBooleanOption(options: GlobalOptions, optionName: string): void {
+  switch (optionName) {
+    case "--print":
+      options.print = true;
+      return;
+    case "--init":
+      options.init = true;
+      return;
+    default:
+      throw new CliParseError(`unsupported option: ${optionName}`);
+  }
+}
+
 function parsePositionals(options: GlobalOptions, positionals: string[]): ParsedCli {
+  if (options.init) {
+    if (options.print) {
+      throw new CliParseError("--init cannot be combined with --print");
+    }
+
+    if (positionals.length > 0) {
+      throw new CliParseError("--init cannot be combined with a question or use mode");
+    }
+
+    return { options, arguments: [] };
+  }
+
   if (positionals.length === 0) {
     throw new CliParseError("missing question");
   }

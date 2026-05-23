@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useWindowSize } from "ink";
 import { LoadingView } from "./LoadingView.js";
 import { SelectCommandView } from "./SelectCommandView.js";
 import { ResolvePlaceholdersView } from "./ResolvePlaceholdersView.js";
@@ -26,6 +26,7 @@ interface Props {
 }
 
 export const App: React.FC<Props> = ({ provider, request, useCommand, onSuccess, onError }) => {
+  const { rows } = useWindowSize();
   const [status, setStatus] = useState<Status>("loading");
   const [candidates, setCandidates] = useState<CommandCandidateContract[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState<CommandCandidateContract | null>(null);
@@ -93,8 +94,10 @@ export const App: React.FC<Props> = ({ provider, request, useCommand, onSuccess,
     setStatus("selecting");
   };
 
+  const maxFrameRows = Math.max(1, rows - 1);
+
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" maxHeight={maxFrameRows} overflowY="hidden">
       {status === "loading" && <LoadingView />}
       {status === "selecting" && (
         <SelectCommandView

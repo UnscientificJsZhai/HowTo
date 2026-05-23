@@ -1,4 +1,5 @@
 import type { GlobalOptions } from "./cli.js";
+import type { FileConfig } from "./config-file.js";
 
 export type AiProvider = "openai" | "gemini";
 
@@ -31,25 +32,64 @@ export class ConfigError extends Error {
   }
 }
 
-const DEFAULT_AI_PROVIDER: AiProvider = "openai";
 const DEFAULT_OPENAI_MODEL = "gpt-5.4-mini";
 const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite";
 
-export function loadConfig(options: GlobalOptions, env: ConfigEnvironment): AppConfig {
-  const aiProvider = parseAiProvider(
-    pickConfigValue(options.aiProvider, env.HOWTO_AI_PROVIDER) ?? DEFAULT_AI_PROVIDER,
+export { DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL };
+
+export function hasExplicitAiProvider(
+  options: GlobalOptions,
+  env: ConfigEnvironment,
+  fileConfig: FileConfig = {},
+): boolean {
+  return (
+    pickConfigValue(options.aiProvider, env.HOWTO_AI_PROVIDER, fileConfig.aiProvider) !== undefined
   );
+}
+
+export function loadConfig(
+  options: GlobalOptions,
+  env: ConfigEnvironment,
+  fileConfig: FileConfig = {},
+): AppConfig {
+  const aiProviderValue = pickConfigValue(
+    options.aiProvider,
+    env.HOWTO_AI_PROVIDER,
+    fileConfig.aiProvider,
+  );
+
+  if (aiProviderValue === undefined) {
+    throw new ConfigError(
+      "AI provider is not configured. Set --ai-provider or HOWTO_AI_PROVIDER, or run howto in an interactive terminal to initialize it.",
+    );
+  }
+
+  const aiProvider = parseAiProvider(aiProviderValue);
 
   const config: AppConfig = {
     aiProvider,
     gemini: {
-      apiKey: pickConfigValue(options.geminiApiKey, env.HOWTO_GEMINI_API_KEY),
-      model: pickConfigValue(options.geminiModel, env.HOWTO_GEMINI_MODEL) ?? DEFAULT_GEMINI_MODEL,
+      apiKey: pickConfigValue(
+        options.geminiApiKey,
+        env.HOWTO_GEMINI_API_KEY,
+        fileConfig.geminiApiKey,
+      ),
+      model:
+        pickConfigValue(options.geminiModel, env.HOWTO_GEMINI_MODEL, fileConfig.geminiModel) ??
+        DEFAULT_GEMINI_MODEL,
     },
     openai: {
-      apiKey: pickConfigValue(options.openaiApiKey, env.HOWTO_OPENAI_API_KEY) ?? "",
-      model: pickConfigValue(options.openaiModel, env.HOWTO_OPENAI_MODEL) ?? DEFAULT_OPENAI_MODEL,
-      baseUrl: pickConfigValue(options.openaiApiUrl, env.HOWTO_OPENAI_API_URL),
+      apiKey:
+        pickConfigValue(options.openaiApiKey, env.HOWTO_OPENAI_API_KEY, fileConfig.openaiApiKey) ??
+        "",
+      model:
+        pickConfigValue(options.openaiModel, env.HOWTO_OPENAI_MODEL, fileConfig.openaiModel) ??
+        DEFAULT_OPENAI_MODEL,
+      baseUrl: pickConfigValue(
+        options.openaiApiUrl,
+        env.HOWTO_OPENAI_API_URL,
+        fileConfig.openaiApiUrl,
+      ),
     },
   };
 
@@ -63,8 +103,9 @@ export function loadConfig(options: GlobalOptions, env: ConfigEnvironment): AppC
 function pickConfigValue(
   cliValue: string | undefined,
   envValue: string | undefined,
+  fileValue: string | undefined,
 ): string | undefined {
-  return cliValue ?? envValue;
+  return cliValue ?? envValue ?? fileValue;
 }
 
 function parseAiProvider(value: string): AiProvider {
