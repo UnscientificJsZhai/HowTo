@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import React from "react";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { render } from "ink";
 import { CliParseError, parseCliArgs } from "./cli.js";
@@ -138,7 +139,17 @@ async function run(argv: string[]): Promise<CliResult> {
   }
 }
 
-const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+function resolveEntrypointPath(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+}
+
+const isMain =
+  process.argv[1] !== undefined &&
+  fileURLToPath(import.meta.url) === resolveEntrypointPath(process.argv[1]);
 
 if (isMain) {
   run(process.argv.slice(2))
