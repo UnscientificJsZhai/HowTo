@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildCommandGenerationPrompt } from "../../src/prompt.js";
+import { OUTPUT_CONTRACT, buildCommandGenerationPrompt } from "../../src/prompt.js";
 import type { ProviderPromptRequest } from "../../src/ai/types.js";
 
 describe("buildCommandGenerationPrompt", () => {
@@ -45,5 +45,19 @@ describe("buildCommandGenerationPrompt", () => {
     const { userPrompt } = buildCommandGenerationPrompt(request);
     assert.ok(userPrompt.includes('argument: ["-la"]'));
     assert.ok(userPrompt.includes('useCommand: "ls"'));
+  });
+
+  it("should include language rules in the output contract", () => {
+    const request = { ...baseRequest, outputContract: OUTPUT_CONTRACT };
+    const { systemPrompt } = buildCommandGenerationPrompt(request);
+
+    assert.ok(systemPrompt.includes("Detect the primary natural language of the user's question"));
+    assert.ok(
+      systemPrompt.includes(
+        "Return title, description, and placeholders[].description in that language",
+      ),
+    );
+    assert.ok(systemPrompt.includes("Keep placeholder name values English-compatible ASCII"));
+    assert.ok(systemPrompt.includes("Use placeholders in commands only as {{name}}"));
   });
 });

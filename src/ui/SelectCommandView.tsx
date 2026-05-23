@@ -36,27 +36,37 @@ export const SelectCommandView: React.FC<Props> = ({ candidates, onSelect, onCan
       <Box flexDirection="column" marginTop={1}>
         {candidates.map((candidate, index) => {
           const isSelected = index === activeIndex;
+          const isLast = index === candidates.length - 1;
           return (
-            <Box key={index} flexDirection="column" marginBottom={1}>
-              <Box>
-                <Text color={isSelected ? "cyan" : undefined}>{isSelected ? "> " : "  "}</Text>
-                <Text inverse={isSelected} bold={isSelected}>
-                  {candidate.title}
-                </Text>
+            <React.Fragment key={index}>
+              <Box flexDirection="column" flexShrink={0}>
+                <Box>
+                  <Text color={isSelected ? "cyan" : undefined}>{isSelected ? "> " : "  "}</Text>
+                  <Text inverse={isSelected} bold={isSelected}>
+                    {candidate.title}
+                  </Text>
+                </Box>
+                <Box paddingLeft={4}>
+                  <Text color="gray">{candidate.command}</Text>
+                </Box>
+                <Box paddingLeft={4}>
+                  <Text italic color="dim">
+                    {candidate.description}
+                  </Text>
+                </Box>
               </Box>
-              <Box paddingLeft={4}>
-                <Text color="gray">{candidate.command}</Text>
-              </Box>
-              <Box paddingLeft={4}>
-                <Text italic color="dim">
-                  {candidate.description}
-                </Text>
-              </Box>
-            </Box>
+              {!isLast && (
+                <Box height={1} flexShrink={0}>
+                  <Text> </Text>
+                </Box>
+              )}
+            </React.Fragment>
           );
         })}
       </Box>
-      <Text dimColor>Use Up/Down to move, Enter to select, Esc or Ctrl+C to cancel.</Text>
+      <Box flexShrink={0} marginTop={1}>
+        <Text dimColor>{"Use Up/Down to move, Enter to select, Esc or Ctrl+C to cancel."}</Text>
+      </Box>
     </Box>
   );
 };
