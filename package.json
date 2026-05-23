@@ -1,12 +1,15 @@
 {
-  "name": "howto",
-  "version": "1.0.0",
+  "name": "@unscientificjszhai/howto",
+  "version": "1.0.0-alpha.1",
   "type": "module",
-  "description": "",
+  "description": "Use AI to quickly find commands within the terminal.",
   "main": "dist/index.js",
   "bin": {
     "howto": "dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "format": "prettier . --write",
@@ -43,6 +46,5 @@
       "prettier --write"
     ],
     "*.{js,json,md,yml,yaml}": "prettier --write"
-  },
-  "private": true
+  }
 }
