@@ -1,0 +1,153 @@
+name: Publish
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Resolve release commit
+        id: release-commit
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_sha="$(git rev-list -n 1 "${GITHUB_REF_NAME}")"
+          echo "sha=${release_sha}" >> "${GITHUB_OUTPUT}"
+          echo "Release tag ${GITHUB_REF_NAME} points to ${release_sha}"
+
+      - name: Wait for required workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.release-commit.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          wait_for_workflow() {
+            local workflow_file="$1"
+            local deadline=$((SECONDS + 600))
+
+            echo "Waiting for ${workflow_file} to succeed on ${RELEASE_SHA}"
+
+            while true; do
+              response="$(
+                gh api \
+                  --method GET \
+                  -H "Accept: application/vnd.github+json" \
+                  "/repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_file}/runs" \
+                  -f "event=push" \
+                  -f "head_sha=${RELEASE_SHA}" \
+                  -f "per_page=100"
+              )"
+
+              result="$(
+                printf '%s' "${response}" | node -e '
+                  const fs = require("fs");
+                  const data = JSON.parse(fs.readFileSync(0, "utf8"));
+                  const runs = data.workflow_runs ?? [];
+                  const activeStatuses = new Set([
+                    "queued",
+                    "in_progress",
+                    "waiting",
+                    "pending",
+                    "requested",
+                  ]);
+                  const successRun = runs.find((run) => run.conclusion === "success");
+                  const activeRun = runs.find((run) => activeStatuses.has(run.status));
+                  const completedRun = runs.find((run) => run.status === "completed");
+
+                  if (successRun) {
+                    console.log(`success\t${successRun.html_url}`);
+                  } else if (activeRun) {
+                    console.log(`active\t${activeRun.html_url}`);
+                  } else if (completedRun) {
+                    console.log(`failed\t${completedRun.html_url}`);
+                  } else {
+                    console.log("missing\t");
+                  }
+                '
+              )"
+
+              state="${result%%$'\t'*}"
+              run_url="${result#*$'\t'}"
+
+              case "${state}" in
+                success)
+                  echo "${workflow_file} succeeded: ${run_url}"
+                  return 0
+                  ;;
+                active|missing)
+                  if [ "${SECONDS}" -ge "${deadline}" ]; then
+                    echo "::error::Timed out waiting for ${workflow_file} to succeed on ${RELEASE_SHA}."
+                    exit 1
+                  fi
+                  if [ "${state}" = "active" ]; then
+                    echo "${workflow_file} is still running: ${run_url}"
+                  else
+                    echo "${workflow_file} has not started for ${RELEASE_SHA} yet."
+                  fi
+                  sleep 15
+                  ;;
+                failed)
+                  echo "::error::${workflow_file} did not succeed for ${RELEASE_SHA}: ${run_url}"
+                  exit 1
+                  ;;
+                *)
+                  echo "::error::Unexpected workflow state '${state}' for ${workflow_file}."
+                  exit 1
+                  ;;
+              esac
+            done
+          }
+
+          wait_for_workflow "test.yml"
+          wait_for_workflow "version-check.yml"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Select npm dist tag
+        id: dist-tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event.release.prerelease }}" = "true" ]; then
+            echo "tag=alpha" >> "${GITHUB_OUTPUT}"
+          else
+            echo "tag=latest" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Publish to npm
+        run: npm publish --access public --tag "${{ steps.dist-tag.outputs.tag }}"

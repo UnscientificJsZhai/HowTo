@@ -1,0 +1,55 @@
+name: Version Check
+
+on:
+  push:
+    branches:
+      - master
+      - "develop/*"
+
+permissions:
+  contents: read
+
+jobs:
+  version-check:
+    name: Version Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Check package version availability
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          package_name="$(node -p "require('./package.json').name")"
+          package_version="$(node -p "require('./package.json').version")"
+          package_spec="${package_name}@${package_version}"
+
+          echo "Checking npm registry for ${package_spec}"
+
+          set +e
+          npm_output="$(npm view "${package_spec}" version --registry=https://registry.npmjs.org 2>&1)"
+          npm_status=$?
+          set -e
+
+          if [ "${npm_status}" -eq 0 ]; then
+            echo "::error::${package_spec} already exists in the npm registry."
+            exit 1
+          fi
+
+          if echo "${npm_output}" | grep -Eiq "(E404|404 Not Found|not found)"; then
+            echo "${package_spec} is available for publishing."
+            exit 0
+          fi
+
+          echo "${npm_output}"
+          echo "::error::Unable to determine whether ${package_spec} exists in the npm registry."
+          exit "${npm_status}"
