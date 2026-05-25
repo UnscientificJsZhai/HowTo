@@ -3,7 +3,11 @@ import test from "node:test";
 
 import { COMMAND_GENERATION_SCHEMA } from "../../src/ai/command-schema.js";
 import { buildGeminiGenerateContentRequest } from "../../src/ai/gemini.js";
-import { buildOpenAiChatCompletionRequest } from "../../src/ai/openai.js";
+import {
+  buildOpenAiChatCompletionRequest,
+  buildOpenAiClientOptions,
+  OpenAiCommandProvider,
+} from "../../src/ai/openai.js";
 import type { GenerateCommandsRequest } from "../../src/ai/types.js";
 
 function createRequest(structuredOutput: boolean): GenerateCommandsRequest {
@@ -41,6 +45,40 @@ test("buildOpenAiChatCompletionRequest keeps json_object in compatibility mode",
   const request = buildOpenAiChatCompletionRequest("gpt-test", createRequest(false));
 
   assert.deepEqual(request.response_format, { type: "json_object" });
+});
+
+test("OpenAI client options omit authorization when API key is empty", () => {
+  const options = buildOpenAiClientOptions({
+    apiKey: "",
+    baseUrl: "http://localhost:11434/v1",
+    model: "local-model",
+  });
+
+  assert.equal(options.apiKey, "howto-empty-api-key");
+  assert.equal(options.baseURL, "http://localhost:11434/v1");
+  assert.deepEqual(options.defaultHeaders, { Authorization: null });
+});
+
+test("OpenAI client options preserve non-empty API key", () => {
+  const options = buildOpenAiClientOptions({
+    apiKey: "openai-key",
+    model: "gpt-test",
+  });
+
+  assert.equal(options.apiKey, "openai-key");
+  assert.equal(options.baseURL, undefined);
+  assert.equal(options.defaultHeaders, undefined);
+});
+
+test("OpenAI provider initializes when API key is empty", () => {
+  assert.doesNotThrow(
+    () =>
+      new OpenAiCommandProvider({
+        apiKey: "",
+        baseUrl: "http://localhost:11434/v1",
+        model: "local-model",
+      }),
+  );
 });
 
 test("buildGeminiGenerateContentRequest uses response schema in structured mode", () => {

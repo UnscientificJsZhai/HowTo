@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import OpenAI, { type ClientOptions } from "openai";
 import type { ChatCompletionCreateParamsNonStreaming } from "openai/resources/chat/completions";
 
 import type { AppConfig } from "../config.js";
@@ -12,10 +12,7 @@ export class OpenAiCommandProvider implements CommandProvider {
 
   constructor(config: AppConfig["openai"]) {
     this.model = config.model;
-    this.client = new OpenAI({
-      apiKey: config.apiKey,
-      baseURL: config.baseUrl,
-    });
+    this.client = new OpenAI(buildOpenAiClientOptions(config));
   }
 
   async generateCommands(request: GenerateCommandsRequest): Promise<GenerateCommandsResult> {
@@ -34,6 +31,23 @@ export class OpenAiCommandProvider implements CommandProvider {
       throw new AiProviderError("openai", this.model, error);
     }
   }
+}
+
+export function buildOpenAiClientOptions(config: AppConfig["openai"]): ClientOptions {
+  if (config.apiKey.trim() !== "") {
+    return {
+      apiKey: config.apiKey,
+      baseURL: config.baseUrl,
+    };
+  }
+
+  return {
+    apiKey: "howto-empty-api-key",
+    baseURL: config.baseUrl,
+    defaultHeaders: {
+      Authorization: null,
+    },
+  };
 }
 
 export function buildOpenAiChatCompletionRequest(
