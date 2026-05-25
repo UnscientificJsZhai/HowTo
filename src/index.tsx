@@ -73,6 +73,7 @@ async function run(argv: string[]): Promise<CliResult> {
       question: parsedCli.question,
       arguments: parsedCli.arguments,
       useCommand: parsedCli.useCommand,
+      structuredOutput: config.structuredOutput,
     });
     const { systemPrompt, userPrompt } = buildCommandGenerationPrompt(promptRequest);
     const provider = createCommandProvider(config);

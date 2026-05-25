@@ -35,6 +35,7 @@ test("loadConfig uses model defaults after provider is configured", () => {
       model: "gpt-5.4-mini",
       baseUrl: undefined,
     },
+    structuredOutput: true,
   });
 });
 
@@ -64,6 +65,7 @@ test("loadConfig lets CLI options override environment values", () => {
         model: "gpt-5.4-mini",
         baseUrl: undefined,
       },
+      structuredOutput: true,
     },
   );
 });
@@ -98,6 +100,7 @@ test("loadConfig applies priority CLI over env over config file over defaults", 
         model: "cli-openai-model",
         baseUrl: "https://file.example/v1",
       },
+      structuredOutput: true,
     },
   );
 });
@@ -116,6 +119,7 @@ test("loadConfig lets config file override defaults", () => {
         model: "file-model",
         baseUrl: undefined,
       },
+      structuredOutput: true,
     },
   );
 });
@@ -126,4 +130,55 @@ test("loadConfig rejects invalid provider", () => {
 
 test("loadConfig requires Gemini API key when Gemini is selected", () => {
   assert.throws(() => loadConfig({ print: false, aiProvider: "gemini" }, {}), ConfigError);
+});
+
+test("loadConfig resolves structuredOutput with default and priority", () => {
+  assert.equal(loadConfig({ print: false, aiProvider: "openai" }, {}).structuredOutput, true);
+
+  assert.equal(
+    loadConfig(
+      { print: false, aiProvider: "openai", structuredOutput: "false" },
+      { HOWTO_STRUCTURED_OUTPUT: "true" },
+      { structuredOutput: true },
+    ).structuredOutput,
+    false,
+  );
+
+  assert.equal(
+    loadConfig(
+      { print: false, aiProvider: "openai" },
+      { HOWTO_STRUCTURED_OUTPUT: "false" },
+      { structuredOutput: true },
+    ).structuredOutput,
+    false,
+  );
+
+  assert.equal(
+    loadConfig({ print: false, aiProvider: "openai" }, {}, { structuredOutput: "false" })
+      .structuredOutput,
+    false,
+  );
+});
+
+test("loadConfig accepts boolean structuredOutput from config file", () => {
+  assert.equal(
+    loadConfig({ print: false, aiProvider: "openai" }, {}, { structuredOutput: false })
+      .structuredOutput,
+    false,
+  );
+});
+
+test("loadConfig rejects invalid structuredOutput values", () => {
+  assert.throws(
+    () => loadConfig({ print: false, aiProvider: "openai", structuredOutput: "yes" }, {}),
+    ConfigError,
+  );
+  assert.throws(
+    () => loadConfig({ print: false, aiProvider: "openai" }, { HOWTO_STRUCTURED_OUTPUT: "yes" }),
+    ConfigError,
+  );
+  assert.throws(
+    () => loadConfig({ print: false, aiProvider: "openai" }, {}, { structuredOutput: "yes" }),
+    ConfigError,
+  );
 });

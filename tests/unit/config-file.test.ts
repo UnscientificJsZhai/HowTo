@@ -41,6 +41,40 @@ test("readUserConfigFile reads known string fields and ignores unknown fields", 
   });
 });
 
+test("readUserConfigFile accepts structuredOutput boolean and string values", async () => {
+  const booleanPath = await tempConfigPath();
+  await writeRawConfig(booleanPath, '{"aiProvider":"openai","structuredOutput":false}');
+  assert.deepEqual(await readUserConfigFile(booleanPath), {
+    aiProvider: "openai",
+    structuredOutput: false,
+  });
+
+  const stringPath = await tempConfigPath();
+  await writeRawConfig(stringPath, '{"aiProvider":"openai","structuredOutput":"true"}');
+  assert.deepEqual(await readUserConfigFile(stringPath), {
+    aiProvider: "openai",
+    structuredOutput: "true",
+  });
+});
+
+test("readUserConfigFile rejects non-boolean non-string structuredOutput", async () => {
+  const path = await tempConfigPath();
+  await writeRawConfig(path, '{"structuredOutput":1}');
+  await assert.rejects(() => readUserConfigFile(path), ConfigError);
+});
+
+test("createFileConfig does not write structuredOutput by default", () => {
+  assert.equal(
+    "structuredOutput" in createFileConfig({ provider: "openai", apiKey: "", model: "gpt" }),
+    false,
+  );
+  assert.equal(
+    "structuredOutput" in
+      createFileConfig({ provider: "gemini", apiKey: "gemini-key", model: "gemini-model" }),
+    false,
+  );
+});
+
 test("readUserConfigFile rejects invalid JSON, non-object roots, and non-string known fields", async () => {
   const invalidJsonPath = await tempConfigPath();
   await writeRawConfig(invalidJsonPath, "{");

@@ -9,6 +9,7 @@ export interface GlobalOptions {
   openaiApiUrl?: string;
   openaiApiKey?: string;
   openaiModel?: string;
+  structuredOutput?: string;
 }
 
 export interface ParsedCli {
@@ -32,6 +33,7 @@ const VALUE_OPTIONS = new Set([
   "--openai-api-url",
   "--openai-api-key",
   "--openai-model",
+  "--structured-output",
 ]);
 
 const BOOLEAN_OPTIONS = new Set(["--print", "--init"]);
@@ -48,6 +50,7 @@ Options:
   --openai-api-url <url>
   --openai-api-key <key>
   --openai-model <model>
+  --structured-output <true|false>
 
 Try: howto "list files changed today"`;
 
@@ -127,6 +130,9 @@ function assignOptionValue(options: GlobalOptions, optionName: string, value: st
       return;
     case "--openai-model":
       options.openaiModel = value;
+      return;
+    case "--structured-output":
+      options.structuredOutput = value;
       return;
     default:
       throw new CliParseError(`unsupported option: ${optionName}`);

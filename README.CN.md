@@ -97,6 +97,7 @@ howto --ai-provider openai --print 列出监听的端口
 - `--openai-api-url <url>` - 使用自定义 OpenAI 兼容 base URL。
 - `--openai-api-key <key>` - 提供 OpenAI API key。
 - `--openai-model <model>` - 覆盖 OpenAI 模型。
+- `--structured-output <true|false>` - 启用 SDK 级 schema 结构化输出；默认 `true`。
 
 ### 参数解析
 
@@ -129,6 +130,7 @@ howto "explain this flag" -- --force
 - `--openai-api-url` / `HOWTO_OPENAI_API_URL` / `openaiApiUrl` - OpenAI 兼容 base URL；默认使用 OpenAI SDK 默认值。
 - `--openai-api-key` / `HOWTO_OPENAI_API_KEY` / `openaiApiKey` - OpenAI API key；默认为空字符串以支持本地服务。
 - `--openai-model` / `HOWTO_OPENAI_MODEL` / `openaiModel` - OpenAI 模型；默认 `gpt-5.4-mini`。
+- `--structured-output` / `HOWTO_STRUCTURED_OUTPUT` / `structuredOutput` - 使用 provider schema 结构化输出；默认 `true`。
 
 示例：
 

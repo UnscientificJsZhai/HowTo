@@ -97,6 +97,7 @@ Options:
 - `--openai-api-url <url>` - use a custom OpenAI-compatible base URL.
 - `--openai-api-key <key>` - provide an OpenAI API key.
 - `--openai-model <model>` - override the OpenAI model.
+- `--structured-output <true|false>` - enable SDK-level schema structured output; default `true`.
 
 ### Argument Parsing
 
@@ -129,6 +130,7 @@ For each setting, the first configured source in that order wins:
 - `--openai-api-url` / `HOWTO_OPENAI_API_URL` / `openaiApiUrl` - OpenAI-compatible base URL; defaults to the OpenAI SDK default.
 - `--openai-api-key` / `HOWTO_OPENAI_API_KEY` / `openaiApiKey` - OpenAI API key; defaults to an empty string for local services.
 - `--openai-model` / `HOWTO_OPENAI_MODEL` / `openaiModel` - OpenAI model; default `gpt-5.4-mini`.
+- `--structured-output` / `HOWTO_STRUCTURED_OUTPUT` / `structuredOutput` - use provider schema structured output; default `true`.
 
 Example:
 

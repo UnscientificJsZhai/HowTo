@@ -18,6 +18,7 @@ export interface CommandGenerationRequest {
   question: string;
   arguments: string[];
   useCommand?: string;
+  structuredOutput: boolean;
 }
 
 export interface ProviderPromptRequest extends CommandGenerationRequest {

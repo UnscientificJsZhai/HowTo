@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { OUTPUT_CONTRACT, buildCommandGenerationPrompt } from "../../src/prompt.js";
+import {
+  OUTPUT_CONTRACT,
+  STRUCTURED_OUTPUT_CONTRACT,
+  buildCommandGenerationPrompt,
+  createProviderPromptRequest,
+} from "../../src/prompt.js";
 import type { ProviderPromptRequest } from "../../src/ai/types.js";
 
 describe("buildCommandGenerationPrompt", () => {
@@ -8,6 +13,7 @@ describe("buildCommandGenerationPrompt", () => {
     question: "how to list files",
     arguments: [],
     useCommand: undefined,
+    structuredOutput: false,
     outputContract: "CONTRACT",
     safetyConstraints: "SAFETY",
   };
@@ -59,5 +65,30 @@ describe("buildCommandGenerationPrompt", () => {
     );
     assert.ok(systemPrompt.includes("Keep placeholder name values English-compatible ASCII"));
     assert.ok(systemPrompt.includes("Use placeholders in commands only as {{name}}"));
+  });
+
+  it("should use a short prompt contract when structured output is enabled", () => {
+    const request = createProviderPromptRequest({
+      question: "how to list files",
+      arguments: [],
+      structuredOutput: true,
+    });
+
+    assert.equal(request.outputContract, STRUCTURED_OUTPUT_CONTRACT);
+    assert.equal(request.structuredOutput, true);
+    assert.equal(request.outputContract.includes("The JSON object must match this schema"), false);
+    assert.ok(request.outputContract.includes("response schema"));
+  });
+
+  it("should use the full prompt contract when structured output is disabled", () => {
+    const request = createProviderPromptRequest({
+      question: "how to list files",
+      arguments: [],
+      structuredOutput: false,
+    });
+
+    assert.equal(request.outputContract, OUTPUT_CONTRACT);
+    assert.equal(request.structuredOutput, false);
+    assert.ok(request.outputContract.includes("The JSON object must match this schema"));
   });
 });

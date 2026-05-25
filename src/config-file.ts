@@ -11,6 +11,7 @@ export interface FileConfig {
   openaiApiUrl?: string;
   openaiApiKey?: string;
   openaiModel?: string;
+  structuredOutput?: string | boolean;
 }
 
 const CONFIG_FILE_FIELDS = new Set<keyof FileConfig>([
@@ -20,6 +21,7 @@ const CONFIG_FILE_FIELDS = new Set<keyof FileConfig>([
   "openaiApiUrl",
   "openaiApiKey",
   "openaiModel",
+  "structuredOutput",
 ]);
 
 export function getConfigFilePath(env: NodeJS.ProcessEnv = process.env): string {
@@ -45,6 +47,15 @@ export async function readUserConfigFile(path = getConfigFilePath()): Promise<Fi
   const config: FileConfig = {};
   for (const [key, value] of Object.entries(parsed)) {
     if (!CONFIG_FILE_FIELDS.has(key as keyof FileConfig)) {
+      continue;
+    }
+
+    if (key === "structuredOutput") {
+      if (typeof value !== "string" && typeof value !== "boolean") {
+        throw new ConfigError(`config file field ${key} must be a boolean or string`);
+      }
+
+      config.structuredOutput = value;
       continue;
     }
 

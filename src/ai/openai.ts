@@ -1,7 +1,9 @@
 import OpenAI from "openai";
+import type { ChatCompletionCreateParamsNonStreaming } from "openai/resources/chat/completions";
 
 import type { AppConfig } from "../config.js";
 import type { CommandProvider, GenerateCommandsRequest, GenerateCommandsResult } from "./types.js";
+import { COMMAND_GENERATION_SCHEMA } from "./command-schema.js";
 import { AiProviderError } from "./errors.js";
 
 export class OpenAiCommandProvider implements CommandProvider {
@@ -18,14 +20,9 @@ export class OpenAiCommandProvider implements CommandProvider {
 
   async generateCommands(request: GenerateCommandsRequest): Promise<GenerateCommandsResult> {
     try {
-      const response = await this.client.chat.completions.create({
-        model: this.model,
-        messages: [
-          { role: "system", content: request.systemPrompt },
-          { role: "user", content: request.userPrompt },
-        ],
-        response_format: { type: "json_object" },
-      });
+      const response = await this.client.chat.completions.create(
+        buildOpenAiChatCompletionRequest(this.model, request),
+      );
 
       const rawText = response.choices[0]?.message?.content;
       if (rawText === undefined || rawText === null || rawText.trim() === "") {
@@ -37,4 +34,28 @@ export class OpenAiCommandProvider implements CommandProvider {
       throw new AiProviderError("openai", this.model, error);
     }
   }
+}
+
+export function buildOpenAiChatCompletionRequest(
+  model: string,
+  request: GenerateCommandsRequest,
+): ChatCompletionCreateParamsNonStreaming {
+  return {
+    model,
+    messages: [
+      { role: "system", content: request.systemPrompt },
+      { role: "user", content: request.userPrompt },
+    ],
+    response_format: request.structuredOutput
+      ? {
+          type: "json_schema",
+          json_schema: {
+            name: "command_generation",
+            description: "Shell command candidates generated for howto.",
+            schema: COMMAND_GENERATION_SCHEMA,
+            strict: true,
+          },
+        }
+      : { type: "json_object" },
+  };
 }

@@ -1,7 +1,8 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, type GenerateContentParameters } from "@google/genai";
 
 import type { AppConfig } from "../config.js";
 import type { CommandProvider, GenerateCommandsRequest, GenerateCommandsResult } from "./types.js";
+import { COMMAND_GENERATION_SCHEMA } from "./command-schema.js";
 import { AiProviderError } from "./errors.js";
 
 export class GeminiCommandProvider implements CommandProvider {
@@ -15,14 +16,9 @@ export class GeminiCommandProvider implements CommandProvider {
 
   async generateCommands(request: GenerateCommandsRequest): Promise<GenerateCommandsResult> {
     try {
-      const response = await this.client.models.generateContent({
-        model: this.model,
-        contents: request.userPrompt,
-        config: {
-          systemInstruction: request.systemPrompt,
-          responseMimeType: "application/json",
-        },
-      });
+      const response = await this.client.models.generateContent(
+        buildGeminiGenerateContentRequest(this.model, request),
+      );
 
       const rawText = response.text;
       if (rawText === undefined || rawText.trim() === "") {
@@ -34,4 +30,19 @@ export class GeminiCommandProvider implements CommandProvider {
       throw new AiProviderError("gemini", this.model, error);
     }
   }
+}
+
+export function buildGeminiGenerateContentRequest(
+  model: string,
+  request: GenerateCommandsRequest,
+): GenerateContentParameters {
+  return {
+    model,
+    contents: request.userPrompt,
+    config: {
+      systemInstruction: request.systemPrompt,
+      responseMimeType: "application/json",
+      ...(request.structuredOutput ? { responseJsonSchema: COMMAND_GENERATION_SCHEMA } : {}),
+    },
+  };
 }

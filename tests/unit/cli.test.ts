@@ -44,6 +44,30 @@ test("parseCliArgs rejects missing option value", () => {
   assert.throws(() => parseCliArgs(["--ai-provider"]), CliParseError);
 });
 
+test("parseCliArgs parses structured-output option", () => {
+  assert.deepEqual(parseCliArgs(["--structured-output", "true", "question"]), {
+    options: {
+      print: false,
+      structuredOutput: "true",
+    },
+    question: "question",
+    arguments: [],
+  });
+
+  assert.deepEqual(parseCliArgs(["--structured-output=false", "question"]), {
+    options: {
+      print: false,
+      structuredOutput: "false",
+    },
+    question: "question",
+    arguments: [],
+  });
+});
+
+test("parseCliArgs rejects missing structured-output value", () => {
+  assert.throws(() => parseCliArgs(["--structured-output"]), CliParseError);
+});
+
 test("parseCliArgs parses init without question", () => {
   assert.deepEqual(parseCliArgs(["--init"]), {
     options: {

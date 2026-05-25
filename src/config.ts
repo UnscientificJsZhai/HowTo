@@ -14,6 +14,7 @@ export interface AppConfig {
     model: string;
     baseUrl?: string;
   };
+  structuredOutput: boolean;
 }
 
 export interface ConfigEnvironment {
@@ -23,6 +24,7 @@ export interface ConfigEnvironment {
   HOWTO_OPENAI_API_URL?: string;
   HOWTO_OPENAI_API_KEY?: string;
   HOWTO_OPENAI_MODEL?: string;
+  HOWTO_STRUCTURED_OUTPUT?: string;
 }
 
 export class ConfigError extends Error {
@@ -91,6 +93,13 @@ export function loadConfig(
         fileConfig.openaiApiUrl,
       ),
     },
+    structuredOutput: parseStructuredOutput(
+      pickConfigValue(
+        options.structuredOutput,
+        env.HOWTO_STRUCTURED_OUTPUT,
+        fileConfig.structuredOutput,
+      ),
+    ),
   };
 
   if (config.aiProvider === "gemini" && isBlank(config.gemini.apiKey)) {
@@ -104,7 +113,17 @@ function pickConfigValue(
   cliValue: string | undefined,
   envValue: string | undefined,
   fileValue: string | undefined,
-): string | undefined {
+): string | undefined;
+function pickConfigValue(
+  cliValue: string | undefined,
+  envValue: string | undefined,
+  fileValue: string | boolean | undefined,
+): string | boolean | undefined;
+function pickConfigValue(
+  cliValue: string | undefined,
+  envValue: string | undefined,
+  fileValue: string | boolean | undefined,
+): string | boolean | undefined {
   return cliValue ?? envValue ?? fileValue;
 }
 
@@ -118,4 +137,24 @@ function parseAiProvider(value: string): AiProvider {
 
 function isBlank(value: string | undefined): boolean {
   return value === undefined || value.trim() === "";
+}
+
+function parseStructuredOutput(value: string | boolean | undefined): boolean {
+  if (value === undefined) {
+    return true;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (value === "true") {
+    return true;
+  }
+
+  if (value === "false") {
+    return false;
+  }
+
+  throw new ConfigError("invalid structuredOutput value; expected true or false");
 }
