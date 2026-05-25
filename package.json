@@ -4,6 +4,14 @@
   "type": "module",
   "description": "Use AI to quickly find commands within the terminal.",
   "main": "dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/UnscientificJsZhai/HowTo.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "bin": {
     "howto": "dist/index.js"
   },
