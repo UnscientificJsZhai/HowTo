@@ -2,7 +2,10 @@
 
 _在终端中用 AI 快速找到可执行命令。_
 
-![npm version](https://img.shields.io/npm/v/@unscientificjszhai/howto/latest)
+[![npm version](https://img.shields.io/npm/v/@unscientificjszhai/howto/latest)](https://www.npmjs.com/package/@unscientificjszhai/howto)
+[![GitHub Actions Test Status](https://github.com/UnscientificJsZhai/HowTo/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/UnscientificJsZhai/HowTo/actions)
+[![code style: prettier](https://img.shields.io/badge/code_style-prettier-ff69b4.svg)](https://github.com/prettier/prettier)
+[![License](https://img.shields.io/github/license/UnscientificJsZhai/HowTo)](LICENSE)
 
 [English](README.md) | 简体中文
 
