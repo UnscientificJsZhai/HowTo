@@ -2,11 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  countInitializationPromptRows,
   countTerminalRows,
   clearInitializationOutput,
+  createFileConfig,
   erasePreviousTerminalRows,
 } from "../../src/init/index.js";
+import {
+  applyInitializationInput,
+  createInitialInitializationState,
+  type InitializationKeyInput,
+} from "../../src/init/state.js";
+import { DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL } from "../../src/config.js";
 
 test("initialization output clear erases the requested rows without clearing the full screen", () => {
   let output = "";
@@ -51,27 +57,103 @@ test("countTerminalRows accounts for explicit newlines and wrapping", () => {
   assert.equal(countTerminalRows(stdout, "12345678901\n\nabc\n"), 4);
 });
 
-test("countInitializationPromptRows counts the completed provider prompts", () => {
-  const stdout = {
-    isTTY: true,
-    columns: 80,
-  } as NodeJS.WriteStream;
+test("provider selection starts without an implicit selected provider", () => {
+  const initialState = createInitialInitializationState();
 
-  assert.equal(
-    countInitializationPromptRows(stdout, {
-      provider: "openai",
-      apiKey: "",
-      model: "gpt-5.4-mini",
-    }),
-    4,
-  );
+  const update = applyInitializationInput(initialState, keypress("", { return: true }));
 
+  assert.deepEqual(update, { state: initialState });
+});
+
+test("OpenAI initialization accepts an empty API key and default model", () => {
+  let update = applyInitializationInput(createInitialInitializationState(), keypress("1"));
+  update = applyInitializationInput(update.state, keypress("", { return: true }));
+  update = applyInitializationInput(update.state, keypress("", { return: true }));
+  update = applyInitializationInput(update.state, keypress("", { return: true }));
+
+  assert.deepEqual(update.completedValues, {
+    provider: "openai",
+    apiKey: "",
+    model: DEFAULT_OPENAI_MODEL,
+    openaiBaseUrl: undefined,
+  });
+});
+
+test("Gemini initialization rejects an empty API key", () => {
+  let update = applyInitializationInput(createInitialInitializationState(), keypress("2"));
+  update = applyInitializationInput(update.state, keypress("", { return: true }));
+
+  assert.equal(update.state.step, "input");
+  assert.equal(update.completedValues, undefined);
+  assert.equal(update.state.step === "input" ? update.state.fieldIndex : -1, 0);
   assert.equal(
-    countInitializationPromptRows(stdout, {
-      provider: "gemini",
-      apiKey: "key",
-      model: "gemini-3.1-flash-lite",
-    }),
-    3,
+    update.state.step === "input" ? update.state.errorMessage : undefined,
+    "This value is required.",
   );
 });
+
+test("Gemini initialization uses the default model when model input is empty", () => {
+  let state = applyInitializationInput(createInitialInitializationState(), keypress("2")).state;
+  for (const char of "gemini-key") {
+    state = applyInitializationInput(state, keypress(char)).state;
+  }
+
+  state = applyInitializationInput(state, keypress("", { return: true })).state;
+  const update = applyInitializationInput(state, keypress("", { return: true }));
+
+  assert.deepEqual(update.completedValues, {
+    provider: "gemini",
+    apiKey: "gemini-key",
+    model: DEFAULT_GEMINI_MODEL,
+  });
+});
+
+test("OpenAI empty base URL is not written to file config", () => {
+  const fileConfig = createFileConfig({
+    provider: "openai",
+    apiKey: "",
+    model: DEFAULT_OPENAI_MODEL,
+    openaiBaseUrl: "",
+  });
+
+  assert.deepEqual(fileConfig, {
+    aiProvider: "openai",
+    openaiApiKey: "",
+    openaiModel: DEFAULT_OPENAI_MODEL,
+  });
+});
+
+test("input step escape returns to provider selection", () => {
+  const state = applyInitializationInput(createInitialInitializationState(), keypress("1")).state;
+  const update = applyInitializationInput(state, keypress("", { escape: true }));
+
+  assert.deepEqual(update.state, createInitialInitializationState());
+});
+
+test("Ctrl+C cancels initialization", () => {
+  const update = applyInitializationInput(
+    createInitialInitializationState(),
+    keypress("c", { ctrl: true }),
+  );
+
+  assert.equal(update.cancelled, true);
+});
+
+function keypress(
+  input: string,
+  key: Partial<InitializationKeyInput["key"]> = {},
+): InitializationKeyInput {
+  return {
+    input,
+    key: {
+      upArrow: false,
+      downArrow: false,
+      return: false,
+      escape: false,
+      ctrl: false,
+      backspace: false,
+      delete: false,
+      ...key,
+    },
+  };
+}
