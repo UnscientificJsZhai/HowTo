@@ -1,6 +1,6 @@
 {
   "name": "@unscientificjszhai/howto",
-  "version": "1.0.0-alpha.2",
+  "version": "1.0.0-alpha.3",
   "type": "module",
   "description": "Use AI to quickly find commands within the terminal.",
   "main": "dist/index.js",
@@ -22,10 +22,10 @@
     "test:unit": "tsc -p tsconfig.test.json && node --test dist-test/tests/unit/*.test.js dist-test/tests/unit/**/*.test.js"
   },
   "dependencies": {
-    "@google/genai": "^1.0.0",
+    "@google/genai": "^2.6.0",
     "@inquirer/prompts": "^7.0.0",
-    "ink": "^7.0.3",
-    "openai": "^4.0.0",
+    "ink": "^7.0.4",
+    "openai": "^6.39.0",
     "react": "^19.2.6"
   },
   "devDependencies": {
