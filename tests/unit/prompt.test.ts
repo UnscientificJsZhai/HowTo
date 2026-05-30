@@ -78,6 +78,7 @@ describe("buildCommandGenerationPrompt", () => {
     assert.equal(request.structuredOutput, true);
     assert.equal(request.outputContract.includes("The JSON object must match this schema"), false);
     assert.ok(request.outputContract.includes("response schema"));
+    assert.ok(request.outputContract.includes("The commands array must contain 1 to 3 items"));
   });
 
   it("should use the full prompt contract when structured output is disabled", () => {

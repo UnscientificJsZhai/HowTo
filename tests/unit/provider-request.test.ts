@@ -41,6 +41,11 @@ test("buildOpenAiChatCompletionRequest uses strict json schema in structured mod
   });
 });
 
+test("command generation schema limits command candidates to one through three items", () => {
+  assert.equal(COMMAND_GENERATION_SCHEMA.properties.commands.minItems, 1);
+  assert.equal(COMMAND_GENERATION_SCHEMA.properties.commands.maxItems, 3);
+});
+
 test("buildOpenAiChatCompletionRequest keeps json_object in compatibility mode", () => {
   const request = buildOpenAiChatCompletionRequest("gpt-test", createRequest(false));
 

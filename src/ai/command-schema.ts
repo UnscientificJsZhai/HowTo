@@ -5,6 +5,8 @@ export const COMMAND_GENERATION_SCHEMA = {
   properties: {
     commands: {
       type: "array",
+      minItems: 1,
+      maxItems: 3,
       items: {
         type: "object",
         additionalProperties: false,
