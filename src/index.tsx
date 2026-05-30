@@ -9,8 +9,8 @@ import { ConfigError, hasExplicitAiProvider, loadConfig } from "./config.js";
 import { readUserConfigFile } from "./config-file.js";
 import { createCommandProvider } from "./ai/index.js";
 import { buildCommandGenerationPrompt, createProviderPromptRequest } from "./prompt.js";
-import { parseAndValidateAiResponse } from "./validation/ai-response.js";
 import { checkCommandInPath, type CommandPathCheck } from "./validation/command-tool.js";
+import { generateValidatedCommandCandidates } from "./validation/generated-commands.js";
 import { ensureInteractiveTty } from "./ui/tty.js";
 import { executeCommand } from "./execute.js";
 import { toAppError } from "./errors.js";
@@ -79,13 +79,12 @@ async function run(argv: string[]): Promise<CliResult> {
     const provider = createCommandProvider(config);
 
     if (parsedCli.options.print) {
-      const aiResult = await provider.generateCommands({
+      const candidates = await generateValidatedCommandCandidates(provider, {
         ...promptRequest,
         systemPrompt,
         userPrompt,
       });
-      const aiResponse = parseAndValidateAiResponse(aiResult.rawText);
-      aiResponse.commands.forEach((candidate) => {
+      candidates.forEach((candidate) => {
         console.log(candidate.command);
       });
       return { exitCode: 0 };
@@ -104,7 +103,6 @@ async function run(argv: string[]): Promise<CliResult> {
       <App
         provider={provider}
         request={{ ...promptRequest, systemPrompt, userPrompt }}
-        useCommand={parsedCli.useCommand}
         onSuccess={(command) => {
           finalCommand = command;
           clear();

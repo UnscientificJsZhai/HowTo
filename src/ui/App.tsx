@@ -9,8 +9,7 @@ import type {
   CommandProvider,
   GenerateCommandsRequest,
 } from "../ai/types.js";
-import { parseAndValidateAiResponse } from "../validation/ai-response.js";
-import { validateUseCommandCandidates } from "../validation/command-tool.js";
+import { generateValidatedCommandCandidates } from "../validation/generated-commands.js";
 import { detectDangerousCommand, type DangerousCommandMatch } from "../safety/dangerous-command.js";
 import { replaceCommandPlaceholders } from "./placeholder-logic.js";
 import { InteractionCancelledError } from "./tty.js";
@@ -20,12 +19,11 @@ type Status = "loading" | "selecting" | "resolving" | "confirming" | "error" | "
 interface Props {
   provider: CommandProvider;
   request: GenerateCommandsRequest;
-  useCommand?: string;
   onSuccess: (command: string) => void;
   onError: (error: Error) => void;
 }
 
-export const App: React.FC<Props> = ({ provider, request, useCommand, onSuccess, onError }) => {
+export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) => {
   const { rows } = useWindowSize();
   const [status, setStatus] = useState<Status>("loading");
   const [candidates, setCandidates] = useState<CommandCandidateContract[]>([]);
@@ -37,12 +35,9 @@ export const App: React.FC<Props> = ({ provider, request, useCommand, onSuccess,
 
   useEffect(() => {
     if (status === "loading") {
-      provider
-        .generateCommands(request)
-        .then((result) => {
-          const aiResponse = parseAndValidateAiResponse(result.rawText);
-          validateUseCommandCandidates(aiResponse, useCommand);
-          setCandidates(aiResponse.commands);
+      generateValidatedCommandCandidates(provider, request)
+        .then((generatedCandidates) => {
+          setCandidates(generatedCandidates);
           setStatus("selecting");
         })
         .catch((error: unknown) => {
@@ -52,7 +47,7 @@ export const App: React.FC<Props> = ({ provider, request, useCommand, onSuccess,
           onError(appError);
         });
     }
-  }, [status, provider, request, useCommand, onError]);
+  }, [status, provider, request, onError]);
 
   const handleSelect = (candidate: CommandCandidateContract) => {
     setSelectedCandidate(candidate);

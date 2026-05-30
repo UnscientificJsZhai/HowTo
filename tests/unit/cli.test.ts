@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import test from "node:test";
 
 import { CliParseError, parseCliArgs } from "../../src/cli.js";
+import { run } from "../../src/index.js";
 
 test("parseCliArgs parses use mode with global options before positionals", () => {
   assert.deepEqual(parseCliArgs(["--ai-provider", "gemini", "use", "git", "列出最近提交"]), {
@@ -82,3 +85,90 @@ test("parseCliArgs rejects init with print or question", () => {
   assert.throws(() => parseCliArgs(["--init", "--print"]), CliParseError);
   assert.throws(() => parseCliArgs(["--init", "question"]), CliParseError);
 });
+
+test("--print use rejects AI candidates that do not clearly use requested command", async () => {
+  const server = createServer((request, response) => {
+    if (request.method !== "POST" || request.url !== "/chat/completions") {
+      response.writeHead(404);
+      response.end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                commands: [
+                  {
+                    title: "List files",
+                    command: "ls",
+                    description: "List files",
+                    placeholders: [],
+                  },
+                ],
+              }),
+            },
+          },
+        ],
+      }),
+    );
+  });
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+  assert.ok(isAddressInfo(address));
+  const localUrl = `http://127.0.0.1:${address.port}`;
+  const logs: string[] = [];
+  const errors: string[] = [];
+  const originalLog = console.log;
+  const originalError = console.error;
+
+  console.log = (...values: unknown[]) => {
+    logs.push(values.join(" "));
+  };
+  console.error = (...values: unknown[]) => {
+    errors.push(values.join(" "));
+  };
+
+  try {
+    const result = await run([
+      "--print",
+      "--ai-provider",
+      "openai",
+      "--openai-api-url",
+      localUrl,
+      "--openai-model",
+      "fake-model",
+      "use",
+      "git",
+      "show repo status",
+    ]);
+
+    assert.equal(result.exitCode, 2);
+    assert.deepEqual(logs, []);
+    assert.equal(logs.join("\n").includes("ls"), false);
+    assert.match(errors.join("\n"), /must use git/);
+  } finally {
+    console.log = originalLog;
+    console.error = originalError;
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+});
+
+function isAddressInfo(address: AddressInfo | string | null): address is AddressInfo {
+  return typeof address === "object" && address !== null;
+}
