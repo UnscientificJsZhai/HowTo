@@ -1,6 +1,6 @@
 {
   "name": "@unscientificjszhai/howto",
-  "version": "1.0.0-alpha.3",
+  "version": "1.0.0",
   "type": "module",
   "description": "Use AI to quickly find commands within the terminal.",
   "main": "dist/index.js",
