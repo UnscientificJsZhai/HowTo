@@ -1,11 +1,20 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import React from "react";
-import { renderToString } from "ink";
 import type { CommandCandidateContract } from "../../../src/ai/types.js";
-import { ResolvePlaceholdersView } from "../../../src/ui/ResolvePlaceholdersView.js";
+import { importWithoutColor } from "./import-without-color.js";
 
-void test("ResolvePlaceholdersView renders the active placeholder prompt", () => {
+const uiModules = importWithoutColor(async () => {
+  const [{ renderToString }, { ResolvePlaceholdersView }] = await Promise.all([
+    import("ink"),
+    import("../../../src/ui/ResolvePlaceholdersView.js"),
+  ]);
+
+  return { renderToString, ResolvePlaceholdersView };
+});
+
+void test("ResolvePlaceholdersView renders the active placeholder prompt", async () => {
+  const { renderToString, ResolvePlaceholdersView } = await uiModules;
   const output = renderToString(
     <ResolvePlaceholdersView
       candidate={candidate()}

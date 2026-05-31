@@ -1,11 +1,20 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import React from "react";
-import { renderToString } from "ink";
 import type { CommandCandidateContract } from "../../../src/ai/types.js";
-import { ConfirmView, isDangerConfirmationInput } from "../../../src/ui/ConfirmView.js";
+import { importWithoutColor } from "./import-without-color.js";
 
-void test("ConfirmView renders the final command on the safe path", () => {
+const uiModules = importWithoutColor(async () => {
+  const [{ renderToString }, { ConfirmView, isDangerConfirmationInput }] = await Promise.all([
+    import("ink"),
+    import("../../../src/ui/ConfirmView.js"),
+  ]);
+
+  return { renderToString, ConfirmView, isDangerConfirmationInput };
+});
+
+void test("ConfirmView renders the final command on the safe path", async () => {
+  const { renderToString, ConfirmView } = await uiModules;
   const output = renderToString(
     <ConfirmView
       candidate={candidate()}
@@ -20,7 +29,8 @@ void test("ConfirmView renders the final command on the safe path", () => {
   assert.ok(output.includes("Press Enter to execute"));
 });
 
-void test("ConfirmView renders the final command on the dangerous path", () => {
+void test("ConfirmView renders the final command on the dangerous path", async () => {
+  const { renderToString, ConfirmView } = await uiModules;
   const output = renderToString(
     <ConfirmView
       candidate={candidate()}
@@ -37,13 +47,15 @@ void test("ConfirmView renders the final command on the dangerous path", () => {
   assert.ok(output.includes("Type EXECUTE to continue"));
 });
 
-void test("isDangerConfirmationInput accepts EXECUTE case-insensitively", () => {
+void test("isDangerConfirmationInput accepts EXECUTE case-insensitively", async () => {
+  const { isDangerConfirmationInput } = await uiModules;
   assert.equal(isDangerConfirmationInput("EXECUTE"), true);
   assert.equal(isDangerConfirmationInput("execute"), true);
   assert.equal(isDangerConfirmationInput("ExEcUtE"), true);
 });
 
-void test("isDangerConfirmationInput rejects non-matching input", () => {
+void test("isDangerConfirmationInput rejects non-matching input", async () => {
+  const { isDangerConfirmationInput } = await uiModules;
   assert.equal(isDangerConfirmationInput("EXECUTE!"), false);
   assert.equal(isDangerConfirmationInput("run"), false);
   assert.equal(isDangerConfirmationInput(" execute "), false);

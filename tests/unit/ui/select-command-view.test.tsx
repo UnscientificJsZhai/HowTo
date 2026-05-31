@@ -1,11 +1,20 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import React from "react";
-import { Box, renderToString } from "ink";
-import { SelectCommandView } from "../../../src/ui/SelectCommandView.js";
 import type { CommandCandidateContract } from "../../../src/ai/types.js";
+import { importWithoutColor } from "./import-without-color.js";
 
-void test("SelectCommandView renders a blank line between candidates", () => {
+const uiModules = importWithoutColor(async () => {
+  const [{ Box, renderToString }, { SelectCommandView }] = await Promise.all([
+    import("ink"),
+    import("../../../src/ui/SelectCommandView.js"),
+  ]);
+
+  return { Box, renderToString, SelectCommandView };
+});
+
+void test("SelectCommandView renders a blank line between candidates", async () => {
+  const { renderToString, SelectCommandView } = await uiModules;
   const titleIndent = " ".repeat(2);
   const output = renderToString(
     <SelectCommandView
@@ -23,7 +32,8 @@ void test("SelectCommandView renders a blank line between candidates", () => {
   assert.ok(output.includes(`List direct files\n\n${titleIndent}List hidden files`));
 });
 
-void test("SelectCommandView renders a blank line before footer help", () => {
+void test("SelectCommandView renders a blank line before footer help", async () => {
+  const { renderToString, SelectCommandView } = await uiModules;
   const output = renderToString(
     <SelectCommandView
       candidates={[candidate("List hidden files", "ls -lah ./doc", "Include hidden files")]}
@@ -39,7 +49,8 @@ void test("SelectCommandView renders a blank line before footer help", () => {
   );
 });
 
-void test("SelectCommandView keeps candidate spacing in a bounded frame", () => {
+void test("SelectCommandView keeps candidate spacing in a bounded frame", async () => {
+  const { Box, renderToString, SelectCommandView } = await uiModules;
   const titleIndent = " ".repeat(2);
   const output = renderToString(
     <Box flexDirection="column" maxHeight={15} overflowY="hidden">
