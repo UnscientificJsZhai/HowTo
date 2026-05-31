@@ -3,7 +3,7 @@ import { test } from "node:test";
 import React from "react";
 import { renderToString } from "ink";
 import type { CommandCandidateContract } from "../../../src/ai/types.js";
-import { ConfirmView } from "../../../src/ui/ConfirmView.js";
+import { ConfirmView, isDangerConfirmationInput } from "../../../src/ui/ConfirmView.js";
 
 void test("ConfirmView renders the final command on the safe path", () => {
   const output = renderToString(
@@ -35,6 +35,18 @@ void test("ConfirmView renders the final command on the dangerous path", () => {
   assert.ok(output.includes("Dangerous command detected."));
   assert.ok(output.includes("Final command: rm -rf /tmp/example"));
   assert.ok(output.includes("Type EXECUTE to continue"));
+});
+
+void test("isDangerConfirmationInput accepts EXECUTE case-insensitively", () => {
+  assert.equal(isDangerConfirmationInput("EXECUTE"), true);
+  assert.equal(isDangerConfirmationInput("execute"), true);
+  assert.equal(isDangerConfirmationInput("ExEcUtE"), true);
+});
+
+void test("isDangerConfirmationInput rejects non-matching input", () => {
+  assert.equal(isDangerConfirmationInput("EXECUTE!"), false);
+  assert.equal(isDangerConfirmationInput("run"), false);
+  assert.equal(isDangerConfirmationInput(" execute "), false);
 });
 
 function candidate(): CommandCandidateContract {

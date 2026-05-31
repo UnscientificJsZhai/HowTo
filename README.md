@@ -151,7 +151,7 @@ howto --print "show current branch"
 - the response contains between one and three candidates;
 - all placeholders use `{{name}}` syntax and are declared consistently;
 - `use <command>` candidates clearly start with the requested tool after conservative prefix handling;
-- obvious dangerous patterns require typing `EXECUTE` before they can run.
+- obvious dangerous patterns require typing `EXECUTE` before they can run; matching is case-insensitive.
 
 Dangerous-command detection currently covers high-risk patterns such as recursive destructive `rm`, disk and filesystem operations, broad recursive permission changes, downloaded scripts piped into a shell, high-impact package manager operations, and service changes.
 

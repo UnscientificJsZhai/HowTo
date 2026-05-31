@@ -14,6 +14,10 @@ interface Props {
   isDone?: boolean;
 }
 
+export function isDangerConfirmationInput(input: string): boolean {
+  return input.toUpperCase() === "EXECUTE";
+}
+
 export const ConfirmView: React.FC<Props> = ({
   candidate,
   command,
@@ -40,7 +44,7 @@ export const ConfirmView: React.FC<Props> = ({
 
     if (danger) {
       if (key.return) {
-        if (buffer === "EXECUTE") {
+        if (isDangerConfirmationInput(buffer)) {
           onConfirm();
         } else {
           onCancel();
