@@ -6,6 +6,7 @@ import { SelectedCommandDisplay } from "./SelectedCommandDisplay.js";
 
 interface Props {
   candidate: CommandCandidateContract;
+  command: string;
   resolvedValues: Map<string, string>;
   danger?: DangerousCommandMatch;
   onConfirm: () => void;
@@ -15,6 +16,7 @@ interface Props {
 
 export const ConfirmView: React.FC<Props> = ({
   candidate,
+  command,
   resolvedValues,
   danger,
   onConfirm,
@@ -71,6 +73,9 @@ export const ConfirmView: React.FC<Props> = ({
         <Text>Risk: {danger.reason}</Text>
         <Box marginTop={1} flexDirection="column">
           <SelectedCommandDisplay candidate={candidate} resolvedValues={resolvedValues} />
+          <Text>
+            Final command: <Text color="yellow">{command}</Text>
+          </Text>
         </Box>
         {!isDone && (
           <>
@@ -93,6 +98,9 @@ export const ConfirmView: React.FC<Props> = ({
   return (
     <Box flexDirection="column" marginY={1}>
       <SelectedCommandDisplay candidate={candidate} resolvedValues={resolvedValues} />
+      <Text>
+        Final command: <Text color="yellow">{command}</Text>
+      </Text>
       {!isDone && (
         <Box marginTop={1}>
           <Text>

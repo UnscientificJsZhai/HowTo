@@ -11,7 +11,7 @@ import type {
 } from "../ai/types.js";
 import { generateValidatedCommandCandidates } from "../validation/generated-commands.js";
 import { detectDangerousCommand, type DangerousCommandMatch } from "../safety/dangerous-command.js";
-import { replaceCommandPlaceholders } from "./placeholder-logic.js";
+import { resolveCandidatePlaceholders, type ResolvedCommand } from "./placeholder-logic.js";
 import { InteractionCancelledError } from "./tty.js";
 
 type Status = "loading" | "selecting" | "resolving" | "confirming" | "error" | "done";
@@ -55,19 +55,26 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
     if (candidate.placeholders.length > 0) {
       setStatus("resolving");
     } else {
-      const command = candidate.command;
-      setFinalCommand(command);
-      setDanger(detectDangerousCommand(command));
-      setStatus("confirming");
+      try {
+        const resolved = resolveCandidatePlaceholders(candidate, new Map());
+        setFinalCommand(resolved.command);
+        setResolvedValues(resolved.values);
+        setDanger(detectDangerousCommand(resolved.command));
+        setStatus("confirming");
+      } catch (error: unknown) {
+        const appError = normalizeError(error);
+        setErrorMessage(appError.message);
+        setStatus("error");
+        onError(appError);
+      }
     }
   };
 
-  const handleResolve = (values: Map<string, string>) => {
+  const handleResolve = (resolved: ResolvedCommand) => {
     if (!selectedCandidate) return;
-    setResolvedValues(values);
-    const command = replaceCommandPlaceholders(selectedCandidate.command, values);
-    setFinalCommand(command);
-    setDanger(detectDangerousCommand(command));
+    setResolvedValues(resolved.values);
+    setFinalCommand(resolved.command);
+    setDanger(detectDangerousCommand(resolved.command));
     setStatus("confirming");
   };
 
@@ -104,7 +111,6 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
       {status === "resolving" && selectedCandidate && (
         <ResolvePlaceholdersView
           candidate={selectedCandidate}
-          placeholders={selectedCandidate.placeholders}
           onResolve={handleResolve}
           onBack={handleBackToSelection}
           onCancel={handleCancel}
@@ -113,6 +119,7 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
       {(status === "confirming" || status === "done") && selectedCandidate && (
         <ConfirmView
           candidate={selectedCandidate}
+          command={finalCommand}
           resolvedValues={resolvedValues}
           danger={danger}
           onConfirm={handleConfirm}

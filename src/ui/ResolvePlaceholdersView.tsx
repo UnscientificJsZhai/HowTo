@@ -1,44 +1,34 @@
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import { Box, Text, useInput, type Key } from "ink";
-import type { CommandCandidateContract, CommandPlaceholderContract } from "../ai/types.js";
+import type { CommandCandidateContract } from "../ai/types.js";
 import { SelectedCommandDisplay } from "./SelectedCommandDisplay.js";
+import {
+  applyPlaceholderResolutionInput,
+  createPlaceholderResolution,
+  getPlaceholderResolutionView,
+  type PlaceholderResolutionInput,
+  type PlaceholderResolutionState,
+  type ResolvedCommand,
+} from "./placeholder-logic.js";
 
 interface Props {
   candidate: CommandCandidateContract;
-  placeholders: CommandPlaceholderContract[];
-  onResolve: (values: Map<string, string>) => void;
+  onResolve: (resolved: ResolvedCommand) => void;
   onBack: () => void;
   onCancel: () => void;
 }
 
 export const ResolvePlaceholdersView: React.FC<Props> = ({
   candidate,
-  placeholders,
   onResolve,
   onBack,
   onCancel,
 }) => {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [values, setValues] = useState<string[]>(placeholders.map(() => ""));
-  const [buffer, setBuffer] = useState("");
-
-  const resolvedValuesMap = useMemo(() => {
-    const map = new Map<string, string>();
-    placeholders.forEach((p, i) => {
-      if (i < activeIndex) {
-        map.set(p.name, values[i]);
-      }
-    });
-    return map;
-  }, [placeholders, activeIndex, values]);
-
-  const currentBuffer = useMemo(
-    () => ({
-      name: placeholders[activeIndex].name,
-      value: buffer,
-    }),
-    [placeholders, activeIndex, buffer],
+  const [resolutionState, setResolutionState] = useState<PlaceholderResolutionState>(() =>
+    createPlaceholderResolution(candidate),
   );
+  const { currentPlaceholder, currentBuffer, resolvedValues } =
+    getPlaceholderResolutionView(resolutionState);
 
   useInput((input: string, key: Key) => {
     if (key.ctrl && input === "c") {
@@ -46,54 +36,31 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
       return;
     }
 
-    if (key.escape) {
-      if (activeIndex === 0) {
+    const resolutionInput = toPlaceholderResolutionInput(input, key);
+    if (!resolutionInput) {
+      return;
+    }
+
+    const transition = applyPlaceholderResolutionInput(resolutionState, resolutionInput);
+
+    switch (transition.type) {
+      case "editing":
+        setResolutionState(transition.state);
+        return;
+      case "back-to-selection":
         onBack();
-      } else {
-        const newValues = [...values];
-        newValues[activeIndex] = "";
-        setValues(newValues);
-        setActiveIndex((prev) => prev - 1);
-        setBuffer(values[activeIndex - 1]);
-      }
-      return;
+        return;
+      case "complete":
+        onResolve(transition.resolved);
+        return;
     }
-
-    if (key.return) {
-      const newValues = [...values];
-      newValues[activeIndex] = buffer;
-      setValues(newValues);
-
-      if (activeIndex === placeholders.length - 1) {
-        const resultMap = new Map<string, string>();
-        placeholders.forEach((p, i) => {
-          resultMap.set(p.name, newValues[i]);
-        });
-        onResolve(resultMap);
-      } else {
-        setActiveIndex((prev) => prev + 1);
-        setBuffer(values[activeIndex + 1]);
-      }
-      return;
-    }
-
-    if (key.backspace || key.delete) {
-      setBuffer((prev) => prev.slice(0, -1));
-      return;
-    }
-
-    if (input && !Object.values(key).some(Boolean)) {
-      setBuffer((prev) => prev + input);
-    }
-    // Handle space and other printable characters that might be in key but not in input if needed
-    // However ink's useInput input is usually the string.
   });
 
   return (
     <Box flexDirection="column" marginY={1}>
       <SelectedCommandDisplay
         candidate={candidate}
-        resolvedValues={resolvedValuesMap}
+        resolvedValues={resolvedValues}
         currentBuffer={currentBuffer}
       />
 
@@ -101,11 +68,11 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
       <Box flexDirection="column" marginTop={1}>
         <Box flexDirection="column" marginBottom={1}>
           <Text>
-            {placeholders[activeIndex].name}: {placeholders[activeIndex].description}
+            {currentPlaceholder.name}: {currentPlaceholder.description}
           </Text>
           <Box>
             <Text color="cyan">{"> "}</Text>
-            <Text>{buffer}</Text>
+            <Text>{currentBuffer.value}</Text>
             <Text backgroundColor="white"> </Text>
           </Box>
         </Box>
@@ -114,3 +81,26 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
     </Box>
   );
 };
+
+function toPlaceholderResolutionInput(
+  input: string,
+  key: Key,
+): PlaceholderResolutionInput | undefined {
+  if (key.escape) {
+    return { type: "escape" };
+  }
+
+  if (key.return) {
+    return { type: "commit" };
+  }
+
+  if (key.backspace || key.delete) {
+    return { type: "delete" };
+  }
+
+  if (input && !Object.values(key).some(Boolean)) {
+    return { type: "append", value: input };
+  }
+
+  return undefined;
+}
