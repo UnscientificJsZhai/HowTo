@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "description": "Use AI to quickly find commands within the terminal.",
+  "license": "MIT",
   "main": "dist/index.js",
   "repository": {
     "type": "git",
@@ -16,7 +17,8 @@
     "howto": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "scripts": {
     "build": "tsc",
