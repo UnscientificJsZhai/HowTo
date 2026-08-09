@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Box, Text, useInput, type Key } from "ink";
 import type { CommandCandidateContract } from "../ai/types.js";
 import { SelectedCommandDisplay } from "./SelectedCommandDisplay.js";
+import { isTextInputEvent } from "./text-input.js";
 import {
   applyPlaceholderResolutionInput,
   createPlaceholderResolution,
@@ -98,7 +99,7 @@ function toPlaceholderResolutionInput(
     return { type: "delete" };
   }
 
-  if (input && !Object.values(key).some(Boolean)) {
+  if (isTextInputEvent(input, key)) {
     return { type: "append", value: input };
   }
 

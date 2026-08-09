@@ -3,6 +3,7 @@ import { Box, Text, useInput, type Key } from "ink";
 import type { DangerousCommandMatch } from "../safety/dangerous-command.js";
 import type { CommandCandidateContract } from "../ai/types.js";
 import { SelectedCommandDisplay } from "./SelectedCommandDisplay.js";
+import { isTextInputEvent } from "./text-input.js";
 
 interface Props {
   candidate: CommandCandidateContract;
@@ -57,7 +58,7 @@ export const ConfirmView: React.FC<Props> = ({
         return;
       }
 
-      if (input && !Object.values(key).some(Boolean)) {
+      if (isTextInputEvent(input, key)) {
         setBuffer((prev) => prev + input);
       }
     } else {
