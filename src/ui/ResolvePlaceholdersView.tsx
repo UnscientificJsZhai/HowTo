@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Box, Text, useInput, type Key } from "ink";
 import type { CommandCandidateContract } from "../ai/types.js";
 import { SelectedCommandDisplay } from "./SelectedCommandDisplay.js";
+import { toSingleLinePreview } from "./single-line-preview.js";
 import { isTextInputEvent } from "./text-input.js";
 import {
   applyPlaceholderResolutionInput,
@@ -14,6 +15,7 @@ import {
 
 interface Props {
   candidate: CommandCandidateContract;
+  isInputActive?: boolean;
   onResolve: (resolved: ResolvedCommand) => void;
   onBack: () => void;
   onCancel: () => void;
@@ -21,6 +23,7 @@ interface Props {
 
 export const ResolvePlaceholdersView: React.FC<Props> = ({
   candidate,
+  isInputActive = true,
   onResolve,
   onBack,
   onCancel,
@@ -32,6 +35,8 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
     getPlaceholderResolutionView(resolutionState);
 
   useInput((input: string, key: Key) => {
+    if (!isInputActive) return;
+
     if (key.ctrl && input === "c") {
       onCancel();
       return;
@@ -68,13 +73,18 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
       <Text color="green">? Fill command placeholders</Text>
       <Box flexDirection="column" marginTop={1}>
         <Box flexDirection="column" marginBottom={1}>
-          <Text>
-            {currentPlaceholder.name}: {currentPlaceholder.description}
+          <Text wrap="truncate-end">
+            {toSingleLinePreview(currentPlaceholder.name)}:{" "}
+            {toSingleLinePreview(currentPlaceholder.description)}
           </Text>
           <Box>
             <Text color="cyan">{"> "}</Text>
-            <Text>{currentBuffer.value}</Text>
-            <Text backgroundColor="white"> </Text>
+            <Box flexGrow={1} overflowX="hidden">
+              <Text wrap="truncate-start">
+                {toSingleLinePreview(currentBuffer.value)}
+                <Text backgroundColor="white"> </Text>
+              </Text>
+            </Box>
           </Box>
         </Box>
       </Box>

@@ -16,6 +16,7 @@ import { executeCommand } from "./execute.js";
 import { toAppError } from "./errors.js";
 import { App } from "./ui/App.js";
 import { initializeConfig } from "./init/index.js";
+import { toResizeSafeOutput } from "./ui/resize-safe-output.js";
 
 interface CliResult {
   exitCode: number;
@@ -114,6 +115,7 @@ async function run(argv: string[]): Promise<CliResult> {
           unmount();
         }}
       />,
+      { stdout: toResizeSafeOutput(process.stdout), exitOnCtrlC: false },
     );
 
     await waitUntilExit();

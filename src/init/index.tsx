@@ -4,6 +4,7 @@ import type { GlobalOptions } from "../cli.js";
 import type { AiProvider, AppConfig, ConfigEnvironment } from "../config.js";
 import { loadConfig } from "../config.js";
 import { getConfigFilePath, writeUserConfigFile, type FileConfig } from "../config-file.js";
+import { toResizeSafeOutput } from "../ui/resize-safe-output.js";
 import type { InteractiveInput, InteractiveOutput } from "../ui/tty.js";
 import { InteractionCancelledError } from "../ui/tty.js";
 import { InitializationApp } from "./InitializationApp.js";
@@ -37,9 +38,10 @@ export async function initializeConfig({
       }
 
       settled = true;
+      const exitPromise = instance.waitUntilExit();
       instance.clear();
       instance.unmount();
-      void instance.waitUntilExit().then(result, result);
+      void exitPromise.then(result, result);
     };
 
     const instance: Instance = render(
@@ -68,7 +70,7 @@ export async function initializeConfig({
       />,
       {
         stdin: input as NodeJS.ReadStream,
-        stdout: output as NodeJS.WriteStream,
+        stdout: toResizeSafeOutput(output as NodeJS.WriteStream),
         exitOnCtrlC: false,
       },
     );

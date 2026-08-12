@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Box, Text, useWindowSize } from "ink";
+import { Box, Text, useInput, useWindowSize, type Key } from "ink";
 import { LoadingView } from "./LoadingView.js";
 import { SelectCommandView } from "./SelectCommandView.js";
 import { ResolvePlaceholdersView } from "./ResolvePlaceholdersView.js";
@@ -13,6 +13,7 @@ import { generateValidatedCommandCandidates } from "../validation/generated-comm
 import { detectDangerousCommand, type DangerousCommandMatch } from "../safety/dangerous-command.js";
 import { resolveCandidatePlaceholders, type ResolvedCommand } from "./placeholder-logic.js";
 import { InteractionCancelledError } from "./tty.js";
+import { usePhysicalStdoutRows } from "./resize-safe-output.js";
 
 type Status = "loading" | "selecting" | "resolving" | "confirming" | "error" | "done";
 
@@ -24,7 +25,8 @@ interface Props {
 }
 
 export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) => {
-  const { rows } = useWindowSize();
+  const rows = usePhysicalStdoutRows();
+  const { columns } = useWindowSize();
   const [status, setStatus] = useState<Status>("loading");
   const [candidates, setCandidates] = useState<CommandCandidateContract[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState<CommandCandidateContract | null>(null);
@@ -32,6 +34,21 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
   const [finalCommand, setFinalCommand] = useState("");
   const [danger, setDanger] = useState<DangerousCommandMatch | undefined>(undefined);
   const [errorMessage, setErrorMessage] = useState("");
+  const frameRows = Math.max(0, rows - 1);
+  const isFrameVisible = frameRows > 0;
+
+  const handleCancel = () => {
+    onError(new InteractionCancelledError());
+  };
+
+  useInput((input: string, key: Key) => {
+    if (frameRows === 0) return;
+    if (status !== "loading") return;
+
+    if (key.ctrl && input === "c") {
+      handleCancel();
+    }
+  });
 
   useEffect(() => {
     if (status === "loading") {
@@ -88,22 +105,23 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
     setStatus("done");
   };
 
-  const handleCancel = () => {
-    onError(new InteractionCancelledError());
-  };
-
   const handleBackToSelection = () => {
     setStatus("selecting");
   };
 
-  const maxFrameRows = Math.max(1, rows - 1);
-
   return (
-    <Box flexDirection="column" maxHeight={maxFrameRows} overflowY="hidden">
+    <Box
+      flexDirection="column"
+      display={isFrameVisible ? "flex" : "none"}
+      maxHeight={frameRows}
+      overflowY="hidden"
+    >
       {status === "loading" && <LoadingView />}
       {status === "selecting" && (
         <SelectCommandView
           candidates={candidates}
+          availableRows={frameRows}
+          isInputActive={isFrameVisible}
           onSelect={handleSelect}
           onCancel={handleCancel}
         />
@@ -111,6 +129,7 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
       {status === "resolving" && selectedCandidate && (
         <ResolvePlaceholdersView
           candidate={selectedCandidate}
+          isInputActive={isFrameVisible}
           onResolve={handleResolve}
           onBack={handleBackToSelection}
           onCancel={handleCancel}
@@ -122,6 +141,9 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
           command={finalCommand}
           resolvedValues={resolvedValues}
           danger={danger}
+          availableRows={frameRows}
+          availableColumns={columns}
+          isInputActive={isFrameVisible}
           onConfirm={handleConfirm}
           onCancel={handleCancel}
           isDone={status === "done"}

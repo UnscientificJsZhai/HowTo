@@ -11,6 +11,7 @@ Each dependency is distributed under its own license.
 | `ink`           | `7.0.4`  | MIT        |
 | `openai`        | `6.39.0` | Apache-2.0 |
 | `react`         | `19.2.6` | MIT        |
+| `string-width`  | `8.2.2`  | MIT        |
 
 The package versions above reflect the installed dependency set at the time this notice
 was prepared. See each package's published npm artifact for its complete license text and
