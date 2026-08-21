@@ -1,13 +1,14 @@
 /// <reference lib="es2022.intl" />
 
 import stringWidth from "string-width";
+import { renderLineBreaksAsVisibleMarkers } from "../terminal-text.js";
 
 const graphemeSegmenter = new Intl.Segmenter(undefined, {
   granularity: "grapheme",
 });
 
 export function toSingleLinePreview(value: string): string {
-  return value.replace(/\r/g, "␍").replace(/\n/g, "␊");
+  return renderLineBreaksAsVisibleMarkers(value);
 }
 
 export function toTailPreview(value: string, maxColumns: number): string {

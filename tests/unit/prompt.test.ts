@@ -64,6 +64,7 @@ describe("buildCommandGenerationPrompt", () => {
       ),
     );
     assert.ok(systemPrompt.includes("Keep placeholder name values English-compatible ASCII"));
+    assert.ok(systemPrompt.includes("CR and LF are the only allowed control characters"));
     assert.ok(systemPrompt.includes("Use placeholders in commands only as {{name}}"));
   });
 
@@ -79,6 +80,7 @@ describe("buildCommandGenerationPrompt", () => {
     assert.equal(request.outputContract.includes("The JSON object must match this schema"), false);
     assert.ok(request.outputContract.includes("response schema"));
     assert.ok(request.outputContract.includes("The commands array must contain 1 to 3 items"));
+    assert.ok(request.outputContract.includes("CR and LF are the only allowed control characters"));
   });
 
   it("should use the full prompt contract when structured output is disabled", () => {

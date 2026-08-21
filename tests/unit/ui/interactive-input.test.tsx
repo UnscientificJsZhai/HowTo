@@ -1151,12 +1151,98 @@ void test("App exposes final command and confirmation in a four-row terminal", a
   await send(view, "\r");
   await waitForOutput(view, "Final command:");
   await waitForOutput(view, "printf first␊printf second");
+  const confirmationBytes = view.outputBytes();
+  assert.ok(confirmationBytes.includes(Buffer.from("printf first␊printf second")));
+  assert.ok(!confirmationBytes.includes(Buffer.from(generatedCandidate.command)));
   await waitForOutput(view, "Enter execute; Esc/Ctrl+C cancel.");
   await send(view, "\r");
   await waitFor(() => finalCommand !== undefined, "App did not call onSuccess");
 
   assert.equal(finalCommand, generatedCandidate.command);
   assert.equal(appError, undefined);
+});
+
+void test("App rejects terminal control injection before writing AI command bytes to a fake TTY", async (t) => {
+  const { App } = await uiModules;
+  const attackCommand = `truncate -s 0 important.file #${"\b".repeat(40)}git status`;
+  let finalCommand: string | undefined;
+  let appError: Error | undefined;
+  const view = await renderView(
+    <App
+      provider={{
+        generateCommands: () =>
+          Promise.resolve({
+            rawText: JSON.stringify({
+              commands: [candidate("Inspect repository", attackCommand, "Show repository status")],
+            }),
+          }),
+      }}
+      request={appRequest()}
+      onSuccess={(command) => {
+        finalCommand = command;
+      }}
+      onError={(error) => {
+        appError = error;
+      }}
+    />,
+    { columns: 80, rows: 24 },
+  );
+  t.after(() => close(view));
+
+  await waitFor(() => appError !== undefined, "App did not reject the injected command");
+  await settleUpdates(view);
+
+  const terminalBytes = view.outputBytes();
+  assert.match(appError?.message ?? "", /commands\[0\]\.command.*control characters/u);
+  assert.equal(finalCommand, undefined);
+  assert.ok(!terminalBytes.includes(Buffer.from("\b")));
+  assert.ok(!terminalBytes.includes(Buffer.from("truncate -s 0 important.file")));
+  assert.ok(!terminalBytes.includes(Buffer.from("git status")));
+  assert.ok(!terminalBytes.includes(Buffer.from("Final command:")));
+});
+
+void test("App does not reflect line breaks from an invalid placeholder into fake TTY bytes", async (t) => {
+  const { App } = await uiModules;
+  const injectedReference = "INJECTED_LEFT\r\nINJECTED_RIGHT";
+  let successCount = 0;
+  let appError: Error | undefined;
+  const view = await renderView(
+    <App
+      provider={{
+        generateCommands: () =>
+          Promise.resolve({
+            rawText: JSON.stringify({
+              commands: [
+                candidate(
+                  "Invalid placeholder",
+                  `printf '{{${injectedReference}}}'`,
+                  "Must fail validation",
+                ),
+              ],
+            }),
+          }),
+      }}
+      request={appRequest()}
+      onSuccess={() => {
+        successCount++;
+      }}
+      onError={(error) => {
+        appError = error;
+      }}
+    />,
+    { columns: 80, rows: 24 },
+  );
+  t.after(() => close(view));
+
+  await waitFor(() => appError !== undefined, "App did not reject the invalid placeholder");
+  await settleUpdates(view);
+
+  const terminalBytes = view.outputBytes();
+  assert.equal(appError?.message, "commands[0].command contains an invalid placeholder reference");
+  assert.equal(successCount, 0);
+  assert.ok(!terminalBytes.includes(Buffer.from("INJECTED_LEFT")));
+  assert.ok(!terminalBytes.includes(Buffer.from("INJECTED_RIGHT")));
+  assert.ok(!terminalBytes.includes(Buffer.from("Final command:")));
 });
 
 void test("App cleanup does not emit full-terminal clear sequences", async (t) => {
@@ -1484,6 +1570,7 @@ interface RenderedView {
   stdin: FakeTty;
   stdout: FakeTty;
   output: () => string;
+  outputBytes: () => Buffer;
   renderCount: () => number;
   stdinReadableListenerBaseline: number;
   resizeListenerBaseline: number;
@@ -1504,9 +1591,11 @@ async function renderView(
   const stdinReadableListenerBaseline = stdin.listenerCount("readable");
   const resizeListenerBaseline = stdout.listenerCount("resize");
   let output = "";
+  const outputChunks: Buffer[] = [];
   let renderCount = 0;
   stdout.on("data", (chunk: Buffer) => {
     output += chunk.toString();
+    outputChunks.push(Buffer.from(chunk));
   });
 
   const instance = render(element, {
@@ -1527,6 +1616,7 @@ async function renderView(
     stdin,
     stdout,
     output: () => output,
+    outputBytes: () => Buffer.concat(outputChunks),
     renderCount: () => renderCount,
     stdinReadableListenerBaseline,
     resizeListenerBaseline,

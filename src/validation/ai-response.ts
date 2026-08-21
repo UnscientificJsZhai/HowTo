@@ -3,6 +3,7 @@ import type {
   CommandGenerationContract,
   CommandPlaceholderContract,
 } from "../ai/types.js";
+import { hasUnsafeTerminalControlCharacters } from "../terminal-text.js";
 
 export class AiResponseValidationError extends Error {
   constructor(message: string) {
@@ -104,13 +105,13 @@ function validatePlaceholderReferences(
 
     if (!PLACEHOLDER_NAME_PATTERN.test(name)) {
       throw new AiResponseValidationError(
-        `${candidatePath}.command contains invalid placeholder reference {{${name}}}`,
+        `${candidatePath}.command contains an invalid placeholder reference`,
       );
     }
 
     if (!declaredNames.has(name)) {
       throw new AiResponseValidationError(
-        `${candidatePath}.command references undeclared placeholder {{${name}}}`,
+        `${candidatePath}.command references an undeclared placeholder`,
       );
     }
 
@@ -120,7 +121,7 @@ function validatePlaceholderReferences(
   for (const declaredName of declaredNames) {
     if (!usedNames.has(declaredName)) {
       throw new AiResponseValidationError(
-        `${candidatePath}.placeholders declares unused placeholder ${declaredName}`,
+        `${candidatePath}.placeholders contains an unused placeholder`,
       );
     }
   }
@@ -129,6 +130,12 @@ function validatePlaceholderReferences(
 function readNonEmptyString(value: unknown, path: string): string {
   if (typeof value !== "string") {
     throw new AiResponseValidationError(`${path} must be a string`);
+  }
+
+  if (hasUnsafeTerminalControlCharacters(value)) {
+    throw new AiResponseValidationError(
+      `${path} must not contain terminal control characters other than CR or LF`,
+    );
   }
 
   if (value.trim() === "") {

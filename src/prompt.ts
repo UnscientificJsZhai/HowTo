@@ -19,11 +19,13 @@ The JSON object must match this schema:
 }
 The commands array must contain 1 to 3 items. Do not return more than 3 candidate commands.
 Detect the primary natural language of the user's question. Return title, description, and placeholders[].description in that language. Keep placeholder name values English-compatible ASCII using only letters, numbers, underscores, or hyphens.
+Do not include terminal control characters in string fields. CR and LF are the only allowed control characters.
 Use placeholders in commands only as {{name}}, and declare every placeholder in the placeholders array. User may provide argument. If the user's intent is clear, try to use the provided arguments as parameters in the generated commands instead of placeholders. If the intent is unclear, do not fill them.`;
 
 export const STRUCTURED_OUTPUT_CONTRACT = `Return only the JSON object requested by the response schema. Do not include a natural-language body, markdown, or code fences.
 The commands array must contain 1 to 3 items. Do not return more than 3 candidate commands.
 Detect the primary natural language of the user's question. Return title, description, and placeholders[].description in that language. Keep placeholder name values English-compatible ASCII using only letters, numbers, underscores, or hyphens.
+Do not include terminal control characters in string fields. CR and LF are the only allowed control characters.
 Use placeholders in commands only as {{name}}, and declare every placeholder in the placeholders array. User may provide argument. If the user's intent is clear, try to use the provided arguments as parameters in the generated commands instead of placeholders. If the intent is unclear, do not fill them.`;
 
 export const SAFETY_CONSTRAINTS = `Prefer read-only, reversible, and low-risk commands.
