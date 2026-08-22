@@ -129,6 +129,8 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
       {status === "resolving" && selectedCandidate && (
         <ResolvePlaceholdersView
           candidate={selectedCandidate}
+          availableRows={frameRows}
+          availableColumns={columns}
           isInputActive={isFrameVisible}
           onResolve={handleResolve}
           onBack={handleBackToSelection}

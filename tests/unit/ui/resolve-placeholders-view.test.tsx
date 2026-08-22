@@ -21,6 +21,8 @@ void test("ResolvePlaceholdersView renders the active placeholder prompt", async
   const output = renderToString(
     <ResolvePlaceholdersView
       candidate={candidate()}
+      availableRows={10}
+      availableColumns={120}
       onResolve={() => {}}
       onBack={() => {}}
       onCancel={() => {}}
@@ -31,7 +33,60 @@ void test("ResolvePlaceholdersView renders the active placeholder prompt", async
   assert.ok(output.includes('find {{root}} -name "{{filename}}"'));
   assert.ok(output.includes("root: Search root"));
   assert.ok(output.includes("? Fill command placeholders"));
-  assert.ok(output.includes("Press Enter for next value, Esc to go back, Ctrl+C to cancel."));
+  assert.ok(output.includes("Enter=next Esc=back"));
+});
+
+void test("ResolvePlaceholdersView keeps essential content within every row budget", async () => {
+  const { renderToString, ResolvePlaceholdersView } = await uiModules;
+
+  const renderBudget = (availableRows: number, availableColumns: number) =>
+    stripVTControlCharacters(
+      renderToString(
+        <ResolvePlaceholdersView
+          candidate={candidate()}
+          availableRows={availableRows}
+          availableColumns={availableColumns}
+          onResolve={() => {}}
+          onBack={() => {}}
+          onCancel={() => {}}
+        />,
+        { columns: availableColumns },
+      ),
+    );
+
+  for (const availableColumns of [20, 40]) {
+    assert.equal(renderBudget(0, availableColumns), "");
+
+    const outputs = new Map(
+      [1, 2, 3, 4, 9, 10].map((availableRows) => [
+        availableRows,
+        renderBudget(availableRows, availableColumns),
+      ]),
+    );
+
+    for (const [availableRows, output] of outputs) {
+      assert.ok(output.split("\n").length <= availableRows);
+    }
+
+    const oneRow = outputs.get(1) ?? "";
+    assert.equal(oneRow.split("\n").length, 1);
+    assert.ok(oneRow.startsWith("root:"));
+    assert.ok(oneRow.endsWith(" Ent Esc"));
+
+    const twoRows = outputs.get(2) ?? "";
+    assert.equal(twoRows.split("\n").length, 2);
+    assert.ok(twoRows.startsWith("? root: Search root\n>"));
+    assert.ok(twoRows.endsWith(" Ent Esc"));
+
+    const threeRows = outputs.get(3) ?? "";
+    assert.equal(threeRows.split("\n").length, 3);
+    assert.ok(threeRows.startsWith("? root: Search root\n>"));
+    assert.ok(threeRows.endsWith("Enter=next Esc=back"));
+
+    assert.ok((outputs.get(4) ?? "").includes("? Fill command"));
+    assert.ok(!(outputs.get(9) ?? "").includes("Find file"));
+    assert.ok((outputs.get(10) ?? "").includes("Find file"));
+  }
 });
 
 void test("ResolvePlaceholdersView renders field line breaks as visible markers", async () => {
@@ -59,6 +114,8 @@ void test("ResolvePlaceholdersView renders field line breaks as visible markers"
       renderToString(
         <ResolvePlaceholdersView
           candidate={candidate}
+          availableRows={10}
+          availableColumns={120}
           onResolve={() => {}}
           onBack={() => {}}
           onCancel={() => {}}

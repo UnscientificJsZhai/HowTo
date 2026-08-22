@@ -42,6 +42,8 @@ void test("ResolvePlaceholdersView retains typed uppercase input before resolvin
   const view = await renderView(
     <ResolvePlaceholdersView
       candidate={placeholderCandidate()}
+      availableRows={10}
+      availableColumns={120}
       onResolve={(resolved) => {
         resolvedCommand = resolved.command;
       }}
@@ -67,6 +69,8 @@ void test("ResolvePlaceholdersView preserves bracketed paste text verbatim", asy
   const view = await renderView(
     <ResolvePlaceholdersView
       candidate={placeholderCandidate()}
+      availableRows={10}
+      availableColumns={120}
       onResolve={(resolved) => {
         resolvedCommand = resolved.command;
       }}
@@ -81,6 +85,77 @@ void test("ResolvePlaceholdersView preserves bracketed paste text verbatim", asy
   await send(view, "\r");
 
   assert.equal(resolvedCommand, `printf '%s' ${pastedValue}`);
+});
+
+void test("App keeps placeholder input operable in two-, three-, and four-row terminals", async () => {
+  const { App } = await uiModules;
+
+  for (const scenario of [
+    {
+      rows: 2,
+      selectionText: "1/1 UD Enter Esc",
+      helpText: " Ent Esc",
+      confirmationText: " Enter Esc",
+    },
+    {
+      rows: 3,
+      selectionText: "↑↓; Enter; Esc/^C",
+      helpText: " Ent Esc",
+      confirmationText: "Esc=cancel",
+    },
+    {
+      rows: 4,
+      selectionText: "? Select (1/1)",
+      helpText: "Enter=next Esc=back",
+      confirmationText: "Enter execute",
+    },
+  ]) {
+    let finalCommand: string | undefined;
+    let errorCount = 0;
+    let unmounted = false;
+    const view = await renderView(
+      <App
+        provider={{
+          generateCommands: () =>
+            Promise.resolve({ rawText: JSON.stringify({ commands: [placeholderCandidate()] }) }),
+        }}
+        request={appRequest()}
+        onSuccess={(command) => {
+          finalCommand = command;
+        }}
+        onError={() => {
+          errorCount++;
+        }}
+      />,
+      { columns: 20, rows: scenario.rows },
+    );
+
+    try {
+      await waitForOutput(view, scenario.selectionText);
+      await send(view, "\r");
+      await waitForOutput(view, "value:");
+      await waitForOutput(view, scenario.helpText);
+
+      const inputOffset = view.output().length;
+      await send(view, "Z");
+      await waitForOutputAfter(view, inputOffset, "Z");
+      await send(view, "\r");
+
+      await waitForOutput(view, scenario.confirmationText);
+      await send(view, "\r");
+      await waitFor(() => finalCommand !== undefined, "App did not execute a compact input");
+
+      assert.equal(finalCommand, "printf '%s' Z");
+      assert.equal(errorCount, 0);
+      await clearAndUnmount(view);
+      unmounted = true;
+      assertTerminalCleanup(view);
+    } finally {
+      if (!unmounted) {
+        await close(view);
+      }
+    }
+  }
 });
 
 void test("App renders placeholder line breaks safely while preserving the final command", async (t) => {
@@ -224,6 +299,8 @@ void test("ResolvePlaceholdersView keeps Enter, Backspace, Delete, Escape, and C
   const view = await renderView(
     <ResolvePlaceholdersView
       candidate={placeholderCandidate()}
+      availableRows={10}
+      availableColumns={120}
       onResolve={(resolved) => {
         resolvedCommand = resolved.command;
       }}
@@ -249,6 +326,8 @@ void test("ResolvePlaceholdersView keeps Enter, Backspace, Delete, Escape, and C
   const backView = await renderView(
     <ResolvePlaceholdersView
       candidate={placeholderCandidate()}
+      availableRows={10}
+      availableColumns={120}
       onResolve={() => {}}
       onBack={() => {
         backCount++;
@@ -262,6 +341,8 @@ void test("ResolvePlaceholdersView keeps Enter, Backspace, Delete, Escape, and C
   const cancelView = await renderView(
     <ResolvePlaceholdersView
       candidate={placeholderCandidate()}
+      availableRows={10}
+      availableColumns={120}
       onResolve={() => {}}
       onBack={() => {}}
       onCancel={() => {
@@ -497,6 +578,96 @@ void test("App preserves placeholder input and ignores hidden editing and cancel
   await clearAndUnmount(view);
   unmounted = true;
   assertTerminalCleanup(view);
+});
+
+void test("App preserves compact placeholder input through visible and hidden resizes", async () => {
+  const { App } = await uiModules;
+  const pastedValue = "prefixA\r\nB👩🏽‍💻";
+  const expectedCommand = `printf '%s' ${pastedValue}`;
+  let finalCommand: string | undefined;
+  let errorCount = 0;
+  let unmounted = false;
+  const view = await renderView(
+    <App
+      provider={{
+        generateCommands: () =>
+          Promise.resolve({ rawText: JSON.stringify({ commands: [placeholderCandidate()] }) }),
+      }}
+      request={appRequest()}
+      onSuccess={(command) => {
+        finalCommand = command;
+      }}
+      onError={() => {
+        errorCount++;
+      }}
+    />,
+    { columns: 20, rows: 12 },
+  );
+
+  try {
+    await waitForOutput(view, "? Select a command");
+    await send(view, "\r");
+    await waitForOutput(view, "? value: Value");
+    await send(view, `\u001B[200~${pastedValue}\u001B[201~`);
+    await waitForOutput(view, "prefixA␍␊B👩🏽‍💻");
+
+    let outputOffset = view.output().length;
+    view.stdout.resize(20, 4);
+    await waitForOutputAfter(view, outputOffset, "Enter=next Esc=back");
+    await settleUpdates(view);
+    let compactOutput = stripVTControlCharacters(view.output().slice(outputOffset)).trim();
+    assert.equal(compactOutput.split("\n").length, 3);
+    assert.ok(compactOutput.includes("? value: Value"));
+    assert.ok(compactOutput.includes("prefixA␍␊B👩🏽‍💻"));
+
+    outputOffset = view.output().length;
+    view.stdout.resize(20, 3);
+    await waitForOutputAfter(view, outputOffset, " Ent Esc");
+    await settleUpdates(view);
+    compactOutput = stripVTControlCharacters(view.output().slice(outputOffset)).trim();
+    assert.equal(compactOutput.split("\n").length, 2);
+    assert.ok(compactOutput.includes("? value: Value"));
+    assert.ok(compactOutput.includes("B👩🏽‍💻"));
+
+    outputOffset = view.output().length;
+    view.stdout.resize(20, 2);
+    await waitForOutputAfter(view, outputOffset, "value:");
+    await settleUpdates(view);
+    compactOutput = stripVTControlCharacters(view.output().slice(outputOffset)).trim();
+    assert.equal(compactOutput.split("\n").length, 1);
+    assert.ok(compactOutput.startsWith("value:"));
+    assert.ok(compactOutput.includes("␍␊B👩🏽‍💻"));
+    assert.ok(compactOutput.endsWith(" Ent Esc"));
+
+    await resizeToHiddenFrame(view);
+    await send(view, "X");
+    await send(view, "\u007F");
+    await send(view, "\r");
+    await sendEscape(view);
+    await send(view, "\u0003");
+    assert.equal(finalCommand, undefined);
+    assert.equal(errorCount, 0);
+
+    const restoredOutput = stripVTControlCharacters(await restoreFrame(view, 2, "value:")).trim();
+    assert.ok(restoredOutput.startsWith("value:"));
+    assert.ok(restoredOutput.includes("␍␊B👩🏽‍💻"));
+    assert.ok(restoredOutput.endsWith(" Ent Esc"));
+
+    await send(view, "\r");
+    await waitForOutput(view, " Enter Esc");
+    await send(view, "\r");
+    await waitFor(() => finalCommand !== undefined, "App did not execute the restored input");
+
+    assert.equal(finalCommand, expectedCommand);
+    assert.equal(errorCount, 0);
+    await clearAndUnmount(view);
+    unmounted = true;
+    assertTerminalCleanup(view);
+  } finally {
+    if (!unmounted) {
+      await close(view);
+    }
+  }
 });
 
 void test("App preserves dangerous confirmation input and ignores hidden confirmation", async (t) => {
