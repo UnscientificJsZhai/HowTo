@@ -61,6 +61,7 @@ test("OpenAI client options omit authorization when API key is empty", () => {
 
   assert.equal(options.apiKey, "howto-empty-api-key");
   assert.equal(options.baseURL, "http://localhost:11434/v1");
+  assert.equal(options.logLevel, "off");
   assert.deepEqual(options.defaultHeaders, { Authorization: null });
 });
 
@@ -72,6 +73,7 @@ test("OpenAI client options preserve non-empty API key", () => {
 
   assert.equal(options.apiKey, "openai-key");
   assert.equal(options.baseURL, undefined);
+  assert.equal(options.logLevel, "off");
   assert.equal(options.defaultHeaders, undefined);
 });
 

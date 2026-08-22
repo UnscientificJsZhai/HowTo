@@ -15,20 +15,21 @@ export class GeminiCommandProvider implements CommandProvider {
   }
 
   async generateCommands(request: GenerateCommandsRequest): Promise<GenerateCommandsResult> {
+    let rawText: string | undefined;
     try {
       const response = await this.client.models.generateContent(
         buildGeminiGenerateContentRequest(this.model, request),
       );
-
-      const rawText = response.text;
-      if (rawText === undefined || rawText.trim() === "") {
-        throw new Error("provider returned an empty response");
-      }
-
-      return { rawText };
-    } catch (error: unknown) {
-      throw new AiProviderError("gemini", this.model, error);
+      rawText = response.text;
+    } catch {
+      throw new AiProviderError("gemini", this.model);
     }
+
+    if (rawText === undefined || rawText.trim() === "") {
+      throw new AiProviderError("gemini", this.model);
+    }
+
+    return { rawText };
   }
 }
 

@@ -25,15 +25,26 @@ test("toAppError maps usage and validation failures to exit code 2", () => {
   assert.equal(toAppError(new PlaceholderResolutionError("unresolved")).exitCode, 2);
 });
 
-test("toAppError maps provider failures to exit code 1 with provider and model", () => {
-  const appError = toAppError(
-    new AiProviderError("openai", "gpt-test", new Error("request failed")),
-  );
+test("toAppError maps provider failures to fixed messages with provider and model", () => {
+  const cases = [
+    {
+      provider: "openai",
+      model: "gpt-test",
+      message: "AI provider request failed (provider: openai, model: gpt-test)",
+    },
+    {
+      provider: "gemini",
+      model: "gemini-test",
+      message: "AI provider request failed (provider: gemini, model: gemini-test)",
+    },
+  ] as const;
 
-  assert.equal(appError.exitCode, 1);
-  assert.match(appError.message, /provider: openai/);
-  assert.match(appError.message, /model: gpt-test/);
-  assert.match(appError.message, /request failed/);
+  for (const { provider, model, message } of cases) {
+    const appError = toAppError(new AiProviderError(provider, model));
+
+    assert.equal(appError.exitCode, 1);
+    assert.equal(appError.message, message);
+  }
 });
 
 test("toAppError maps user cancellation to exit code 130 without output", () => {

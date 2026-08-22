@@ -16,20 +16,21 @@ export class OpenAiCommandProvider implements CommandProvider {
   }
 
   async generateCommands(request: GenerateCommandsRequest): Promise<GenerateCommandsResult> {
+    let rawText: string | null | undefined;
     try {
       const response = await this.client.chat.completions.create(
         buildOpenAiChatCompletionRequest(this.model, request),
       );
-
-      const rawText = response.choices[0]?.message?.content;
-      if (rawText === undefined || rawText === null || rawText.trim() === "") {
-        throw new Error("provider returned an empty response");
-      }
-
-      return { rawText };
-    } catch (error: unknown) {
-      throw new AiProviderError("openai", this.model, error);
+      rawText = response.choices[0]?.message?.content;
+    } catch {
+      throw new AiProviderError("openai", this.model);
     }
+
+    if (rawText === undefined || rawText === null || rawText.trim() === "") {
+      throw new AiProviderError("openai", this.model);
+    }
+
+    return { rawText };
   }
 }
 
@@ -38,12 +39,14 @@ export function buildOpenAiClientOptions(config: AppConfig["openai"]): ClientOpt
     return {
       apiKey: config.apiKey,
       baseURL: config.baseUrl,
+      logLevel: "off",
     };
   }
 
   return {
     apiKey: "howto-empty-api-key",
     baseURL: config.baseUrl,
+    logLevel: "off",
     defaultHeaders: {
       Authorization: null,
     },
