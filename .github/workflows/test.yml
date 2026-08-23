@@ -5,6 +5,7 @@ on:
     branches:
       - master
       - "develop/*"
+  pull_request:
 
 permissions:
   contents: read
@@ -26,6 +27,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
 
       - name: Build
         run: npm run build
