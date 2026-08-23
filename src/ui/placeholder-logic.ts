@@ -23,10 +23,7 @@ export interface ResolvedCommand {
 }
 
 export type PlaceholderResolutionInput =
-  | { type: "append"; value: string }
-  | { type: "delete" }
-  | { type: "commit" }
-  | { type: "escape" };
+  { type: "append"; value: string } | { type: "delete" } | { type: "commit" } | { type: "escape" };
 
 export type PlaceholderResolutionTransition =
   | { type: "editing"; state: PlaceholderResolutionState }

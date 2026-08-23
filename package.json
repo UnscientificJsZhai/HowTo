@@ -34,23 +34,23 @@
     "test:unit": "npm run clean:dist-test && tsc -p tsconfig.test.json && node --test dist-test/tests/unit/*.test.js dist-test/tests/unit/**/*.test.js"
   },
   "dependencies": {
-    "@google/genai": "^2.6.0",
-    "ink": "^7.0.4",
-    "openai": "^6.39.0",
-    "react": "^19.2.6",
-    "string-width": "^8.2.1"
+    "@google/genai": "^2.18.0",
+    "ink": "^7.1.1",
+    "openai": "^7.5.0",
+    "react": "^19.2.8",
+    "string-width": "^8.2.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^20.0.0",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "eslint": "^10.4.0",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "eslint": "^10.9.0",
     "husky": "^9.1.7",
-    "lint-staged": "^16.4.0",
-    "prettier": "^3.8.3",
-    "typescript": "^5.5.3",
-    "typescript-eslint": "^8.59.4"
+    "lint-staged": "^17.3.0",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.67.0"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

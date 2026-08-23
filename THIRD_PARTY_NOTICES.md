@@ -7,10 +7,10 @@ Each dependency is distributed under its own license.
 
 | Package         | Version  | License    |
 | --------------- | -------- | ---------- |
-| `@google/genai` | `2.6.0`  | Apache-2.0 |
-| `ink`           | `7.0.4`  | MIT        |
-| `openai`        | `6.39.0` | Apache-2.0 |
-| `react`         | `19.2.6` | MIT        |
+| `@google/genai` | `2.18.0` | Apache-2.0 |
+| `ink`           | `7.1.1`  | MIT        |
+| `openai`        | `7.5.0`  | Apache-2.0 |
+| `react`         | `19.2.8` | MIT        |
 | `string-width`  | `8.2.2`  | MIT        |
 
 The package versions above reflect the installed dependency set at the time this notice
