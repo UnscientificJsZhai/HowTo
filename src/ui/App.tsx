@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, useInput, useWindowSize, type Key } from "ink";
 import { LoadingView } from "./LoadingView.js";
 import { SelectCommandView } from "./SelectCommandView.js";
@@ -34,12 +34,18 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
   const [finalCommand, setFinalCommand] = useState("");
   const [danger, setDanger] = useState<DangerousCommandMatch | undefined>(undefined);
   const [errorMessage, setErrorMessage] = useState("");
+  const activeRequestControllerRef = useRef<AbortController | null>(null);
+  const cancellationReportedRef = useRef(false);
   const frameRows = Math.max(0, rows - 1);
   const isFrameVisible = frameRows > 0;
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
+    activeRequestControllerRef.current?.abort();
+    if (cancellationReportedRef.current) return;
+
+    cancellationReportedRef.current = true;
     onError(new InteractionCancelledError());
-  };
+  }, [onError]);
 
   useInput((input: string, key: Key) => {
     if (frameRows === 0) return;
@@ -51,19 +57,35 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
   });
 
   useEffect(() => {
-    if (status === "loading") {
-      generateValidatedCommandCandidates(provider, request)
-        .then((generatedCandidates) => {
-          setCandidates(generatedCandidates);
-          setStatus("selecting");
-        })
-        .catch((error: unknown) => {
-          const appError = normalizeError(error);
-          setErrorMessage(appError.message);
-          setStatus("error");
-          onError(appError);
-        });
-    }
+    if (status !== "loading") return;
+
+    const controller = new AbortController();
+    let isCurrent = true;
+    activeRequestControllerRef.current = controller;
+
+    void generateValidatedCommandCandidates(provider, request, controller.signal)
+      .then((generatedCandidates) => {
+        if (!isCurrent || controller.signal.aborted) return;
+
+        setCandidates(generatedCandidates);
+        setStatus("selecting");
+      })
+      .catch((error: unknown) => {
+        if (!isCurrent || controller.signal.aborted) return;
+
+        const appError = normalizeError(error);
+        setErrorMessage(appError.message);
+        setStatus("error");
+        onError(appError);
+      });
+
+    return () => {
+      isCurrent = false;
+      controller.abort();
+      if (activeRequestControllerRef.current === controller) {
+        activeRequestControllerRef.current = null;
+      }
+    };
   }, [status, provider, request, onError]);
 
   const handleSelect = (candidate: CommandCandidateContract) => {

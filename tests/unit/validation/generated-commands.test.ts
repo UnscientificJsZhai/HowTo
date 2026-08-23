@@ -18,6 +18,27 @@ test("generateValidatedCommandCandidates returns valid command candidates", asyn
   assert.deepEqual(candidates, [validCommand("git status")]);
 });
 
+test("generateValidatedCommandCandidates passes the same optional signal to the provider", async () => {
+  const request = createRequest();
+  const controller = new AbortController();
+  let capturedRequest: GenerateCommandsRequest | undefined;
+  let capturedSignal: AbortSignal | undefined;
+  const provider: CommandProvider = {
+    generateCommands(providerRequest, signal) {
+      capturedRequest = providerRequest;
+      capturedSignal = signal;
+      return Promise.resolve({
+        rawText: JSON.stringify({ commands: [validCommand("git status")] }),
+      });
+    },
+  };
+
+  await generateValidatedCommandCandidates(provider, request, controller.signal);
+
+  assert.equal(capturedRequest, request);
+  assert.equal(capturedSignal, controller.signal);
+});
+
 test("generateValidatedCommandCandidates preserves AI response validation errors", async () => {
   await assert.rejects(
     () =>

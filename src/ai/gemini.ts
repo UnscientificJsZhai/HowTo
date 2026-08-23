@@ -14,11 +14,14 @@ export class GeminiCommandProvider implements CommandProvider {
     this.client = new GoogleGenAI({ apiKey: config.apiKey });
   }
 
-  async generateCommands(request: GenerateCommandsRequest): Promise<GenerateCommandsResult> {
+  async generateCommands(
+    request: GenerateCommandsRequest,
+    signal?: AbortSignal,
+  ): Promise<GenerateCommandsResult> {
     let rawText: string | undefined;
     try {
       const response = await this.client.models.generateContent(
-        buildGeminiGenerateContentRequest(this.model, request),
+        buildGeminiGenerateContentRequest(this.model, request, signal),
       );
       rawText = response.text;
     } catch {
@@ -36,6 +39,7 @@ export class GeminiCommandProvider implements CommandProvider {
 export function buildGeminiGenerateContentRequest(
   model: string,
   request: GenerateCommandsRequest,
+  signal?: AbortSignal,
 ): GenerateContentParameters {
   return {
     model,
@@ -43,6 +47,7 @@ export function buildGeminiGenerateContentRequest(
     config: {
       systemInstruction: request.systemPrompt,
       responseMimeType: "application/json",
+      ...(signal === undefined ? {} : { abortSignal: signal }),
       ...(request.structuredOutput ? { responseJsonSchema: COMMAND_GENERATION_SCHEMA } : {}),
     },
   };

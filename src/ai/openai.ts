@@ -15,12 +15,17 @@ export class OpenAiCommandProvider implements CommandProvider {
     this.client = new OpenAI(buildOpenAiClientOptions(config));
   }
 
-  async generateCommands(request: GenerateCommandsRequest): Promise<GenerateCommandsResult> {
+  async generateCommands(
+    request: GenerateCommandsRequest,
+    signal?: AbortSignal,
+  ): Promise<GenerateCommandsResult> {
     let rawText: string | null | undefined;
     try {
-      const response = await this.client.chat.completions.create(
-        buildOpenAiChatCompletionRequest(this.model, request),
-      );
+      const parameters = buildOpenAiChatCompletionRequest(this.model, request);
+      const response =
+        signal === undefined
+          ? await this.client.chat.completions.create(parameters)
+          : await this.client.chat.completions.create(parameters, { signal });
       rawText = response.choices[0]?.message?.content;
     } catch {
       throw new AiProviderError("openai", this.model);

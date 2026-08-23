@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { COMMAND_GENERATION_SCHEMA } from "../../src/ai/command-schema.js";
-import { buildGeminiGenerateContentRequest } from "../../src/ai/gemini.js";
+import { buildGeminiGenerateContentRequest, GeminiCommandProvider } from "../../src/ai/gemini.js";
 import {
   buildOpenAiChatCompletionRequest,
   buildOpenAiClientOptions,
@@ -88,6 +88,33 @@ test("OpenAI provider initializes when API key is empty", () => {
   );
 });
 
+test("OpenAI provider passes the supplied signal as SDK request options only when present", async () => {
+  const provider = new OpenAiCommandProvider({
+    apiKey: "openai-key",
+    model: "gpt-test",
+  });
+  const calls: unknown[][] = [];
+  Reflect.set(provider, "client", {
+    chat: {
+      completions: {
+        create: (...args: unknown[]) => {
+          calls.push(args);
+          return Promise.resolve({ choices: [{ message: { content: "generated" } }] });
+        },
+      },
+    },
+  });
+  const controller = new AbortController();
+
+  await provider.generateCommands(createRequest(true), controller.signal);
+  await provider.generateCommands(createRequest(true));
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].length, 2);
+  assert.deepEqual(calls[0][1], { signal: controller.signal });
+  assert.equal(calls[1].length, 1);
+});
+
 test("buildGeminiGenerateContentRequest uses response schema in structured mode", () => {
   const request = buildGeminiGenerateContentRequest("gemini-test", createRequest(true));
 
@@ -107,4 +134,35 @@ test("buildGeminiGenerateContentRequest keeps JSON mode without schema in compat
     systemInstruction: "system prompt",
     responseMimeType: "application/json",
   });
+});
+
+test("Gemini provider maps the supplied signal to config.abortSignal only when present", async () => {
+  const provider = new GeminiCommandProvider({
+    apiKey: "gemini-key",
+    model: "gemini-test",
+  });
+  const requests: unknown[] = [];
+  Reflect.set(provider, "client", {
+    models: {
+      generateContent: (request: unknown) => {
+        requests.push(request);
+        return Promise.resolve({ text: "generated" });
+      },
+    },
+  });
+  const controller = new AbortController();
+
+  await provider.generateCommands(createRequest(true), controller.signal);
+  await provider.generateCommands(createRequest(true));
+
+  assert.equal(requests.length, 2);
+  assert.equal(
+    (requests[0] as ReturnType<typeof buildGeminiGenerateContentRequest>).config?.abortSignal,
+    controller.signal,
+  );
+  assert.equal(
+    "abortSignal" in
+      ((requests[1] as ReturnType<typeof buildGeminiGenerateContentRequest>).config ?? {}),
+    false,
+  );
 });

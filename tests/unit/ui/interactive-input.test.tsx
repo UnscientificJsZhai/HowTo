@@ -5,6 +5,7 @@ import { test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import React from "react";
 import type { CommandCandidateContract } from "../../../src/ai/types.js";
+import { AiProviderError } from "../../../src/ai/errors.js";
 import { toAppError } from "../../../src/errors.js";
 import { InteractionCancelledError } from "../../../src/ui/tty.js";
 import { importWithoutColor } from "./import-without-color.js";
@@ -1216,15 +1217,30 @@ void test("App keeps selection commands and controls visible through four, three
 
 void test("App cancels visible loading exactly once on Ctrl+C", async (t) => {
   const { App } = await uiModules;
-  const providerResponse = new Promise<{ rawText: string }>(() => undefined);
+  const providerResponse = createDeferred<{ rawText: string }>();
   const errors: Error[] = [];
+  let providerSignal: AbortSignal | undefined;
+  let signalWasAbortedWhenCancelled = false;
   let unmounted = false;
   const view = await renderView(
     <App
-      provider={{ generateCommands: () => providerResponse }}
+      provider={{
+        generateCommands: (_request, signal) => {
+          providerSignal = signal;
+          signal?.addEventListener(
+            "abort",
+            () => {
+              providerResponse.reject(new Error("provider aborted"));
+            },
+            { once: true },
+          );
+          return providerResponse.promise;
+        },
+      }}
       request={appRequest()}
       onSuccess={() => {}}
       onError={(error) => {
+        signalWasAbortedWhenCancelled = providerSignal?.aborted === true;
         errors.push(error);
       }}
     />,
@@ -1239,8 +1255,12 @@ void test("App cancels visible loading exactly once on Ctrl+C", async (t) => {
   await waitForOutput(view, "Thinking...");
   await send(view, "\u0003");
   await waitFor(() => errors.length === 1, "App did not cancel visible loading");
+  await send(view, "\u0003");
   await settleUpdates(view);
 
+  assert.ok(providerSignal);
+  assert.equal(providerSignal.aborted, true);
+  assert.equal(signalWasAbortedWhenCancelled, true);
   assert.equal(errors.length, 1);
   assert.ok(errors[0] instanceof InteractionCancelledError);
   assert.equal(toAppError(errors[0]).exitCode, 130);
@@ -1248,6 +1268,230 @@ void test("App cancels visible loading exactly once on Ctrl+C", async (t) => {
   await clearAndUnmount(view);
   unmounted = true;
   assertTerminalCleanup(view);
+});
+
+void test("App ignores late provider resolution and rejection after loading cancellation", async () => {
+  const { App } = await uiModules;
+
+  for (const outcome of ["resolve", "reject"] as const) {
+    const providerResponse = createDeferred<{ rawText: string }>();
+    const errors: Error[] = [];
+    let providerSignal: AbortSignal | undefined;
+    let successCount = 0;
+    const lateCandidate = candidate(
+      `Late ${outcome} candidate`,
+      `printf late-${outcome}`,
+      "Must stay hidden after cancellation",
+    );
+    const view = await renderView(
+      <App
+        provider={{
+          generateCommands: (_request, signal) => {
+            providerSignal = signal;
+            return providerResponse.promise;
+          },
+        }}
+        request={appRequest()}
+        onSuccess={() => {
+          successCount++;
+        }}
+        onError={(error) => {
+          errors.push(error);
+        }}
+      />,
+      { columns: 40, rows: 4 },
+    );
+
+    try {
+      await waitForOutput(view, "Thinking...");
+      await send(view, "\u0003");
+      await waitFor(() => errors.length === 1, `App did not cancel before late ${outcome}`);
+      assert.ok(providerSignal);
+      assert.equal(providerSignal.aborted, true);
+      const lateOutputOffset = view.output().length;
+
+      if (outcome === "resolve") {
+        providerResponse.resolve({ rawText: JSON.stringify({ commands: [lateCandidate] }) });
+      } else {
+        providerResponse.reject(new Error("late provider failure"));
+      }
+      await settleUpdates(view);
+
+      const lateOutput = view.output().slice(lateOutputOffset);
+      assert.equal(errors.length, 1);
+      assert.ok(errors[0] instanceof InteractionCancelledError);
+      assert.equal(successCount, 0);
+      assert.ok(!lateOutput.includes(lateCandidate.title));
+      assert.ok(!lateOutput.includes("Error:"));
+    } finally {
+      await close(view);
+    }
+  }
+});
+
+void test("App aborts on unmount and ignores providers that settle afterward", async () => {
+  const { App } = await uiModules;
+
+  for (const outcome of ["resolve", "reject"] as const) {
+    const providerResponse = createDeferred<{ rawText: string }>();
+    const errors: Error[] = [];
+    let providerSignal: AbortSignal | undefined;
+    let successCount = 0;
+    const view = await renderView(
+      <App
+        provider={{
+          generateCommands: (_request, signal) => {
+            providerSignal = signal;
+            return providerResponse.promise;
+          },
+        }}
+        request={appRequest()}
+        onSuccess={() => {
+          successCount++;
+        }}
+        onError={(error) => {
+          errors.push(error);
+        }}
+      />,
+      { columns: 40, rows: 4 },
+    );
+
+    await waitForOutput(view, "Thinking...");
+    await close(view);
+    assert.ok(providerSignal);
+    assert.equal(providerSignal.aborted, true);
+    const outputAfterUnmount = view.output();
+
+    if (outcome === "resolve") {
+      providerResponse.resolve({
+        rawText: JSON.stringify({
+          commands: [candidate("Unmounted candidate", "printf unmounted", "Must stay hidden")],
+        }),
+      });
+    } else {
+      providerResponse.reject(new Error("failure after unmount"));
+    }
+    await settlePromises();
+
+    assert.equal(view.output(), outputAfterUnmount);
+    assert.equal(successCount, 0);
+    assert.deepEqual(errors, []);
+  }
+});
+
+void test("App aborts superseded request dependencies and ignores both stale outcomes", async (t) => {
+  const { App } = await uiModules;
+  const firstResponse = createDeferred<{ rawText: string }>();
+  const secondResponse = createDeferred<{ rawText: string }>();
+  const currentResponse = createDeferred<{ rawText: string }>();
+  const requests = new Map([
+    ["first request", firstResponse],
+    ["second request", secondResponse],
+    ["current request", currentResponse],
+  ]);
+  const signals: AbortSignal[] = [];
+  const errors: Error[] = [];
+  let successCount = 0;
+  const provider = {
+    generateCommands: (request: ReturnType<typeof appRequest>, signal?: AbortSignal) => {
+      if (signal !== undefined) signals.push(signal);
+      const response = requests.get(request.question);
+      if (response === undefined) throw new Error("unexpected request");
+      return response.promise;
+    },
+  };
+  const handleSuccess = () => {
+    successCount++;
+  };
+  const handleError = (error: Error) => {
+    errors.push(error);
+  };
+  const view = await renderView(
+    <App
+      provider={provider}
+      request={{ ...appRequest(), question: "first request" }}
+      onSuccess={handleSuccess}
+      onError={handleError}
+    />,
+    { columns: 60, rows: 12 },
+  );
+  t.after(() => close(view));
+
+  await waitFor(() => signals.length === 1, "App did not start the first request");
+  view.instance.rerender(
+    <App
+      provider={provider}
+      request={{ ...appRequest(), question: "second request" }}
+      onSuccess={handleSuccess}
+      onError={handleError}
+    />,
+  );
+  await waitFor(() => signals.length === 2, "App did not start the second request");
+  assert.equal(signals[0].aborted, true);
+
+  firstResponse.resolve({
+    rawText: JSON.stringify({
+      commands: [candidate("Stale resolved candidate", "printf stale", "Must be ignored")],
+    }),
+  });
+  await settleUpdates(view);
+  assert.ok(!view.output().includes("Stale resolved candidate"));
+
+  view.instance.rerender(
+    <App
+      provider={provider}
+      request={{ ...appRequest(), question: "current request" }}
+      onSuccess={handleSuccess}
+      onError={handleError}
+    />,
+  );
+  await waitFor(() => signals.length === 3, "App did not start the current request");
+  assert.equal(signals[1].aborted, true);
+
+  secondResponse.reject(new Error("stale rejected request"));
+  await settleUpdates(view);
+  assert.deepEqual(errors, []);
+  assert.ok(!view.output().includes("Error:"));
+
+  currentResponse.resolve({
+    rawText: JSON.stringify({
+      commands: [candidate("Current candidate", "printf current", "Must be displayed")],
+    }),
+  });
+  await waitForOutput(view, "Current candidate");
+  assert.equal(successCount, 0);
+  assert.deepEqual(errors, []);
+});
+
+void test("App still reports a current provider failure through the existing error state", async (t) => {
+  const { App } = await uiModules;
+  const errors: Error[] = [];
+  let successCount = 0;
+  const view = await renderView(
+    <App
+      provider={{
+        generateCommands: () => Promise.reject(new AiProviderError("openai", "fixed-model")),
+      }}
+      request={appRequest()}
+      onSuccess={() => {
+        successCount++;
+      }}
+      onError={(error) => {
+        errors.push(error);
+      }}
+    />,
+    { columns: 80, rows: 24 },
+  );
+  t.after(() => close(view));
+
+  await waitFor(() => errors.length === 1, "App did not report the provider failure");
+  await waitForOutput(
+    view,
+    "Error: AI provider request failed (provider: openai, model: fixed-model)",
+  );
+
+  assert.equal(successCount, 0);
+  assert.ok(errors[0] instanceof AiProviderError);
 });
 
 void test("ConfirmView accepts EXECUTE in a narrow four-row fake TTY", async (t) => {
@@ -1860,6 +2104,11 @@ async function settleUpdates(view: RenderedView): Promise<void> {
   await view.instance.waitUntilRenderFlush();
 }
 
+async function settlePromises(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
 function assertTerminalCleanup(view: RenderedView): void {
   assert.equal(view.stdin.rawModeEnabled, false);
   assert.equal(view.stdin.listenerCount("readable"), view.stdinReadableListenerBaseline);
@@ -1920,6 +2169,33 @@ function placeholderCandidate(): CommandCandidateContract {
     command: "printf '%s' {{value}}",
     description: "Print a value",
     placeholders: [{ name: "value", description: "Value" }],
+  };
+}
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolvePromise: ((value: T) => void) | undefined;
+  let rejectPromise: ((reason?: unknown) => void) | undefined;
+  const promise = new Promise<T>((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+
+  return {
+    promise,
+    resolve(value) {
+      if (resolvePromise === undefined) throw new Error("deferred resolve is unavailable");
+      resolvePromise(value);
+    },
+    reject(reason) {
+      if (rejectPromise === undefined) throw new Error("deferred reject is unavailable");
+      rejectPromise(reason);
+    },
   };
 }
 
