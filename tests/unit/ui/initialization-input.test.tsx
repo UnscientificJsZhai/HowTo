@@ -411,6 +411,104 @@ void test("initialization keeps rich long values visible and submits their origi
   }
 });
 
+void test("initialization drops unsafe paste blocks in key, model, and URL fields", async (t) => {
+  let submittedValues: InitializationValues | undefined;
+  const view = await renderInitialization({ columns: 80, rows: 24 }, (values) => {
+    submittedValues = values;
+    return new Promise<AppConfig>(() => undefined);
+  });
+  t.after(() => close(view));
+
+  await send(view, "1");
+
+  const keyAttack = "KEY_SAFE_PREFIX\u0000KEY_SAFE_SUFFIX";
+  await send(view, `\u001B[200~${keyAttack}\u001B[201~`);
+  await send(view, "\u001B[200~safe-key\u001B[201~");
+  await send(view, "\r");
+
+  const modelAttack = "\u001B[2JMODEL_ATTACK_SENTINEL";
+  await send(view, `\u001B[200~${modelAttack}\u001B[201~`);
+  await send(view, "\u001B[200~safe-model\u001B[201~");
+  await send(view, "\r");
+
+  const urlAttack = "URL_SAFE_PREFIX\u009B2JURL_SAFE_SUFFIX";
+  await send(view, `\u001B[200~${urlAttack}\u001B[201~`);
+  await send(view, "\u001B[200~https://safe.example/v1\u001B[201~");
+  await send(view, "\r");
+
+  await waitFor(() => submittedValues !== undefined, "Initialization did not submit safe values");
+  assert.deepEqual(submittedValues, {
+    provider: "openai",
+    apiKey: "safe-key",
+    model: "safe-model",
+    openaiBaseUrl: "https://safe.example/v1",
+  });
+  assert.equal(view.output().includes("KEY_SAFE_PREFIX"), false);
+  assert.equal(view.output().includes("KEY_SAFE_SUFFIX"), false);
+  assert.equal(view.output().includes("MODEL_ATTACK_SENTINEL"), false);
+  assert.equal(view.output().includes("URL_SAFE_PREFIX"), false);
+  assert.equal(view.output().includes("URL_SAFE_SUFFIX"), false);
+  assert.equal(view.output().includes(modelAttack), false);
+  assertNoFullscreenClear(view.output());
+});
+
+void test("initialization applies same-chunk field pastes before Enter", async (t) => {
+  let submittedValues: InitializationValues | undefined;
+  const view = await renderInitialization({ columns: 80, rows: 24 }, (values) => {
+    submittedValues = values;
+    return new Promise<AppConfig>(() => undefined);
+  });
+  t.after(() => close(view));
+
+  await send(view, "1");
+  await send(view, "\u001B[200~same-chunk-key\u001B[201~\r");
+  await send(view, "\u001B[200~same-chunk-model\u001B[201~\r");
+  await send(view, "\u001B[200~https://same-chunk.example/v1\u001B[201~\r");
+
+  await waitFor(
+    () => submittedValues !== undefined,
+    "Initialization did not submit same-chunk paste values",
+  );
+  assert.deepEqual(submittedValues, {
+    provider: "openai",
+    apiKey: "same-chunk-key",
+    model: "same-chunk-model",
+    openaiBaseUrl: "https://same-chunk.example/v1",
+  });
+});
+
+void test("initialization consumes provider paste and rejects a prematurely terminated field paste", async (t) => {
+  let submittedValues: InitializationValues | undefined;
+  const view = await renderInitialization({ columns: 80, rows: 24 }, (values) => {
+    submittedValues = values;
+    return new Promise<AppConfig>(() => undefined);
+  });
+  t.after(() => close(view));
+
+  await send(view, "\u001B[200~1\r\u001B[201~");
+  await send(view, "\r");
+
+  await send(view, "1");
+  const attackValue = "INIT_EARLY_END_SENTINEL";
+  await send(view, `\u001B[200~${attackValue}\u001B[201~\r\u001B[201~`);
+  assert.equal(view.output().includes(attackValue), false);
+
+  await send(view, "\u001B[200~safe-key\u001B[201~\r");
+  await send(view, "\r");
+  await send(view, "\r");
+
+  await waitFor(
+    () => submittedValues !== undefined,
+    "Initialization did not submit after rejecting the malformed paste",
+  );
+  assert.deepEqual(submittedValues, {
+    provider: "openai",
+    apiKey: "safe-key",
+    model: "gpt-5.4-mini",
+    openaiBaseUrl: undefined,
+  });
+});
+
 void test("initialization prioritizes validation, values, and defaults without changing pasted input", async (t) => {
   const pastedKey = "A\r\nB";
   let submittedValues: InitializationValues | undefined;
@@ -459,9 +557,11 @@ void test("initialization prioritizes validation, values, and defaults without c
 });
 
 void test("initialization clips long ASCII and CJK multiline saving errors to one row", async () => {
-  const errorMessage = "a中\r\nx 长保存错误abcdefghijklmnopqrstuvwxyz";
+  const originalError = new Error(
+    "a中\r\nx\u001B[2J api_key: saving-secret 长保存错误abcdefghijklmnopqrstuvwxyz",
+  );
   let rejectSubmission: ((error: Error) => void) | undefined;
-  let reportedErrors = 0;
+  let reportedError: Error | undefined;
   const pendingSubmission = new Promise<AppConfig>((_resolve, reject) => {
     rejectSubmission = reject;
   });
@@ -469,8 +569,8 @@ void test("initialization clips long ASCII and CJK multiline saving errors to on
     { columns: 20, rows: 2 },
     () => pendingSubmission,
     () => {},
-    () => {
-      reportedErrors++;
+    (error) => {
+      reportedError = error;
     },
   );
 
@@ -489,16 +589,22 @@ void test("initialization clips long ASCII and CJK multiline saving errors to on
     assert.ok(!frame.includes("…"));
 
     outputOffset = view.output().length;
-    rejectSubmission?.(new Error(errorMessage));
-    await waitFor(() => reportedErrors === 1, "Initialization did not report the saving error");
+    rejectSubmission?.(originalError);
+    await waitFor(
+      () => reportedError !== undefined,
+      "Initialization did not report the saving error",
+    );
     await view.instance.waitUntilRenderFlush();
     updateOutput = stripVTControlCharacters(view.output().slice(outputOffset));
     frame = renderedUpdate(view, outputOffset);
     assert.equal(renderedUpdateLines(view, outputOffset).length, 1);
     assert.ok(frame.startsWith("Error: a中␍␊x"));
-    assert.ok(updateOutput.includes("a中␍␊x"));
+    assert.ok(updateOutput.includes("a中␍␊x�[2J"));
     assert.ok(!frame.includes("…"));
     assert.ok(!updateOutput.includes("\r"));
+    assert.equal(updateOutput.includes("saving-secret"), false);
+    assert.equal(view.output().includes("\u001B[2J api_key"), false);
+    assert.equal(reportedError, originalError);
     assertNoFullscreenClear(view.output());
   } finally {
     await close(view);

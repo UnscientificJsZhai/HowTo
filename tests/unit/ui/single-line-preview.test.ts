@@ -10,6 +10,10 @@ test("toSingleLinePreview preserves text without line breaks", () => {
   assert.equal(toSingleLinePreview("printf '%s' value"), "printf '%s' value");
 });
 
+test("toSingleLinePreview replaces non-line-break terminal controls", () => {
+  assert.equal(toSingleLinePreview("left\b\u001B[2J\u009Bright"), "left��[2J�right");
+});
+
 test("toTailPreview keeps whole grapheme clusters", () => {
   assert.equal(toTailPreview("prefix1️⃣", 2), "1️⃣");
   assert.equal(toTailPreview("prefix👩🏽‍💻", 2), "👩🏽‍💻");

@@ -88,6 +88,110 @@ void test("ResolvePlaceholdersView preserves bracketed paste text verbatim", asy
   assert.equal(resolvedCommand, `printf '%s' ${pastedValue}`);
 });
 
+void test("ResolvePlaceholdersView applies same-chunk pastes before Enter", async (t) => {
+  let resolvedCommand: string | undefined;
+  const { ResolvePlaceholdersView } = await uiModules;
+  const view = await renderView(
+    <ResolvePlaceholdersView
+      candidate={placeholderCandidate()}
+      availableRows={10}
+      availableColumns={120}
+      onResolve={(resolved) => {
+        resolvedCommand = resolved.command;
+      }}
+      onBack={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+  t.after(() => close(view));
+
+  await send(view, "\u001B[200~first\u001B[201~\u001B[200~-second\u001B[201~\r");
+
+  assert.equal(resolvedCommand, "printf '%s' first-second");
+});
+
+void test("ResolvePlaceholdersView drops an unsafe paste as one block and accepts later input", async (t) => {
+  let resolvedCommand: string | undefined;
+  const { ResolvePlaceholdersView } = await uiModules;
+  const view = await renderView(
+    <ResolvePlaceholdersView
+      candidate={placeholderCandidate()}
+      availableRows={10}
+      availableColumns={120}
+      onResolve={(resolved) => {
+        resolvedCommand = resolved.command;
+      }}
+      onBack={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+  t.after(() => close(view));
+
+  const attack = "\u001B[2JPLACEHOLDER_ATTACK_SENTINEL";
+  await send(view, `\u001B[200~${attack}\u001B[201~`);
+  await settleUpdates(view);
+
+  assert.equal(view.output().includes("PLACEHOLDER_ATTACK_SENTINEL"), false);
+  assert.equal(view.outputBytes().includes(Buffer.from(attack)), false);
+
+  await send(view, "safe-value");
+  await send(view, "\r");
+  assert.equal(resolvedCommand, "printf '%s' safe-value");
+});
+
+void test("ResolvePlaceholdersView rejects a prematurely terminated paste without committing its CR", async (t) => {
+  let resolvedCommand: string | undefined;
+  const { ResolvePlaceholdersView } = await uiModules;
+  const view = await renderView(
+    <ResolvePlaceholdersView
+      candidate={placeholderCandidate()}
+      availableRows={10}
+      availableColumns={120}
+      onResolve={(resolved) => {
+        resolvedCommand = resolved.command;
+      }}
+      onBack={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+  t.after(() => close(view));
+
+  const attackValue = "PLACEHOLDER_EARLY_END_SENTINEL";
+  await send(view, `\u001B[200~${attackValue}\u001B[201~\r\u001B[201~`);
+
+  assert.equal(resolvedCommand, undefined);
+  assert.equal(view.output().includes(attackValue), false);
+
+  await send(view, "safe-value");
+  await send(view, "\r");
+  assert.equal(resolvedCommand, "printf '%s' safe-value");
+});
+
+void test("ResolvePlaceholdersView treats pasted CR and LF as data until a real Enter", async (t) => {
+  let resolvedCommand: string | undefined;
+  const { ResolvePlaceholdersView } = await uiModules;
+  const view = await renderView(
+    <ResolvePlaceholdersView
+      candidate={placeholderCandidate()}
+      availableRows={10}
+      availableColumns={120}
+      onResolve={(resolved) => {
+        resolvedCommand = resolved.command;
+      }}
+      onBack={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+  t.after(() => close(view));
+
+  await send(view, "\u001B[200~\r\n\u001B[201~");
+  await waitForOutput(view, "␍␊");
+  assert.equal(resolvedCommand, undefined);
+
+  await send(view, "\r");
+  assert.equal(resolvedCommand, "printf '%s' \r\n");
+});
+
 void test("App keeps placeholder input operable in two-, three-, and four-row terminals", async () => {
   const { App } = await uiModules;
 
@@ -240,6 +344,48 @@ void test("App renders placeholder line breaks safely while preserving the final
   assertTerminalCleanup(view);
 });
 
+void test("App keeps placeholder-like user values literal through confirmation", async (t) => {
+  const { App } = await uiModules;
+  const generatedCandidate: CommandCandidateContract = {
+    title: "Print two values",
+    command: "printf '%s %s' {{first}} {{second}}",
+    description: "Print resolved values",
+    placeholders: [
+      { name: "first", description: "First value" },
+      { name: "second", description: "Second value" },
+    ],
+  };
+  let finalCommand: string | undefined;
+  const view = await renderView(
+    <App
+      provider={{
+        generateCommands: () =>
+          Promise.resolve({ rawText: JSON.stringify({ commands: [generatedCandidate] }) }),
+      }}
+      request={appRequest()}
+      onSuccess={(command) => {
+        finalCommand = command;
+      }}
+      onError={() => {}}
+    />,
+  );
+  t.after(() => close(view));
+
+  await waitForOutput(view, "? Select a command");
+  await send(view, "\r");
+  await waitForOutput(view, "first: First value");
+  await send(view, "\u001B[200~{{second}}\u001B[201~");
+  await send(view, "\r");
+  await waitForOutput(view, "second: Second value");
+  await send(view, "done");
+  await send(view, "\r");
+  await waitForOutput(view, "printf '%s %s' {{second}} done");
+  await send(view, "\r");
+  await waitFor(() => finalCommand !== undefined, "App did not confirm the literal value");
+
+  assert.equal(finalCommand, "printf '%s %s' {{second}} done");
+});
+
 void test("ConfirmView accepts a typed uppercase EXECUTE confirmation", async (t) => {
   let confirmations = 0;
   let cancellations = 0;
@@ -290,6 +436,120 @@ void test("ConfirmView accepts a bracketed-paste EXECUTE confirmation", async (t
   await send(view, "\r");
 
   assert.equal(confirmations, 1);
+});
+
+void test("ConfirmView applies a same-chunk EXECUTE paste before Enter", async (t) => {
+  let confirmations = 0;
+  let cancellations = 0;
+  const { ConfirmView } = await uiModules;
+  const view = await renderView(
+    <ConfirmView
+      candidate={placeholderCandidate()}
+      command="rm -rf /tmp/example"
+      resolvedValues={new Map()}
+      danger={danger()}
+      onConfirm={() => {
+        confirmations++;
+      }}
+      onCancel={() => {
+        cancellations++;
+      }}
+    />,
+  );
+  t.after(() => close(view));
+
+  await send(view, "\u001B[200~EXECUTE\u001B[201~\r");
+
+  assert.equal(confirmations, 1);
+  assert.equal(cancellations, 0);
+});
+
+void test("ConfirmView discards pasted Enter for safe commands", async (t) => {
+  let confirmations = 0;
+  let cancellations = 0;
+  const { ConfirmView } = await uiModules;
+  const view = await renderView(
+    <ConfirmView
+      candidate={placeholderCandidate()}
+      command="printf safe"
+      resolvedValues={new Map()}
+      onConfirm={() => {
+        confirmations++;
+      }}
+      onCancel={() => {
+        cancellations++;
+      }}
+    />,
+  );
+  t.after(() => close(view));
+
+  await send(view, "\u001B[200~\r\u001B[201~");
+  assert.equal(confirmations, 0);
+  assert.equal(cancellations, 0);
+
+  await send(view, "\r");
+  assert.equal(confirmations, 1);
+  assert.equal(cancellations, 0);
+});
+
+void test("ConfirmView rejects a prematurely terminated paste without executing its CR", async (t) => {
+  let confirmations = 0;
+  let cancellations = 0;
+  const { ConfirmView } = await uiModules;
+  const view = await renderView(
+    <ConfirmView
+      candidate={placeholderCandidate()}
+      command="rm -rf /tmp/example"
+      resolvedValues={new Map()}
+      danger={danger()}
+      onConfirm={() => {
+        confirmations++;
+      }}
+      onCancel={() => {
+        cancellations++;
+      }}
+    />,
+  );
+  t.after(() => close(view));
+
+  await send(view, "\u001B[200~EXECUTE\u001B[201~\r\u001B[201~");
+  assert.equal(confirmations, 0);
+  assert.equal(cancellations, 0);
+
+  await send(view, "EXECUTE");
+  await send(view, "\r");
+  assert.equal(confirmations, 1);
+  assert.equal(cancellations, 0);
+});
+
+void test("ConfirmView treats a pasted Delete byte as rejected data, not a key", async (t) => {
+  let confirmations = 0;
+  let cancellations = 0;
+  const { ConfirmView } = await uiModules;
+  const view = await renderView(
+    <ConfirmView
+      candidate={placeholderCandidate()}
+      command="rm -rf /tmp/example"
+      resolvedValues={new Map()}
+      danger={danger()}
+      onConfirm={() => {
+        confirmations++;
+      }}
+      onCancel={() => {
+        cancellations++;
+      }}
+    />,
+  );
+  t.after(() => close(view));
+
+  await send(view, "EX");
+  await send(view, "\u001B[200~\u007F\u001B[201~");
+  await send(view, "ECUTE");
+  await send(view, "\r");
+
+  assert.equal(confirmations, 1);
+  assert.equal(cancellations, 0);
+  assert.equal(view.outputBytes().includes(Buffer.from("\u007F")), false);
 });
 
 void test("ResolvePlaceholdersView keeps Enter, Backspace, Delete, Escape, and Ctrl+C behavior", async (t) => {
@@ -1467,10 +1727,12 @@ void test("App still reports a current provider failure through the existing err
   const { App } = await uiModules;
   const errors: Error[] = [];
   let successCount = 0;
+  const maliciousModel = "model-left\r\nmodel-right\u001B[2J api_key: model-secret";
+  const providerError = new AiProviderError("openai", maliciousModel);
   const view = await renderView(
     <App
       provider={{
-        generateCommands: () => Promise.reject(new AiProviderError("openai", "fixed-model")),
+        generateCommands: () => Promise.reject(providerError),
       }}
       request={appRequest()}
       onSuccess={() => {
@@ -1485,13 +1747,45 @@ void test("App still reports a current provider failure through the existing err
   t.after(() => close(view));
 
   await waitFor(() => errors.length === 1, "App did not report the provider failure");
-  await waitForOutput(
-    view,
-    "Error: AI provider request failed (provider: openai, model: fixed-model)",
-  );
+  await waitForOutput(view, "model-left␍␊model-right�[2J api_key: [redacted])");
 
   assert.equal(successCount, 0);
-  assert.ok(errors[0] instanceof AiProviderError);
+  assert.equal(errors[0], providerError);
+  assert.equal(providerError.model, maliciousModel);
+  assert.equal(view.output().includes("\r"), false);
+  assert.equal(view.output().includes("model-secret"), false);
+  assert.equal(view.outputBytes().includes(Buffer.from("\u001B[2J")), false);
+  assert.ok(
+    stripVTControlCharacters(view.output())
+      .replace(/\s+/g, " ")
+      .includes(
+        "Error: AI provider request failed (provider: openai, model: model-left␍␊model-right�[2J api_key: [redacted])",
+      ),
+  );
+});
+
+void test("App sanitizes unknown error text in Ink and preserves the original error", async (t) => {
+  const { App } = await uiModules;
+  const originalError = new Error("ERROR_LEFT\r\nERROR_RIGHT\u001B[2J api_key: app-secret");
+  let reportedError: Error | undefined;
+  const view = await renderView(
+    <App
+      provider={{ generateCommands: () => Promise.reject(originalError) }}
+      request={appRequest()}
+      onSuccess={() => {}}
+      onError={(error) => {
+        reportedError = error;
+      }}
+    />,
+  );
+  t.after(() => close(view));
+
+  await waitFor(() => reportedError !== undefined, "App did not report the original error");
+  await waitForOutput(view, "Error: ERROR_LEFT␍␊ERROR_RIGHT�[2J api_key: [redacted]");
+
+  assert.equal(reportedError, originalError);
+  assert.equal(view.output().includes("app-secret"), false);
+  assert.equal(view.outputBytes().includes(Buffer.from("\u001B[2J")), false);
 });
 
 void test("ConfirmView accepts EXECUTE in a narrow four-row fake TTY", async (t) => {

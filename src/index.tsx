@@ -17,6 +17,7 @@ import { toAppError } from "./errors.js";
 import { App } from "./ui/App.js";
 import { initializeConfig } from "./init/index.js";
 import { toResizeSafeOutput } from "./ui/resize-safe-output.js";
+import { renderTerminalSafeText } from "./terminal-text.js";
 
 interface CliResult {
   exitCode: number;
@@ -93,7 +94,7 @@ async function run(argv: string[]): Promise<CliResult> {
 
     if (useCommandPathCheck !== undefined && !useCommandPathCheck.found) {
       console.error(
-        `Warning: requested command "${useCommandPathCheck.command}" was not found in PATH. Review before executing any generated command.`,
+        `Warning: requested command "${renderTerminalSafeText(useCommandPathCheck.command)}" was not found in PATH. Review before executing any generated command.`,
       );
     }
 

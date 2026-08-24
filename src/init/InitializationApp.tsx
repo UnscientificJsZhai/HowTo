@@ -1,14 +1,17 @@
-import React, { useState } from "react";
-import { Box, Text, useInput, type Key } from "ink";
+import React, { useRef, useState } from "react";
+import { Box, Text, type Key } from "ink";
 import type { AppConfig } from "../config.js";
+import { getUserVisibleErrorMessage } from "../errors.js";
 import { usePhysicalStdoutRows } from "../ui/resize-safe-output.js";
 import { toSingleLinePreview } from "../ui/single-line-preview.js";
+import { usePasteAwareInput } from "../ui/use-paste-aware-input.js";
 import type { InitializationValues } from "./index.js";
 import {
   applyInitializationInput,
   createInitialInitializationState,
   getProviderOptions,
   type InitializationFieldState,
+  type InitializationKeyInput,
   type InitializationState,
 } from "./state.js";
 
@@ -22,49 +25,74 @@ interface Props {
 type SubmitStatus = "editing" | "saving" | "error" | "cancelled";
 
 const RICH_LAYOUT_MIN_ROWS = 15;
+const PASTE_KEY: InitializationKeyInput["key"] = {
+  upArrow: false,
+  downArrow: false,
+  return: false,
+  escape: false,
+  ctrl: false,
+  backspace: false,
+  delete: false,
+};
 
 export const InitializationApp: React.FC<Props> = ({ onSubmit, onComplete, onCancel, onError }) => {
   const rows = usePhysicalStdoutRows();
   const [state, setState] = useState<InitializationState>(createInitialInitializationState);
+  const stateRef = useRef(state);
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>("editing");
+  const submitStatusRef = useRef(submitStatus);
   const [errorMessage, setErrorMessage] = useState("");
   const frameRows = Math.max(0, rows - 1);
 
-  useInput(
-    (input: string, key: Key) => {
-      if (frameRows === 0) {
-        return;
-      }
+  const handleInput = (input: string, key: InitializationKeyInput["key"]) => {
+    if (frameRows === 0) {
+      return;
+    }
 
-      if (submitStatus !== "editing") {
-        return;
-      }
+    if (submitStatusRef.current !== "editing") {
+      return;
+    }
 
-      const update = applyInitializationInput(state, { input, key });
-      setState(update.state);
+    const update = applyInitializationInput(stateRef.current, { input, key });
+    stateRef.current = update.state;
+    setState(update.state);
 
-      if (update.cancelled) {
-        setSubmitStatus("cancelled");
-        onCancel();
-        return;
-      }
+    if (update.cancelled) {
+      submitStatusRef.current = "cancelled";
+      setSubmitStatus("cancelled");
+      onCancel();
+      return;
+    }
 
-      if (update.completedValues !== undefined) {
-        setSubmitStatus("saving");
-        onSubmit(update.completedValues)
-          .then((config) => {
-            onComplete(config);
-          })
-          .catch((error: unknown) => {
-            const appError = normalizeError(error);
-            setErrorMessage(appError.message);
-            setSubmitStatus("error");
-            onError(appError);
-          });
+    if (update.completedValues !== undefined) {
+      submitStatusRef.current = "saving";
+      setSubmitStatus("saving");
+      onSubmit(update.completedValues)
+        .then((config) => {
+          onComplete(config);
+        })
+        .catch((error: unknown) => {
+          const appError = normalizeError(error);
+          setErrorMessage(getUserVisibleErrorMessage(appError));
+          submitStatusRef.current = "error";
+          setSubmitStatus("error");
+          onError(appError);
+        });
+    }
+  };
+
+  usePasteAwareInput({
+    onInput: (input: string, key: Key) => {
+      handleInput(input, key);
+    },
+    onPaste: (input) => {
+      if (stateRef.current.step === "input") {
+        handleInput(input, PASTE_KEY);
       }
     },
-    { isActive: frameRows === 0 || submitStatus === "editing" },
-  );
+    isInputActive: frameRows === 0 || submitStatus === "editing",
+    isPasteActive: frameRows > 0 && submitStatus === "editing",
+  });
 
   let content: React.ReactNode;
   if (submitStatus === "saving") {

@@ -1,9 +1,11 @@
-import React, { useState } from "react";
-import { Box, Text, useInput, useStdout, type Key } from "ink";
+import React, { useRef, useState } from "react";
+import { Box, Text, useStdout, type Key } from "ink";
 import type { DangerousCommandMatch } from "../safety/dangerous-command.js";
 import type { CommandCandidateContract } from "../ai/types.js";
+import { hasUnsafeTerminalControlCharacters } from "../terminal-text.js";
 import { isTextInputEvent } from "./text-input.js";
 import { toSingleLinePreview, toTailPreview } from "./single-line-preview.js";
+import { usePasteAwareInput } from "./use-paste-aware-input.js";
 
 interface Props {
   candidate: CommandCandidateContract;
@@ -33,48 +35,63 @@ export const ConfirmView: React.FC<Props> = ({
   availableColumns,
 }) => {
   const [buffer, setBuffer] = useState("");
+  const bufferRef = useRef(buffer);
   const { stdout } = useStdout();
   const stdoutColumns =
     typeof stdout.columns === "number" && stdout.columns > 0 ? stdout.columns : 80;
   const columns = availableColumns ?? stdoutColumns;
 
-  useInput((input: string, key: Key) => {
-    if (!isInputActive || availableRows <= 0 || isDone) return;
+  usePasteAwareInput({
+    onInput: (input: string, key: Key) => {
+      if (!isInputActive || availableRows <= 0 || isDone) return;
 
-    if (key.ctrl && input === "c") {
-      onCancel();
-      return;
-    }
+      if (key.ctrl && input === "c") {
+        onCancel();
+        return;
+      }
 
-    if (key.escape) {
-      onCancel();
-      return;
-    }
+      if (key.escape) {
+        onCancel();
+        return;
+      }
 
-    if (danger) {
-      if (key.return) {
-        if (isDangerConfirmationInput(buffer)) {
-          onConfirm();
-        } else {
-          onCancel();
+      if (danger) {
+        if (key.return) {
+          if (isDangerConfirmationInput(bufferRef.current)) {
+            onConfirm();
+          } else {
+            onCancel();
+          }
+          return;
         }
-        return;
-      }
 
-      if (key.backspace || key.delete) {
-        setBuffer((prev) => prev.slice(0, -1));
-        return;
-      }
+        if (key.backspace || key.delete) {
+          updateBuffer((previous) => previous.slice(0, -1));
+          return;
+        }
 
-      if (isTextInputEvent(input, key)) {
-        setBuffer((prev) => prev + input);
-      }
-    } else {
-      if (key.return) {
+        if (isTextInputEvent(input, key)) {
+          updateBuffer((previous) => previous + input);
+        }
+      } else if (key.return) {
         onConfirm();
       }
-    }
+    },
+    onPaste: (input) => {
+      if (danger === undefined || hasUnsafeTerminalControlCharacters(input)) {
+        return;
+      }
+
+      updateBuffer((previous) => previous + input);
+    },
+    isPasteActive: isInputActive && availableRows > 0 && !isDone,
   });
+
+  function updateBuffer(update: (previous: string) => string): void {
+    const nextBuffer = update(bufferRef.current);
+    bufferRef.current = nextBuffer;
+    setBuffer(nextBuffer);
+  }
 
   if (availableRows <= 0) {
     return null;

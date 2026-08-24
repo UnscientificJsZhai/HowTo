@@ -5,6 +5,7 @@ import {
   PlaceholderResolutionError,
   applyPlaceholderResolutionInput,
   createPlaceholderResolution,
+  replaceCommandPlaceholders,
   resolveCandidatePlaceholders,
 } from "../../../src/ui/placeholder-logic.js";
 
@@ -99,6 +100,47 @@ void test("resolveCandidatePlaceholders replaces repeated placeholder references
   assert.equal(resolved.command, "printf '%s %s' alpha beta alpha beta");
 });
 
+void test("replaceCommandPlaceholders parses only the original template once", () => {
+  const template = "printf '%s %s' {{first}} {{second}}";
+  const expected = "printf '%s %s' {{second}} done";
+
+  for (const values of [
+    new Map([
+      ["first", "{{second}}"],
+      ["second", "done"],
+    ]),
+    new Map([
+      ["second", "done"],
+      ["first", "{{second}}"],
+    ]),
+  ]) {
+    assert.equal(replaceCommandPlaceholders(template, values), expected);
+  }
+});
+
+void test("replaceCommandPlaceholders preserves placeholder-like user values literally", () => {
+  for (const value of ["{{value}}", "{{unknown}}", "prefix {{second}} suffix"]) {
+    assert.equal(
+      replaceCommandPlaceholders("echo {{value}}", new Map([["value", value]])),
+      `echo ${value}`,
+    );
+  }
+});
+
+void test("replaceCommandPlaceholders distinguishes an empty value from a missing value", () => {
+  assert.equal(
+    replaceCommandPlaceholders("before{{value}}after{{value}}", new Map([["value", ""]])),
+    "beforeafter",
+  );
+
+  assert.throws(
+    () => replaceCommandPlaceholders("echo {{missing}}", new Map()),
+    (error: unknown) =>
+      error instanceof PlaceholderResolutionError &&
+      error.message === "final command contains unresolved placeholders",
+  );
+});
+
 void test("resolveCandidatePlaceholders throws when placeholders remain unresolved", () => {
   const candidate: CommandCandidateContract = {
     title: "Echo missing",
@@ -109,7 +151,9 @@ void test("resolveCandidatePlaceholders throws when placeholders remain unresolv
 
   assert.throws(
     () => resolveCandidatePlaceholders(candidate, new Map([["known", "ok"]])),
-    PlaceholderResolutionError,
+    (error: unknown) =>
+      error instanceof PlaceholderResolutionError &&
+      error.message === "final command contains unresolved placeholders",
   );
 });
 

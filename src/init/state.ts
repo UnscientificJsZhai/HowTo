@@ -1,6 +1,7 @@
 import type { Key } from "ink";
 import type { AiProvider } from "../config.js";
 import { DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL } from "../config.js";
+import { hasUnsafeTerminalControlCharacters } from "../terminal-text.js";
 import type { InitializationValues } from "./index.js";
 
 export interface InitializationKeyInput {
@@ -164,7 +165,11 @@ function applyFieldInput(
     return updateCurrentField(state, (value) => value.slice(0, -1));
   }
 
-  if (event.input !== "" && !hasControlKey(event)) {
+  if (
+    event.input !== "" &&
+    !hasControlKey(event) &&
+    !hasUnsafeTerminalControlCharacters(event.input)
+  ) {
     return updateCurrentField(state, (value) => value + event.input);
   }
 

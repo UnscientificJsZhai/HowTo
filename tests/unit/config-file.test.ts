@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { dirname, isAbsolute, join } from "node:path";
 import test from "node:test";
 
 import { ConfigError } from "../../src/config.js";
-import { readUserConfigFile, writeUserConfigFile } from "../../src/config-file.js";
+import {
+  getConfigFilePath,
+  readUserConfigFile,
+  writeUserConfigFile,
+} from "../../src/config-file.js";
 import { createFileConfig } from "../../src/init/index.js";
 
 async function tempConfigPath(): Promise<string> {
@@ -20,6 +25,38 @@ async function writeRawConfig(path: string, content: string): Promise<void> {
 
 test("readUserConfigFile treats a missing file as empty config", async () => {
   assert.deepEqual(await readUserConfigFile(await tempConfigPath()), {});
+});
+
+test("getConfigFilePath treats missing and blank HOME as absent", () => {
+  const expectedPath = join(homedir(), ".howto", "config.json");
+
+  for (const env of [{}, { HOME: "" }, { HOME: "   " }, { HOME: "\t" }]) {
+    const path = getConfigFilePath(env);
+    assert.equal(path, expectedPath);
+    assert.equal(isAbsolute(dirname(path)), true);
+  }
+});
+
+test("getConfigFilePath accepts an absolute HOME and rejects a relative HOME", async () => {
+  const absoluteHome = await mkdtemp(join(tmpdir(), "howto-home-test-"));
+
+  assert.equal(
+    getConfigFilePath({ HOME: absoluteHome }),
+    join(absoluteHome, ".howto", "config.json"),
+  );
+  assert.throws(() => getConfigFilePath({ HOME: "relative-home" }), ConfigError);
+});
+
+test("writeUserConfigFile rejects a relative directory before creating it", async () => {
+  const relativeHome = `howto-relative-home-${process.pid}-${Date.now()}`;
+  const relativePath = join(relativeHome, ".howto", "config.json");
+
+  assert.equal(existsSync(relativeHome), false);
+  await assert.rejects(
+    () => writeUserConfigFile({ aiProvider: "openai" }, relativePath),
+    ConfigError,
+  );
+  assert.equal(existsSync(relativeHome), false);
 });
 
 test("readUserConfigFile reads known string fields and ignores unknown fields", async () => {
@@ -75,17 +112,37 @@ test("createFileConfig does not write structuredOutput by default", () => {
   );
 });
 
-test("readUserConfigFile rejects invalid JSON, non-object roots, and non-string known fields", async () => {
+test("readUserConfigFile uses fixed messages for read, JSON, and root failures", async () => {
+  const unreadablePath = await tempConfigPath();
+  await mkdir(unreadablePath, { recursive: true });
+  await assert.rejects(
+    () => readUserConfigFile(unreadablePath),
+    (error: unknown) =>
+      error instanceof ConfigError && error.message === "failed to read user config file",
+  );
+
   const invalidJsonPath = await tempConfigPath();
   await writeRawConfig(invalidJsonPath, "{");
-  await assert.rejects(() => readUserConfigFile(invalidJsonPath), ConfigError);
+  await assert.rejects(
+    () => readUserConfigFile(invalidJsonPath),
+    (error: unknown) =>
+      error instanceof ConfigError && error.message === "user config file is not valid JSON",
+  );
 
   const arrayPath = await tempConfigPath();
   await writeRawConfig(arrayPath, "[]");
-  await assert.rejects(() => readUserConfigFile(arrayPath), ConfigError);
+  await assert.rejects(
+    () => readUserConfigFile(arrayPath),
+    (error: unknown) =>
+      error instanceof ConfigError &&
+      error.message === "user config file must contain a JSON object",
+  );
+});
 
+test("readUserConfigFile rejects invalid known field types", async () => {
   const invalidFieldPath = await tempConfigPath();
   await writeRawConfig(invalidFieldPath, '{"aiProvider":42}');
+
   await assert.rejects(() => readUserConfigFile(invalidFieldPath), ConfigError);
 });
 
@@ -103,6 +160,37 @@ test("writeUserConfigFile creates and fully overwrites config file", async () =>
     openaiApiKey: "",
     openaiModel: "gpt",
   });
+  assert.deepEqual(await readdir(dirname(path)), ["config.json"]);
+});
+
+test("writeUserConfigFile cleans temporary data when atomic replacement fails", async () => {
+  const path = await tempConfigPath();
+  await mkdir(path, { recursive: true });
+
+  await assert.rejects(
+    () =>
+      writeUserConfigFile(
+        { aiProvider: "gemini", geminiApiKey: "temporary-secret", geminiModel: "model" },
+        path,
+      ),
+    ConfigError,
+  );
+
+  assert.deepEqual(await readdir(dirname(path)), ["config.json"]);
+  assert.deepEqual(await readdir(path), []);
+});
+
+test("writeUserConfigFile maps config directory creation failures to a fixed error", async (t) => {
+  const parentDirectory = await mkdtemp(join(tmpdir(), "howto-config-parent-file-test-"));
+  t.after(() => rm(parentDirectory, { recursive: true, force: true }));
+  const blockingFile = join(parentDirectory, "not-a-directory");
+  await writeFile(blockingFile, "blocking file", "utf8");
+
+  await assert.rejects(
+    () => writeUserConfigFile({ aiProvider: "openai" }, join(blockingFile, "config.json")),
+    (error: unknown) =>
+      error instanceof ConfigError && error.message === "failed to save user config file",
+  );
 });
 
 test("createFileConfig writes only selected provider fields", () => {

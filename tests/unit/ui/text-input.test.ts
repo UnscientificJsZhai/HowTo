@@ -10,6 +10,18 @@ void test("isTextInputEvent accepts text with non-shortcut modifiers and Kitty p
   assert.equal(isTextInputEvent("7", key({ numLock: true })), true);
   assert.equal(isTextInputEvent("paste Value!", key({ eventType: "press" })), true);
   assert.equal(isTextInputEvent("many characters at once", key({ eventType: "repeat" })), true);
+  assert.equal(isTextInputEvent("pasted\r\ntext", key()), true);
+});
+
+void test("isTextInputEvent rejects a whole text chunk containing any forbidden control", () => {
+  for (const codeUnit of unsafeTerminalCodeUnits()) {
+    const input = `accepted-prefix${String.fromCharCode(codeUnit)}accepted-suffix`;
+    assert.equal(
+      isTextInputEvent(input, key()),
+      false,
+      `expected U+${codeUnit.toString(16).toUpperCase().padStart(4, "0")} to reject the chunk`,
+    );
+  }
 });
 
 void test("isTextInputEvent rejects empty, shortcut, navigation, and release events", () => {
@@ -64,4 +76,12 @@ function key(overrides: Partial<Key> = {}): Key {
     numLock: false,
     ...overrides,
   };
+}
+
+function unsafeTerminalCodeUnits(): number[] {
+  return [...range(0x00, 0x09), ...range(0x0b, 0x0c), ...range(0x0e, 0x1f), ...range(0x7f, 0x9f)];
+}
+
+function range(start: number, end: number): number[] {
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
 }

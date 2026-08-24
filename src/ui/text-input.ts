@@ -1,8 +1,10 @@
 import type { Key } from "ink";
+import { hasUnsafeTerminalControlCharacters } from "../terminal-text.js";
 
 export function isTextInputEvent(input: string, key: Key): boolean {
   return (
     input.length > 0 &&
+    !hasUnsafeTerminalControlCharacters(input) &&
     key.eventType !== "release" &&
     !key.ctrl &&
     !key.meta &&

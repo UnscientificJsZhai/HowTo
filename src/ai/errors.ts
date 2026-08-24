@@ -1,4 +1,5 @@
 import type { AiProvider } from "../config.js";
+import { sanitizeUserVisibleErrorMessage } from "../user-visible-error.js";
 
 export class AiProviderError extends Error {
   readonly provider: AiProvider;
@@ -13,5 +14,5 @@ export class AiProviderError extends Error {
 }
 
 function formatProviderError(provider: AiProvider, model: string): string {
-  return `AI provider request failed (provider: ${provider}, model: ${model})`;
+  return `AI provider request failed (provider: ${provider}, model: ${sanitizeUserVisibleErrorMessage(model)})`;
 }

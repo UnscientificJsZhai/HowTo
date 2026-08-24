@@ -1,9 +1,11 @@
-import React, { useState } from "react";
-import { Box, Text, useInput, type Key } from "ink";
+import React, { useRef, useState } from "react";
+import { Box, Text, type Key } from "ink";
 import type { CommandCandidateContract } from "../ai/types.js";
+import { hasUnsafeTerminalControlCharacters } from "../terminal-text.js";
 import { SelectedCommandDisplay } from "./SelectedCommandDisplay.js";
 import { toSingleLinePreview, toTailPreview } from "./single-line-preview.js";
 import { isTextInputEvent } from "./text-input.js";
+import { usePasteAwareInput } from "./use-paste-aware-input.js";
 import {
   applyPlaceholderResolutionInput,
   createPlaceholderResolution,
@@ -35,26 +37,16 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
   const [resolutionState, setResolutionState] = useState<PlaceholderResolutionState>(() =>
     createPlaceholderResolution(candidate),
   );
+  const resolutionStateRef = useRef(resolutionState);
   const { currentPlaceholder, currentBuffer, resolvedValues } =
     getPlaceholderResolutionView(resolutionState);
 
-  useInput((input: string, key: Key) => {
-    if (!isInputActive || availableRows <= 0) return;
-
-    if (key.ctrl && input === "c") {
-      onCancel();
-      return;
-    }
-
-    const resolutionInput = toPlaceholderResolutionInput(input, key);
-    if (!resolutionInput) {
-      return;
-    }
-
-    const transition = applyPlaceholderResolutionInput(resolutionState, resolutionInput);
+  const handleResolutionInput = (resolutionInput: PlaceholderResolutionInput) => {
+    const transition = applyPlaceholderResolutionInput(resolutionStateRef.current, resolutionInput);
 
     switch (transition.type) {
       case "editing":
+        resolutionStateRef.current = transition.state;
         setResolutionState(transition.state);
         return;
       case "back-to-selection":
@@ -64,6 +56,30 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
         onResolve(transition.resolved);
         return;
     }
+  };
+
+  usePasteAwareInput({
+    onInput: (input: string, key: Key) => {
+      if (!isInputActive || availableRows <= 0) return;
+
+      if (key.ctrl && input === "c") {
+        onCancel();
+        return;
+      }
+
+      const resolutionInput = toPlaceholderResolutionInput(input, key);
+      if (resolutionInput !== undefined) {
+        handleResolutionInput(resolutionInput);
+      }
+    },
+    onPaste: (input) => {
+      if (hasUnsafeTerminalControlCharacters(input)) {
+        return;
+      }
+
+      handleResolutionInput({ type: "append", value: input });
+    },
+    isPasteActive: isInputActive && availableRows > 0,
   });
 
   if (availableRows <= 0) {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -161,6 +161,7 @@ test("--print hides upstream provider error details from terminal output", async
   const upstreamBody = "UPSTREAM_BODY_SENTINEL";
   const upstreamHeader = "UPSTREAM_HEADER_SENTINEL";
   const upstreamMessage = `${upstreamBody}: https://user:${basicAuthPassword}@provider.example/v1?token=${queryToken}`;
+  const maliciousModel = "model-left\r\nmodel-right\u001B[2J api_key: model-secret";
   let secretResponseDelivered = false;
   const server = createServer((request, response) => {
     if (request.method !== "POST" || request.url !== "/chat/completions") {
@@ -197,7 +198,7 @@ test("--print hides upstream provider error details from terminal output", async
         "--openai-api-url",
         localUrl,
         "--openai-model",
-        "fake-model",
+        maliciousModel,
         "show repo status",
       ],
       {
@@ -214,15 +215,52 @@ test("--print hides upstream provider error details from terminal output", async
     assert.equal(result.stdout.length, 0);
     assert.deepEqual(
       result.stderr,
-      Buffer.from("AI provider request failed (provider: openai, model: fake-model)\n"),
+      Buffer.from(
+        "AI provider request failed (provider: openai, model: model-left␍␊model-right�[2J api_key: [redacted])\n",
+      ),
     );
     assert.equal(terminalOutput.includes(upstreamMessage), false);
     assert.equal(terminalOutput.includes(basicAuthPassword), false);
     assert.equal(terminalOutput.includes(queryToken), false);
     assert.equal(terminalOutput.includes(upstreamBody), false);
     assert.equal(terminalOutput.includes(upstreamHeader), false);
+    assert.equal(terminalOutput.includes("model-secret"), false);
+    assert.equal(result.stderr.includes(Buffer.from("\u001B[2J")), false);
   } finally {
     await closeServer(server);
+    await rm(homeDirectory, { recursive: true, force: true });
+  }
+});
+
+test("malicious invalid user config exits with only the fixed summary", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "howto-malicious-config-path-sentinel-"));
+  const configDirectory = join(homeDirectory, ".howto");
+  const configSecret = "CONFIG_SECRET_SENTINEL";
+  const attackSequence = "\u001B[2JCONFIG_ATTACK_SENTINEL";
+  await mkdir(configDirectory, { recursive: true });
+  await writeFile(
+    join(configDirectory, "config.json"),
+    `{"openaiApiKey":"${configSecret}","broken":"${attackSequence}"`,
+    "utf8",
+  );
+
+  try {
+    const result = await runCliProcess(["--print", "show repo status"], {
+      HOME: homeDirectory,
+      PATH: process.env.PATH,
+    });
+
+    assert.equal(result.exitCode, 2);
+    assert.equal(result.stdout.length, 0);
+    assert.deepEqual(
+      result.stderr,
+      Buffer.from("Configuration error: user config file is not valid JSON\n"),
+    );
+    assert.equal(result.stderr.includes(Buffer.from(configSecret)), false);
+    assert.equal(result.stderr.includes(Buffer.from(homeDirectory)), false);
+    assert.equal(result.stderr.includes(Buffer.from(attackSequence)), false);
+    assert.equal(result.stderr.includes(Buffer.from("CONFIG_ATTACK_SENTINEL")), false);
+  } finally {
     await rm(homeDirectory, { recursive: true, force: true });
   }
 });

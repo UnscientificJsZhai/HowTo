@@ -47,10 +47,7 @@ export async function initializeConfig({
     const instance: Instance = render(
       <InitializationApp
         onSubmit={async (values) => {
-          const fileConfig = createFileConfig(values);
-          const configFilePath = getConfigFilePath(env);
-          await writeUserConfigFile(fileConfig, configFilePath);
-          return loadConfig(cliOptions, env, fileConfig);
+          return validateAndPersistInitializationConfig(values, cliOptions, env);
         }}
         onComplete={(config) => {
           settle(() => {
@@ -75,6 +72,19 @@ export async function initializeConfig({
       },
     );
   });
+}
+
+export async function validateAndPersistInitializationConfig(
+  values: InitializationValues,
+  cliOptions: GlobalOptions,
+  env: ConfigEnvironment & NodeJS.ProcessEnv,
+): Promise<AppConfig> {
+  const fileConfig = createFileConfig(values);
+  const config = loadConfig(cliOptions, env, fileConfig);
+  const configFilePath = getConfigFilePath(env);
+
+  await writeUserConfigFile(fileConfig, configFilePath);
+  return config;
 }
 
 export function clearInitializationOutput(output: InteractiveOutput, rows: number): void {

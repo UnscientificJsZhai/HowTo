@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Box, Text, useInput, useWindowSize, type Key } from "ink";
+import { Box, Text, useInput, usePaste, useWindowSize, type Key } from "ink";
 import { LoadingView } from "./LoadingView.js";
 import { SelectCommandView } from "./SelectCommandView.js";
 import { ResolvePlaceholdersView } from "./ResolvePlaceholdersView.js";
@@ -14,6 +14,7 @@ import { detectDangerousCommand, type DangerousCommandMatch } from "../safety/da
 import { resolveCandidatePlaceholders, type ResolvedCommand } from "./placeholder-logic.js";
 import { InteractionCancelledError } from "./tty.js";
 import { usePhysicalStdoutRows } from "./resize-safe-output.js";
+import { getUserVisibleErrorMessage } from "../errors.js";
 
 type Status = "loading" | "selecting" | "resolving" | "confirming" | "error" | "done";
 
@@ -38,6 +39,8 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
   const cancellationReportedRef = useRef(false);
   const frameRows = Math.max(0, rows - 1);
   const isFrameVisible = frameRows > 0;
+
+  usePaste(() => {}, { isActive: isFrameVisible });
 
   const handleCancel = useCallback(() => {
     activeRequestControllerRef.current?.abort();
@@ -74,7 +77,7 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
         if (!isCurrent || controller.signal.aborted) return;
 
         const appError = normalizeError(error);
-        setErrorMessage(appError.message);
+        setErrorMessage(getUserVisibleErrorMessage(appError));
         setStatus("error");
         onError(appError);
       });
@@ -102,7 +105,7 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
         setStatus("confirming");
       } catch (error: unknown) {
         const appError = normalizeError(error);
-        setErrorMessage(appError.message);
+        setErrorMessage(getUserVisibleErrorMessage(appError));
         setStatus("error");
         onError(appError);
       }

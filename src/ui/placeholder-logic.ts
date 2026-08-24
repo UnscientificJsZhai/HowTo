@@ -1,6 +1,6 @@
 import type { CommandCandidateContract, CommandPlaceholderContract } from "../ai/types.js";
 
-const UNRESOLVED_PLACEHOLDER_PATTERN = /{{[^{}]*}}/;
+const PLACEHOLDER_REFERENCE_PATTERN = /{{([^{}]*)}}/g;
 
 export class PlaceholderResolutionError extends Error {
   constructor(message: string) {
@@ -109,7 +109,6 @@ export function resolveCandidatePlaceholders(
   values: Map<string, string>,
 ): ResolvedCommand {
   const command = replaceCommandPlaceholders(candidate.command, values);
-  assertNoUnresolvedPlaceholders(command);
 
   return {
     candidate,
@@ -119,19 +118,13 @@ export function resolveCandidatePlaceholders(
 }
 
 export function replaceCommandPlaceholders(command: string, values: Map<string, string>): string {
-  let resolvedCommand = command;
+  return command.replace(PLACEHOLDER_REFERENCE_PATTERN, (_reference, name: string) => {
+    if (!values.has(name)) {
+      throw new PlaceholderResolutionError("final command contains unresolved placeholders");
+    }
 
-  for (const [name, value] of values) {
-    resolvedCommand = resolvedCommand.split(`{{${name}}}`).join(value);
-  }
-
-  return resolvedCommand;
-}
-
-export function assertNoUnresolvedPlaceholders(command: string): void {
-  if (UNRESOLVED_PLACEHOLDER_PATTERN.test(command)) {
-    throw new PlaceholderResolutionError("final command contains unresolved placeholders");
-  }
+    return values.get(name) ?? "";
+  });
 }
 
 function applyEscape(state: PlaceholderResolutionState): PlaceholderResolutionTransition {
