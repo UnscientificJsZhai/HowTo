@@ -1,6 +1,6 @@
 {
   "name": "@unscientificjszhai/howto",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "Use AI to quickly find commands within the terminal.",
   "license": "MIT",
