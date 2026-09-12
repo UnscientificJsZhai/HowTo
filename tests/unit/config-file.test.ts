@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { ConfigError } from "../../src/config.js";
@@ -28,7 +30,7 @@ test("readUserConfigFile treats a missing file as empty config", async () => {
 });
 
 test("getConfigFilePath treats missing and blank HOME as absent", () => {
-  const expectedPath = join(homedir(), ".howto", "config.json");
+  const expectedPath = join(userInfo().homedir, ".howto", "config.json");
 
   for (const env of [{}, { HOME: "" }, { HOME: "   " }, { HOME: "\t" }]) {
     const path = getConfigFilePath(env);
@@ -36,6 +38,36 @@ test("getConfigFilePath treats missing and blank HOME as absent", () => {
     assert.equal(isAbsolute(dirname(path)), true);
   }
 });
+
+for (const [label, home] of [
+  ["absent", undefined],
+  ["empty", ""],
+  ["spaces", "   "],
+  ["tab", "\t"],
+] as const) {
+  test(`真实子进程 HOME ${label} 使用系统目录且不创建配置`, async (t) => {
+    const cwd = await mkdtemp(join(tmpdir(), "howto-home-child-"));
+    t.after(() => rm(cwd, { recursive: true, force: true }));
+    const child = spawnSync(
+      process.execPath,
+      [fileURLToPath(new URL("./fixtures/config-home-child.js", import.meta.url))],
+      {
+        cwd,
+        env: home === undefined ? {} : { HOME: home },
+        encoding: "utf8",
+        timeout: 5_000,
+        killSignal: "SIGKILL",
+        maxBuffer: 1024 * 1024,
+      },
+    );
+    assert.ifError(child.error);
+    assert.equal(child.signal, null);
+    assert.equal(child.status, 0, child.stderr);
+    assert.equal(child.stderr, "");
+    assert.equal(child.stdout, '{"matchesSystemHome":true,"absolute":true}\n');
+    assert.deepEqual(await readdir(cwd), []);
+  });
+}
 
 test("getConfigFilePath accepts an absolute HOME and rejects a relative HOME", async () => {
   const absoluteHome = await mkdtemp(join(tmpdir(), "howto-home-test-"));
@@ -46,6 +78,66 @@ test("getConfigFilePath accepts an absolute HOME and rejects a relative HOME", a
   );
   assert.throws(() => getConfigFilePath({ HOME: "relative-home" }), ConfigError);
 });
+
+test("HOME 缺失或为空白时只查询一次系统目录", () => {
+  const systemHome = join(tmpdir(), "howto-system-home");
+  for (const env of [{}, { HOME: "" }, { HOME: "   " }, { HOME: "\t" }]) {
+    let queries = 0;
+    assert.equal(
+      getConfigFilePath(env, () => {
+        queries += 1;
+        return systemHome;
+      }),
+      join(systemHome, ".howto", "config.json"),
+    );
+    assert.equal(queries, 1);
+  }
+});
+
+test("显式非空 HOME 保留原值且不调用系统查询", () => {
+  const absoluteHome = `${join(tmpdir(), "howto-preserved-home")} `;
+  const unexpectedLookup = () => {
+    throw new Error("HOWTO_FAKE_UNEXPECTED_LOOKUP_SECRET");
+  };
+  assert.equal(
+    getConfigFilePath({ HOME: absoluteHome }, unexpectedLookup),
+    join(absoluteHome, ".howto", "config.json"),
+  );
+  assert.throws(
+    () => getConfigFilePath({ HOME: " relative-home " }, unexpectedLookup),
+    (error: unknown) =>
+      error instanceof ConfigError && error.message === "config directory must be an absolute path",
+  );
+});
+
+test("系统目录查询异常只返回固定配置错误", () => {
+  assert.throws(
+    () =>
+      getConfigFilePath({ HOME: " " }, () => {
+        throw new Error("\u001b[2JHOWTO_FAKE_HOME_LOOKUP_SECRET /private/fake-home");
+      }),
+    isSystemHomeError,
+  );
+});
+
+for (const [label, value] of [
+  ["undefined", undefined],
+  ["null", null],
+  ["number", 7],
+  ["object", {}],
+  ["empty", ""],
+  ["spaces", "   "],
+  ["tab", "\t"],
+  ["relative", "relative-home"],
+] as const) {
+  test(`系统目录查询返回 ${label} 时固定失败`, () => {
+    assert.throws(() => getConfigFilePath({}, () => value as string), isSystemHomeError);
+  });
+}
+
+function isSystemHomeError(error: unknown): boolean {
+  return error instanceof ConfigError && error.message === "failed to resolve user home directory";
+}
 
 test("writeUserConfigFile rejects a relative directory before creating it", async () => {
   const relativeHome = `howto-relative-home-${process.pid}-${Date.now()}`;

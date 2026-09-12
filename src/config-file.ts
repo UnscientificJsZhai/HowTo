@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join } from "node:path";
-import { homedir } from "node:os";
+import { userInfo } from "node:os";
 import { ConfigError } from "./config.js";
 
 export interface FileConfig {
@@ -23,10 +23,28 @@ const CONFIG_FILE_FIELDS = new Set<keyof FileConfig>([
   "structuredOutput",
 ]);
 
-export function getConfigFilePath(env: NodeJS.ProcessEnv = process.env): string {
+export function getConfigFilePath(
+  env: NodeJS.ProcessEnv = process.env,
+  getSystemHomeDirectory: () => string = () => userInfo().homedir,
+): string {
   const configuredHome = env.HOME;
-  const homeDirectory =
-    configuredHome === undefined || configuredHome.trim() === "" ? homedir() : configuredHome;
+  let homeDirectory: string;
+  if (configuredHome === undefined || configuredHome.trim() === "") {
+    try {
+      homeDirectory = getSystemHomeDirectory();
+    } catch {
+      throw new ConfigError("failed to resolve user home directory");
+    }
+    if (
+      typeof homeDirectory !== "string" ||
+      homeDirectory.trim() === "" ||
+      !isAbsolute(homeDirectory)
+    ) {
+      throw new ConfigError("failed to resolve user home directory");
+    }
+  } else {
+    homeDirectory = configuredHome;
+  }
   const configDirectory = join(homeDirectory, ".howto");
 
   assertAbsoluteConfigDirectory(configDirectory);

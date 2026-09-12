@@ -131,6 +131,8 @@ Configuration is resolved in this order:
 3. `~/.howto/config.json`
 4. Built-in defaults
 
+The config path uses `HOME` when it is an absolute path. If `HOME` is missing or blank, howto queries the operating system for the user's home directory. A non-empty relative `HOME` or a failed system lookup produces a configuration error before any file is created.
+
 For each setting, the first configured source in that order wins:
 
 - `--ai-provider` / `HOWTO_AI_PROVIDER` / `aiProvider` - `openai` or `gemini`; no default.

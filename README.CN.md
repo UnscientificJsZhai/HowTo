@@ -131,6 +131,8 @@ howto "explain this flag" -- --force
 3. `~/.howto/config.json`
 4. 内置默认值
 
+配置路径使用绝对路径形式的 `HOME`。`HOME` 缺失或为空白时，howto 从系统用户信息查询主目录；非空相对 `HOME` 或系统查询失败会在创建文件前返回配置错误。
+
 对每个配置项，优先级中第一个已配置的来源生效：
 
 - `--ai-provider` / `HOWTO_AI_PROVIDER` / `aiProvider` - `openai` 或 `gemini`；无默认值。
