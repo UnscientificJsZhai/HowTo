@@ -40,17 +40,19 @@ export class OpenAiCommandProvider implements CommandProvider {
 }
 
 export function buildOpenAiClientOptions(config: AppConfig["openai"]): ClientOptions {
+  const baseURL = config.baseUrl || "https://api.openai.com/v1";
+
   if (config.apiKey.trim() !== "") {
     return {
       apiKey: config.apiKey,
-      baseURL: config.baseUrl,
+      baseURL,
       logLevel: "off",
     };
   }
 
   return {
     apiKey: "howto-empty-api-key",
-    baseURL: config.baseUrl,
+    baseURL,
     logLevel: "off",
     defaultHeaders: {
       Authorization: null,

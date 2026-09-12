@@ -72,7 +72,7 @@ test("OpenAI client options preserve non-empty API key", () => {
   });
 
   assert.equal(options.apiKey, "openai-key");
-  assert.equal(options.baseURL, undefined);
+  assert.equal(options.baseURL, "https://api.openai.com/v1");
   assert.equal(options.logLevel, "off");
   assert.equal(options.defaultHeaders, undefined);
 });

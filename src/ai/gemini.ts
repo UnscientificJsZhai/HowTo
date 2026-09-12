@@ -1,4 +1,8 @@
-import { GoogleGenAI, type GenerateContentParameters } from "@google/genai";
+import {
+  GoogleGenAI,
+  type GenerateContentParameters,
+  type GoogleGenAIOptions,
+} from "@google/genai";
 
 import type { AppConfig } from "../config.js";
 import type { CommandProvider, GenerateCommandsRequest, GenerateCommandsResult } from "./types.js";
@@ -11,7 +15,7 @@ export class GeminiCommandProvider implements CommandProvider {
 
   constructor(config: AppConfig["gemini"]) {
     this.model = config.model;
-    this.client = new GoogleGenAI({ apiKey: config.apiKey });
+    this.client = new GoogleGenAI(buildGeminiClientOptions(config));
   }
 
   async generateCommands(
@@ -34,6 +38,16 @@ export class GeminiCommandProvider implements CommandProvider {
 
     return { rawText };
   }
+}
+
+export function buildGeminiClientOptions(config: AppConfig["gemini"]): GoogleGenAIOptions {
+  return {
+    apiKey: config.apiKey,
+    enterprise: false,
+    vertexai: false,
+    apiVersion: "v1beta",
+    httpOptions: { baseUrl: "https://generativelanguage.googleapis.com/" },
+  };
 }
 
 export function buildGeminiGenerateContentRequest(
