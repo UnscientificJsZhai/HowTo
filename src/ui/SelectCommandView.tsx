@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Box, Text, useInput, type Key } from "ink";
 import type { CommandCandidateContract } from "../ai/types.js";
 import { toSingleLinePreview } from "./single-line-preview.js";
@@ -26,6 +26,13 @@ export const SelectCommandView: React.FC<Props> = ({
   onCancel,
 }) => {
   const [activeIndex, setActiveIndex] = useState(0);
+  const activeIndexRef = useRef(0);
+
+  function updateActiveIndex(update: (previous: number) => number): void {
+    const nextIndex = update(activeIndexRef.current);
+    activeIndexRef.current = nextIndex;
+    setActiveIndex(nextIndex);
+  }
 
   useInput((input: string, key: Key) => {
     if (!isInputActive || availableRows <= 0) return;
@@ -36,15 +43,15 @@ export const SelectCommandView: React.FC<Props> = ({
     }
 
     if (key.upArrow) {
-      setActiveIndex((prev) => (prev - 1 + candidates.length) % candidates.length);
+      updateActiveIndex((prev) => (prev - 1 + candidates.length) % candidates.length);
     }
 
     if (key.downArrow) {
-      setActiveIndex((prev) => (prev + 1) % candidates.length);
+      updateActiveIndex((prev) => (prev + 1) % candidates.length);
     }
 
     if (key.return) {
-      onSelect(candidates[activeIndex]);
+      onSelect(candidates[activeIndexRef.current]);
     }
   });
 
