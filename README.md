@@ -68,6 +68,10 @@ Limit candidates to a specific tool:
 howto use git "show commits from last week"
 ```
 
+`use` checks the first actual tool exactly after environment assignments and supported `sudo`/`env` options. For example, `sudo -u root git status` satisfies `use git`, while `sudo -u git id` does not. Unknown wrapper options, missing option values, dynamic executable prefixes, and complex shell structures are rejected. This constraint applies to the first command segment, not subsequent segments.
+
+Declared placeholders may appear after the first tool, as in `git log -n {{count}}`. The tool name and preceding prefixes must be identifiable before placeholder resolution. Template analysis does not change the command text.
+
 Print command candidates without entering the interactive UI:
 
 ```bash
