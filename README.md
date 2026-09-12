@@ -79,6 +79,7 @@ howto --print "list the largest files" /var/log
 ```text
 howto [options] [use <command>] <question> [<argument>...]
 howto --init
+howto --version
 ```
 
 Examples:
@@ -93,6 +94,7 @@ howto --ai-provider openai --print "show listening ports"
 Options:
 
 - `--init` - start interactive provider setup and save `~/.howto/config.json`.
+- `--version` - use alone to print the current package version and exit successfully; requires no configuration or TTY and makes no AI request.
 - `--print` - print validated command candidates and exit without executing.
 - `--ai-provider <openai|gemini>` - select the AI provider.
 - `--gemini-api-key <key>` - provide a Gemini API key.

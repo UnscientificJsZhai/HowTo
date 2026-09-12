@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -92,6 +92,97 @@ test("parseCliArgs rejects init with print or question", () => {
   assert.throws(() => parseCliArgs(["--init", "--print"]), CliParseError);
   assert.throws(() => parseCliArgs(["--init", "question"]), CliParseError);
 });
+
+test("parseCliArgs 解析独立的 --version，无需 question", () => {
+  assert.deepEqual(parseCliArgs(["--version"]), {
+    options: { print: false, version: true },
+    arguments: [],
+  });
+});
+
+test("parseCliArgs 拒绝 --version 附带值或与其他参数混用", () => {
+  const invalidArguments = [
+    ["--version=true"],
+    ["--version="],
+    ["--version", "1.0.0"],
+    ["--version", "--init"],
+    ["--init", "--version"],
+    ["--version", "--print"],
+    ["--version", "--ai-provider", "openai"],
+    ["--openai-model=model", "--version"],
+    ["--version", "question"],
+    ["question", "--version"],
+    ["--version", "use", "git", "question"],
+    ["--version", "--version"],
+    ["--version", "--"],
+  ];
+
+  for (const args of invalidArguments) {
+    assert.throws(() => parseCliArgs(args), CliParseError, JSON.stringify(args));
+  }
+});
+
+test("parseCliArgs 将 -- 后的 --version 保留为位置参数", () => {
+  assert.deepEqual(parseCliArgs(["--", "--version"]), {
+    options: { print: false },
+    question: "--version",
+    arguments: [],
+  });
+  assert.deepEqual(parseCliArgs(["解释这个参数", "--", "--version"]), {
+    options: { print: false },
+    question: "解释这个参数",
+    arguments: ["--version"],
+  });
+});
+
+test("--version 用法错误仅输出错误与 Usage，退出码为 2", async () => {
+  for (const args of [["--version=true"], ["--version", "--init"], ["question", "--version"]]) {
+    const { value, logs, errors } = await captureConsoleOutput(() => run(args));
+    assert.equal(value.exitCode, 2);
+    assert.deepEqual(logs, []);
+    assert.match(errors.join("\n"), /--version (?:does not accept a value|must be used alone)/);
+    assert.match(errors.join("\n"), /Usage: howto/);
+    assert.match(errors.join("\n"), /howto --version/);
+  }
+});
+
+for (const corruptConfig of [false, true]) {
+  test(`--version 在非 TTY、${corruptConfig ? "配置损坏" : "未初始化"}时从任意工作目录输出包版本`, async () => {
+    const homeDirectory = await mkdtemp(join(tmpdir(), "howto-version-test-"));
+    const configDirectory = join(homeDirectory, ".howto");
+    const configContent = "{invalid JSON";
+
+    try {
+      await writeFile(join(homeDirectory, "package.json"), '{"version":"99.0.0"}', "utf8");
+      if (corruptConfig) {
+        await mkdir(configDirectory);
+        await writeFile(join(configDirectory, "config.json"), configContent, "utf8");
+      }
+
+      const metadata = JSON.parse(
+        await readFile(new URL("../../../package.json", import.meta.url), "utf8"),
+      ) as { version: string };
+      const result = await runCliProcess(
+        ["--version"],
+        { HOME: homeDirectory, PATH: process.env.PATH },
+        homeDirectory,
+      );
+
+      assert.equal(result.exitCode, 0);
+      assert.deepEqual(result.stdout, Buffer.from(`${metadata.version}\n`));
+      assert.equal(result.stderr.length, 0);
+      assert.deepEqual(
+        (await readdir(homeDirectory)).sort(),
+        corruptConfig ? [".howto", "package.json"] : ["package.json"],
+      );
+      if (corruptConfig) {
+        assert.equal(await readFile(join(configDirectory, "config.json"), "utf8"), configContent);
+      }
+    } finally {
+      await rm(homeDirectory, { recursive: true, force: true });
+    }
+  });
+}
 
 test("--print use rejects AI candidates that do not clearly use requested command", async () => {
   const server = createServer((request, response) => {
@@ -301,10 +392,13 @@ async function captureConsoleOutput<T>(
 async function runCliProcess(
   args: string[],
   env: NodeJS.ProcessEnv,
+  cwd?: string,
 ): Promise<{ exitCode: number; stdout: Buffer; stderr: Buffer }> {
   const child = spawn(process.execPath, [CLI_ENTRYPOINT, ...args], {
     env,
+    cwd,
     stdio: ["ignore", "pipe", "pipe"],
+    timeout: 30_000,
   });
   const stdout: Buffer[] = [];
   const stderr: Buffer[] = [];

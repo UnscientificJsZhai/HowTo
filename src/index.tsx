@@ -18,6 +18,7 @@ import { App } from "./ui/App.js";
 import { initializeConfig } from "./init/index.js";
 import { toResizeSafeOutput } from "./ui/resize-safe-output.js";
 import { renderTerminalSafeText } from "./terminal-text.js";
+import { readPackageVersion } from "./version.js";
 
 interface CliResult {
   exitCode: number;
@@ -26,6 +27,11 @@ interface CliResult {
 async function run(argv: string[]): Promise<CliResult> {
   try {
     const parsedCli = parseCliArgs(argv);
+
+    if (parsedCli.options.version) {
+      console.log(readPackageVersion());
+      return { exitCode: 0 };
+    }
 
     if (parsedCli.options.init) {
       ensureInteractiveTty(process.stdin, process.stdout);

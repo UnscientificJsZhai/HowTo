@@ -79,6 +79,7 @@ howto --print 列出最大的文件 /var/log
 ```text
 howto [options] [use <command>] <question> [<argument>...]
 howto --init
+howto --version
 ```
 
 示例：
@@ -93,6 +94,7 @@ howto --ai-provider openai --print 列出监听的端口
 参数：
 
 - `--init` - 启动交互式 provider 配置，并保存 `~/.howto/config.json`。
+- `--version` - 单独使用，输出当前包版本号并成功退出；无需配置或 TTY，不调用 AI。
 - `--print` - 打印已校验的命令候选项并退出，不执行命令。
 - `--ai-provider <openai|gemini>` - 选择 AI provider。
 - `--gemini-api-key <key>` - 提供 Gemini API key。

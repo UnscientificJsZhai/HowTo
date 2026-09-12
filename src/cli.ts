@@ -3,6 +3,7 @@ export type AiProviderOption = string;
 export interface GlobalOptions {
   print: boolean;
   init?: boolean;
+  version?: boolean;
   aiProvider?: AiProviderOption;
   geminiApiKey?: string;
   geminiModel?: string;
@@ -36,13 +37,15 @@ const VALUE_OPTIONS = new Set([
   "--structured-output",
 ]);
 
-const BOOLEAN_OPTIONS = new Set(["--print", "--init"]);
+const BOOLEAN_OPTIONS = new Set(["--print", "--init", "--version"]);
 
 export const USAGE = `Usage: howto [options] [use <command>] <question> [<argument>...]
        howto --init
+       howto --version
 
 Options:
   --init
+  --version
   --print
   --ai-provider <openai|gemini>
   --gemini-api-key <key>
@@ -98,6 +101,14 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     positionals.push(token);
   }
 
+  if (options.version) {
+    if (argv.length !== 1) {
+      throw new CliParseError("--version must be used alone");
+    }
+
+    return { options, arguments: [] };
+  }
+
   return parsePositionals(options, positionals);
 }
 
@@ -146,6 +157,9 @@ function assignBooleanOption(options: GlobalOptions, optionName: string): void {
       return;
     case "--init":
       options.init = true;
+      return;
+    case "--version":
+      options.version = true;
       return;
     default:
       throw new CliParseError(`unsupported option: ${optionName}`);
