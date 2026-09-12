@@ -135,3 +135,55 @@ for (const scenario of cases) {
     );
   });
 }
+
+for (const [mode, exitCode] of [
+  ["mixed", 0],
+  ["throwing-getter", 0],
+  ["bad-text", 1],
+  ["bad-thought", 1],
+  ["thought-only", 1],
+  ["blank", 1],
+  ["invalid-json", 2],
+] as const) {
+  test(`Gemini envelope ${mode} 不泄漏 SDK getter 日志或原始字段`, () => {
+    const child = spawnSync(process.execPath, [CHILD_ENTRYPOINT], {
+      env: {
+        HOWTO_AI_PROVIDER: "gemini",
+        HOWTO_GEMINI_API_KEY: "howto-fake-gemini-key",
+        HOWTO_GEMINI_MODEL: "gemini-test",
+        HOWTO_TEST_GEMINI_ENVELOPE: mode,
+      },
+      encoding: "utf8",
+      timeout: 5_000,
+      killSignal: "SIGKILL",
+      maxBuffer: 1024 * 1024,
+    });
+    assert.ifError(child.error);
+    assert.equal(child.signal, null);
+    assert.equal((child.stdout + child.stderr).includes("\u001b"), false);
+    assert.doesNotMatch(
+      child.stdout + child.stderr,
+      /envelope_probe|HOWTO_FAKE_ENVELOPE_SECRET|there are (?:multiple candidates|non-text parts)/,
+    );
+    assert.equal(child.status, exitCode);
+    assert.equal(
+      child.stdout,
+      `${JSON.stringify({
+        requests:
+          mode === "throwing-getter"
+            ? []
+            : [{ url: GEMINI_URL, method: "POST", credentialsMatch: true }],
+        responseMatches: exitCode === 0,
+        getterReads: 0,
+      })}\n`,
+    );
+    assert.equal(
+      child.stderr,
+      exitCode === 0
+        ? ""
+        : exitCode === 1
+          ? "AI provider request failed (provider: gemini, model: gemini-test)\n"
+          : "AI response format error: AI response is not valid JSON\n",
+    );
+  });
+}

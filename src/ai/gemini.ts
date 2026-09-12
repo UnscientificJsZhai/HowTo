@@ -27,7 +27,7 @@ export class GeminiCommandProvider implements CommandProvider {
       const response = await this.client.models.generateContent(
         buildGeminiGenerateContentRequest(this.model, request, signal),
       );
-      rawText = response.text;
+      rawText = extractGeminiResponseText(response);
     } catch {
       throw new AiProviderError("gemini", this.model);
     }
@@ -38,6 +38,36 @@ export class GeminiCommandProvider implements CommandProvider {
 
     return { rawText };
   }
+}
+
+export function extractGeminiResponseText(response: unknown): string | undefined {
+  // SDK 的 text getter 会记录未知字段；这里只读取首候选的已知字段。
+  const candidates = asRecord(response)?.candidates;
+  if (!Array.isArray(candidates) || candidates.length === 0) return undefined;
+  const parts = asRecord(asRecord(candidates[0])?.content)?.parts;
+  if (!Array.isArray(parts) || parts.length === 0) return undefined;
+
+  let text = "";
+  let hasText = false;
+  for (const value of parts) {
+    const part = asRecord(value);
+    if (part === undefined) return undefined;
+    const thought = part.thought;
+    if (Object.hasOwn(part, "thought") && typeof thought !== "boolean") return undefined;
+    if (thought === true) continue;
+    if (!Object.hasOwn(part, "text")) continue;
+    const partText = part.text;
+    if (typeof partText !== "string") return undefined;
+    hasText = true;
+    text += partText;
+  }
+  return hasText ? text : undefined;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 export function buildGeminiClientOptions(config: AppConfig["gemini"]): GoogleGenAIOptions {

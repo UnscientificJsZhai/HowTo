@@ -146,7 +146,7 @@ test("Gemini provider maps the supplied signal to config.abortSignal only when p
     models: {
       generateContent: (request: unknown) => {
         requests.push(request);
-        return Promise.resolve({ text: "generated" });
+        return Promise.resolve({ candidates: [{ content: { parts: [{ text: "generated" }] } }] });
       },
     },
   });
