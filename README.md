@@ -157,8 +157,10 @@ howto --print "show current branch"
 
 Dangerous-command detection currently covers high-risk patterns such as recursive destructive `rm`, disk and filesystem operations, broad recursive permission changes, downloaded scripts piped into a shell, high-impact package manager operations, and service changes.
 
+Local analysis handles literal quoting, absolute command paths, and supported `sudo`/`env` options, and checks each command segment. Unknown wrapper options, dynamic executable prefixes, and shell syntax outside the supported subset also require `EXECUTE`, so an inconclusive analysis does not skip the additional confirmation.
+
 > [!WARNING]
-> A command not flagged as dangerous is not guaranteed to be safe. The local checks add friction for known high-risk patterns; they do not prove command safety.
+> A command not flagged as dangerous is not guaranteed to be safe. The local checks add confirmation for known high-risk patterns and syntax they cannot analyze; they do not prove command safety.
 
 ## Development
 

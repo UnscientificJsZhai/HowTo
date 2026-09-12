@@ -380,6 +380,9 @@ void test("App keeps placeholder-like user values literal through confirmation",
   await send(view, "done");
   await send(view, "\r");
   await waitForOutput(view, "printf '%s %s' {{second}} done");
+  // 未引用花括号触发保守确认，但占位符替换仍必须保留输入字面值。
+  await waitForOutput(view, "[indeterminate-shell-command]");
+  await send(view, "EXECUTE");
   await send(view, "\r");
   await waitFor(() => finalCommand !== undefined, "App did not confirm the literal value");
 
