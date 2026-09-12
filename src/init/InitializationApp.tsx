@@ -4,6 +4,7 @@ import type { AppConfig } from "../config.js";
 import { getUserVisibleErrorMessage } from "../errors.js";
 import { usePhysicalStdoutRows } from "../ui/resize-safe-output.js";
 import { toSingleLinePreview } from "../ui/single-line-preview.js";
+import { useInteractiveSession } from "../ui/InteractiveSessionProvider.js";
 import { usePasteAwareInput } from "../ui/use-paste-aware-input.js";
 import type { InitializationValues } from "./index.js";
 import {
@@ -36,6 +37,7 @@ const PASTE_KEY: InitializationKeyInput["key"] = {
 };
 
 export const InitializationApp: React.FC<Props> = ({ onSubmit, onComplete, onCancel, onError }) => {
+  const session = useInteractiveSession();
   const rows = usePhysicalStdoutRows();
   const [state, setState] = useState<InitializationState>(createInitialInitializationState);
   const stateRef = useRef(state);
@@ -58,6 +60,7 @@ export const InitializationApp: React.FC<Props> = ({ onSubmit, onComplete, onCan
     setState(update.state);
 
     if (update.cancelled) {
+      session.suspendViewInput();
       submitStatusRef.current = "cancelled";
       setSubmitStatus("cancelled");
       onCancel();
@@ -65,6 +68,7 @@ export const InitializationApp: React.FC<Props> = ({ onSubmit, onComplete, onCan
     }
 
     if (update.completedValues !== undefined) {
+      session.suspendViewInput();
       submitStatusRef.current = "saving";
       setSubmitStatus("saving");
       onSubmit(update.completedValues)

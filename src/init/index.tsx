@@ -4,16 +4,16 @@ import type { GlobalOptions } from "../cli.js";
 import type { AiProvider, AppConfig, ConfigEnvironment } from "../config.js";
 import { loadConfig } from "../config.js";
 import { getConfigFilePath, writeUserConfigFile, type FileConfig } from "../config-file.js";
-import { toResizeSafeOutput } from "../ui/resize-safe-output.js";
-import type { InteractiveInput, InteractiveOutput } from "../ui/tty.js";
+import type { InteractiveSession } from "../ui/interactive-session.js";
+import { InteractiveSessionProvider } from "../ui/InteractiveSessionProvider.js";
+import type { InteractiveOutput } from "../ui/tty.js";
 import { InteractionCancelledError } from "../ui/tty.js";
 import { InitializationApp } from "./InitializationApp.js";
 
 export interface InitializeConfigOptions {
   cliOptions: GlobalOptions;
   env: ConfigEnvironment & NodeJS.ProcessEnv;
-  input: InteractiveInput;
-  output: InteractiveOutput;
+  session: InteractiveSession;
 }
 
 export interface InitializationValues {
@@ -26,11 +26,11 @@ export interface InitializationValues {
 export async function initializeConfig({
   cliOptions,
   env,
-  input,
-  output,
+  session,
 }: InitializeConfigOptions): Promise<AppConfig> {
   return await new Promise<AppConfig>((resolve, reject) => {
     let settled = false;
+    let unsubscribe = () => {};
 
     const settle = (result: () => void) => {
       if (settled) {
@@ -38,6 +38,8 @@ export async function initializeConfig({
       }
 
       settled = true;
+      session.suspendViewInput();
+      unsubscribe();
       const exitPromise = instance.waitUntilExit();
       instance.clear();
       instance.unmount();
@@ -45,32 +47,35 @@ export async function initializeConfig({
     };
 
     const instance: Instance = render(
-      <InitializationApp
-        onSubmit={async (values) => {
-          return validateAndPersistInitializationConfig(values, cliOptions, env);
-        }}
-        onComplete={(config) => {
-          settle(() => {
-            resolve(config);
-          });
-        }}
-        onCancel={() => {
-          settle(() => {
-            reject(new InteractionCancelledError());
-          });
-        }}
-        onError={(error) => {
-          settle(() => {
-            reject(error);
-          });
-        }}
-      />,
+      <InteractiveSessionProvider session={session}>
+        <InitializationApp
+          onSubmit={async (values) => {
+            return validateAndPersistInitializationConfig(values, cliOptions, env);
+          }}
+          onComplete={(config) => {
+            settle(() => {
+              resolve(config);
+            });
+          }}
+          onCancel={() => {
+            settle(() => {
+              reject(new InteractionCancelledError());
+            });
+          }}
+          onError={(error) => {
+            settle(() => {
+              reject(error);
+            });
+          }}
+        />
+      </InteractiveSessionProvider>,
       {
-        stdin: input as NodeJS.ReadStream,
-        stdout: toResizeSafeOutput(output as NodeJS.WriteStream),
+        stdin: session.input,
+        stdout: session.output,
         exitOnCtrlC: false,
       },
     );
+    unsubscribe = session.subscribeFailure((error) => settle(() => reject(error)));
   });
 }
 

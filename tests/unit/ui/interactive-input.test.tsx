@@ -4,6 +4,7 @@ import { PassThrough } from "node:stream";
 import { test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import React from "react";
+import type { InteractiveSession } from "../../../src/ui/interactive-session.js";
 import type { CommandCandidateContract } from "../../../src/ai/types.js";
 import { AiProviderError } from "../../../src/ai/errors.js";
 import { toAppError } from "../../../src/errors.js";
@@ -13,6 +14,8 @@ import { importWithoutColor } from "./import-without-color.js";
 const uiModules = importWithoutColor(async () => {
   const [
     { render },
+    { createInteractiveSession },
+    { InteractiveSessionProvider },
     { App },
     { SelectCommandView },
     { ResolvePlaceholdersView },
@@ -20,6 +23,8 @@ const uiModules = importWithoutColor(async () => {
     { toResizeSafeOutput },
   ] = await Promise.all([
     import("ink"),
+    import("../../../src/ui/interactive-session.js"),
+    import("../../../src/ui/InteractiveSessionProvider.js"),
     import("../../../src/ui/App.js"),
     import("../../../src/ui/SelectCommandView.js"),
     import("../../../src/ui/ResolvePlaceholdersView.js"),
@@ -29,6 +34,8 @@ const uiModules = importWithoutColor(async () => {
 
   return {
     render,
+    createInteractiveSession,
+    InteractiveSessionProvider,
     App,
     SelectCommandView,
     ResolvePlaceholdersView,
@@ -139,7 +146,7 @@ void test("ResolvePlaceholdersView drops an unsafe paste as one block and accept
   assert.equal(resolvedCommand, "printf '%s' safe-value");
 });
 
-void test("ResolvePlaceholdersView rejects a prematurely terminated paste without committing its CR", async (t) => {
+void test("占位符遇到伪结束后仍永久保持仅输出权限", async (t) => {
   let resolvedCommand: string | undefined;
   const { ResolvePlaceholdersView } = await uiModules;
   const view = await renderView(
@@ -159,12 +166,8 @@ void test("ResolvePlaceholdersView rejects a prematurely terminated paste withou
   const attackValue = "PLACEHOLDER_EARLY_END_SENTINEL";
   await send(view, `\u001B[200~${attackValue}\u001B[201~\r\u001B[201~`);
 
-  assert.equal(resolvedCommand, undefined);
-  assert.equal(view.output().includes(attackValue), false);
-
-  await send(view, "safe-value");
-  await send(view, "\r");
-  assert.equal(resolvedCommand, "printf '%s' safe-value");
+  assert.equal(resolvedCommand, `printf '%s' ${attackValue}`);
+  assert.equal(view.session.getExecutionPolicy(), "print");
 });
 
 void test("ResolvePlaceholdersView treats pasted CR and LF as data until a real Enter", async (t) => {
@@ -324,7 +327,7 @@ void test("App renders placeholder line breaks safely while preserving the final
 
   const confirmationOffset = view.output().length;
   await send(view, "\r");
-  await waitForOutputAfter(view, confirmationOffset, "EXECUTE+Enter; Esc/Ctrl+C |>");
+  await waitForOutputAfter(view, confirmationOffset, "Enter输出 Esc取消");
   await waitForOutputAfter(view, confirmationOffset, "literal␍␊part");
   await waitForOutputAfter(view, confirmationOffset, "A␍␊B");
   await waitForOutputAfter(view, confirmationOffset, "C␊D␍E");
@@ -380,9 +383,6 @@ void test("App keeps placeholder-like user values literal through confirmation",
   await send(view, "done");
   await send(view, "\r");
   await waitForOutput(view, "printf '%s %s' {{second}} done");
-  // 未引用花括号触发保守确认，但占位符替换仍必须保留输入字面值。
-  await waitForOutput(view, "[indeterminate-shell-command]");
-  await send(view, "EXECUTE");
   await send(view, "\r");
   await waitFor(() => finalCommand !== undefined, "App did not confirm the literal value");
 
@@ -418,7 +418,7 @@ void test("ConfirmView accepts a typed uppercase EXECUTE confirmation", async (t
   assert.equal(cancellations, 0);
 });
 
-void test("ConfirmView accepts a bracketed-paste EXECUTE confirmation", async (t) => {
+void test("危险确认收到粘贴后转为仅输出", async (t) => {
   let confirmations = 0;
   const { ConfirmView } = await uiModules;
   const view = await renderView(
@@ -441,7 +441,7 @@ void test("ConfirmView accepts a bracketed-paste EXECUTE confirmation", async (t
   assert.equal(confirmations, 1);
 });
 
-void test("ConfirmView applies a same-chunk EXECUTE paste before Enter", async (t) => {
+void test("同分片粘贴和 Enter 只能确认输出", async (t) => {
   let confirmations = 0;
   let cancellations = 0;
   const { ConfirmView } = await uiModules;
@@ -495,7 +495,7 @@ void test("ConfirmView discards pasted Enter for safe commands", async (t) => {
   assert.equal(cancellations, 0);
 });
 
-void test("ConfirmView rejects a prematurely terminated paste without executing its CR", async (t) => {
+void test("伪结束后组件确认不会恢复会话执行权限", async (t) => {
   let confirmations = 0;
   let cancellations = 0;
   const { ConfirmView } = await uiModules;
@@ -516,12 +516,14 @@ void test("ConfirmView rejects a prematurely terminated paste without executing 
   t.after(() => close(view));
 
   await send(view, "\u001B[200~EXECUTE\u001B[201~\r\u001B[201~");
-  assert.equal(confirmations, 0);
+  assert.equal(confirmations, 1);
+  assert.equal(view.session.getExecutionPolicy(), "print");
   assert.equal(cancellations, 0);
 
   await send(view, "EXECUTE");
   await send(view, "\r");
-  assert.equal(confirmations, 1);
+  assert.equal(confirmations, 2);
+  assert.equal(view.session.getExecutionPolicy(), "print");
   assert.equal(cancellations, 0);
 });
 
@@ -656,7 +658,7 @@ void test("ConfirmView keeps safe Enter, cancellation, and failed-danger-confirm
     { columns: 40, rows: 4 },
   );
   t.after(() => close(failedDangerView));
-  await send(failedDangerView, "\u001B[200~EXECUTE!\u001B[201~");
+  await send(failedDangerView, "EXECUTE!");
   await send(failedDangerView, "\r");
 
   const escapeView = await renderView(
@@ -918,7 +920,7 @@ void test("App preserves compact placeholder input through visible and hidden re
     assert.ok(restoredOutput.endsWith(" Ent Esc"));
 
     await send(view, "\r");
-    await waitForOutput(view, " Enter Esc");
+    await waitForOutput(view, "仅输出:");
     await send(view, "\r");
     await waitFor(() => finalCommand !== undefined, "App did not execute the restored input");
 
@@ -1085,7 +1087,7 @@ void test("App keeps a complete dangerous input tail when columns shrink from fo
     await waitForOutput(view, "? 1/1");
     await send(view, "\r");
     await waitForOutput(view, "X=EXECUTE:");
-    await send(view, "\u001B[200~ABEX\u001B[201~");
+    await send(view, "ABEX");
 
     const outputOffset = view.output().length;
     view.stdout.resize(20, 3);
@@ -2003,6 +2005,7 @@ void test("App cleanup does not emit full-terminal clear sequences", async (t) =
   await waitForOutput(view, "Final command:");
   view.stdin.write("\r");
   await view.instance.waitUntilExit();
+  view.session.dispose();
   view.stdin.end();
 
   assert.equal(finalCommand, generatedCandidate.command);
@@ -2238,7 +2241,7 @@ void test("App renders no visible frame when the terminal initially reports zero
   await clearAndUnmount(view);
   unmounted = true;
 
-  assert.equal(view.output().split("\u001B[?25h").join(""), "");
+  assert.equal(stripVTControlCharacters(view.output()), "");
   assert.ok(!view.output().includes("\u001B[2J"));
   assert.ok(!view.output().includes("\u001B[3J"));
   assert.ok(!view.output().includes("\u001B[H"));
@@ -2279,6 +2282,7 @@ interface RenderedView {
   instance: Awaited<typeof uiModules>["render"] extends (...args: never[]) => infer Instance
     ? Instance
     : never;
+  session: InteractiveSession;
   stdin: FakeTty;
   stdout: FakeTty;
   output: () => string;
@@ -2297,7 +2301,7 @@ async function renderView(
   element: React.ReactNode,
   viewport: Viewport = { columns: 120, rows: 40 },
 ): Promise<RenderedView> {
-  const { render, toResizeSafeOutput } = await uiModules;
+  const { render, createInteractiveSession, InteractiveSessionProvider } = await uiModules;
   const stdin = new FakeTty(viewport.columns, viewport.rows);
   const stdout = new FakeTty(viewport.columns, viewport.rows);
   const stdinReadableListenerBaseline = stdin.listenerCount("readable");
@@ -2310,21 +2314,32 @@ async function renderView(
     outputChunks.push(Buffer.from(chunk));
   });
 
-  const instance = render(element, {
-    stdin: stdin as unknown as NodeJS.ReadStream,
-    stdout: toResizeSafeOutput(stdout as unknown as NodeJS.WriteStream),
-    stderr: stdout as unknown as NodeJS.WriteStream,
-    exitOnCtrlC: false,
-    interactive: true,
-    patchConsole: false,
-    onRender: () => {
-      renderCount++;
-    },
+  const session = createInteractiveSession({
+    input: stdin as unknown as NodeJS.ReadStream,
+    output: stdout as unknown as NodeJS.WriteStream,
   });
+  const instance = render(
+    <InteractiveSessionProvider session={session}>{element}</InteractiveSessionProvider>,
+    {
+      stdin: session.input,
+      stdout: session.output,
+      stderr: stdout as unknown as NodeJS.WriteStream,
+      exitOnCtrlC: false,
+      interactive: true,
+      patchConsole: false,
+      onRender: () => {
+        renderCount++;
+      },
+    },
+  );
+  const rerender = instance.rerender;
+  instance.rerender = (node) =>
+    rerender(<InteractiveSessionProvider session={session}>{node}</InteractiveSessionProvider>);
   await instance.waitUntilRenderFlush();
 
   return {
     instance,
+    session,
     stdin,
     stdout,
     output: () => output,
@@ -2344,9 +2359,8 @@ async function send(view: RenderedView, input: string): Promise<void> {
 }
 
 async function sendEscape(view: RenderedView): Promise<void> {
-  view.stdin.write("\u001B");
-  await delay(30);
-  await view.instance.waitUntilRenderFlush();
+  // CSI u 明确表达 Escape，避免把两层键盘前缀计时混入布局回归。
+  await send(view, "\u001B[27u");
 }
 
 async function close(view: RenderedView): Promise<void> {
@@ -2354,6 +2368,7 @@ async function close(view: RenderedView): Promise<void> {
   await new Promise<void>((resolve) => {
     setImmediate(resolve);
   });
+  view.session.dispose();
   view.stdin.end();
 }
 
@@ -2364,6 +2379,7 @@ async function clearAndUnmount(view: RenderedView): Promise<void> {
   view.instance.clear();
   view.instance.unmount();
   await exitPromise;
+  view.session.dispose();
   view.stdin.end();
 }
 

@@ -4,6 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import React from "react";
+import type { InteractiveSession } from "../../../src/ui/interactive-session.js";
 import type { AppConfig } from "../../../src/config.js";
 import type { InitializationValues } from "../../../src/init/index.js";
 import { importWithoutColor } from "./import-without-color.js";
@@ -11,12 +12,16 @@ import { importWithoutColor } from "./import-without-color.js";
 const uiModules = importWithoutColor(async () => {
   const [
     { render },
+    { createInteractiveSession },
+    { InteractiveSessionProvider },
     { InitializationApp },
     { initializeConfig },
     { InteractionCancelledError },
     { toResizeSafeOutput, usePhysicalStdoutRows },
   ] = await Promise.all([
     import("ink"),
+    import("../../../src/ui/interactive-session.js"),
+    import("../../../src/ui/InteractiveSessionProvider.js"),
     import("../../../src/init/InitializationApp.js"),
     import("../../../src/init/index.js"),
     import("../../../src/ui/tty.js"),
@@ -25,6 +30,8 @@ const uiModules = importWithoutColor(async () => {
 
   return {
     render,
+    createInteractiveSession,
+    InteractiveSessionProvider,
     InitializationApp,
     initializeConfig,
     InteractionCancelledError,
@@ -477,36 +484,23 @@ void test("initialization applies same-chunk field pastes before Enter", async (
   });
 });
 
-void test("initialization consumes provider paste and rejects a prematurely terminated field paste", async (t) => {
+void test("初始化不将 provider 粘贴当选择，并记录不可恢复的仅输出权限", async (t) => {
   let submittedValues: InitializationValues | undefined;
   const view = await renderInitialization({ columns: 80, rows: 24 }, (values) => {
     submittedValues = values;
-    return new Promise<AppConfig>(() => undefined);
+    return Promise.resolve(testConfig());
   });
   t.after(() => close(view));
-
   await send(view, "\u001B[200~1\r\u001B[201~");
-  await send(view, "\r");
-
+  assert.equal(view.session.getExecutionPolicy(), "print");
+  assert.equal(view.output().includes("Configure openai"), false);
   await send(view, "1");
-  const attackValue = "INIT_EARLY_END_SENTINEL";
-  await send(view, `\u001B[200~${attackValue}\u001B[201~\r\u001B[201~`);
-  assert.equal(view.output().includes(attackValue), false);
-
-  await send(view, "\u001B[200~safe-key\u001B[201~\r");
+  await send(view, "\u001B[200~FAKE-key\u001B[201~\r");
   await send(view, "\r");
   await send(view, "\r");
-
-  await waitFor(
-    () => submittedValues !== undefined,
-    "Initialization did not submit after rejecting the malformed paste",
-  );
-  assert.deepEqual(submittedValues, {
-    provider: "openai",
-    apiKey: "safe-key",
-    model: "gpt-5.4-mini",
-    openaiBaseUrl: undefined,
-  });
+  await waitFor(() => submittedValues !== undefined, "初始化未完成");
+  assert.equal(submittedValues?.apiKey, "FAKE-key");
+  assert.equal(view.session.getExecutionPolicy(), "print");
 });
 
 void test("initialization prioritizes validation, values, and defaults without changing pasted input", async (t) => {
@@ -634,7 +628,7 @@ void test("initialization cleanup releases every owner and remains idempotent", 
 });
 
 void test("production initialization cancellation releases every terminal owner", async () => {
-  const { initializeConfig, InteractionCancelledError } = await uiModules;
+  const { initializeConfig, InteractionCancelledError, createInteractiveSession } = await uiModules;
   const stdin = new FakeTty(40, 4);
   const stdout = new FakeTty(40, 4);
   const stdinReadableBaseline = stdin.listenerCount("readable");
@@ -645,11 +639,14 @@ void test("production initialization cancellation releases every terminal owner"
     output += chunk.toString();
   });
 
+  const session = createInteractiveSession({
+    input: stdin as unknown as NodeJS.ReadStream,
+    output: stdout as unknown as NodeJS.WriteStream,
+  });
   const initialization = initializeConfig({
     cliOptions: { print: false },
     env: {},
-    input: stdin,
-    output: stdout,
+    session,
   });
 
   try {
@@ -661,6 +658,7 @@ void test("production initialization cancellation releases every terminal owner"
       "Production initialization did not register its terminal owners",
     );
 
+    await waitFor(() => output.includes("Choose provider"), "初始化尚未显示");
     const cancellation = assert.rejects(initialization, InteractionCancelledError);
     stdin.write("\u001B");
     await delay(30);
@@ -669,12 +667,14 @@ void test("production initialization cancellation releases every terminal owner"
       setImmediate(resolve);
     });
 
+    session.dispose();
     assert.equal(stdin.rawModeEnabled, false);
     assert.equal(stdin.listenerCount("readable"), stdinReadableBaseline);
     assert.equal(process.listenerCount("beforeExit"), processBeforeExitBaseline);
     assert.equal(stdout.listenerCount("resize"), resizeListenerBaseline);
     assertNoFullscreenClear(output);
   } finally {
+    session.dispose();
     stdin.end();
     stdout.end();
   }
@@ -811,6 +811,7 @@ class FakeTty extends PassThrough {
 
 interface RenderedInitialization {
   instance: ReturnType<Awaited<typeof uiModules>["render"]>;
+  session: InteractiveSession;
   stdin: FakeTty;
   stdout: FakeTty;
   output: () => string;
@@ -833,7 +834,13 @@ async function renderInitialization(
   onCancel: () => void = () => {},
   onError: (error: Error) => void = () => {},
 ): Promise<RenderedInitialization> {
-  const { render, InitializationApp, toResizeSafeOutput, usePhysicalStdoutRows } = await uiModules;
+  const {
+    render,
+    InitializationApp,
+    createInteractiveSession,
+    InteractiveSessionProvider,
+    usePhysicalStdoutRows,
+  } = await uiModules;
   const stdin = new FakeTty(viewport.columns, viewport.rows);
   const stdout = new FakeTty(viewport.columns, viewport.rows);
   const stdinReadableBaseline = stdin.listenerCount("readable");
@@ -853,8 +860,12 @@ async function renderInitialization(
     return null;
   };
 
+  const session = createInteractiveSession({
+    input: stdin as unknown as NodeJS.ReadStream,
+    output: stdout as unknown as NodeJS.WriteStream,
+  });
   const instance = render(
-    <>
+    <InteractiveSessionProvider session={session}>
       <InitializationApp
         onSubmit={onSubmit}
         onComplete={() => {}}
@@ -862,10 +873,10 @@ async function renderInitialization(
         onError={onError}
       />
       <PhysicalRowsObserver />
-    </>,
+    </InteractiveSessionProvider>,
     {
-      stdin: stdin as unknown as NodeJS.ReadStream,
-      stdout: toResizeSafeOutput(stdout as unknown as NodeJS.WriteStream),
+      stdin: session.input,
+      stdout: session.output,
       stderr: stdout as unknown as NodeJS.WriteStream,
       exitOnCtrlC: false,
       interactive: true,
@@ -888,6 +899,7 @@ async function renderInitialization(
 
   return {
     instance,
+    session,
     stdin,
     stdout,
     output: () => output,
@@ -908,9 +920,8 @@ async function send(view: RenderedInitialization, input: string): Promise<void> 
 }
 
 async function sendEscape(view: RenderedInitialization): Promise<void> {
-  view.stdin.write("\u001B");
-  await delay(30);
-  await view.instance.waitUntilRenderFlush();
+  // CSI u 明确表达 Escape，避免把两层键盘前缀计时混入布局回归。
+  await send(view, "\u001B[27u");
 }
 
 async function resizeAndWait(view: RenderedInitialization, rows: number): Promise<void> {
@@ -934,6 +945,7 @@ async function clearAndUnmount(view: RenderedInitialization): Promise<void> {
   view.instance.clear();
   view.instance.unmount();
   await exitPromise;
+  view.session.dispose();
   view.stdin.end();
   view.closed = true;
   assert.equal(view.stdin.rawModeEnabled, false);

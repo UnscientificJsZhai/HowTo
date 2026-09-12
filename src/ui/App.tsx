@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, useInput, usePaste, useWindowSize, type Key } from "ink";
+import { useInteractiveSession } from "./InteractiveSessionProvider.js";
 import { LoadingView } from "./LoadingView.js";
 import { SelectCommandView } from "./SelectCommandView.js";
 import { ResolvePlaceholdersView } from "./ResolvePlaceholdersView.js";
@@ -26,6 +27,7 @@ interface Props {
 }
 
 export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) => {
+  const session = useInteractiveSession();
   const rows = usePhysicalStdoutRows();
   const { columns } = useWindowSize();
   const [status, setStatus] = useState<Status>("loading");
@@ -43,12 +45,13 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
   usePaste(() => {}, { isActive: isFrameVisible });
 
   const handleCancel = useCallback(() => {
+    session.suspendViewInput();
     activeRequestControllerRef.current?.abort();
     if (cancellationReportedRef.current) return;
 
     cancellationReportedRef.current = true;
     onError(new InteractionCancelledError());
-  }, [onError]);
+  }, [onError, session]);
 
   useInput((input: string, key: Key) => {
     if (frameRows === 0) return;
@@ -127,6 +130,7 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
   }, [status, finalCommand, onSuccess]);
 
   const handleConfirm = () => {
+    session.suspendViewInput();
     setStatus("done");
   };
 

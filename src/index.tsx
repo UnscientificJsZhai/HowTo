@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 
-import React from "react";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { render } from "ink";
 import { CliParseError, parseCliArgs } from "./cli.js";
 import { ConfigError, hasExplicitAiProvider, loadConfig } from "./config.js";
 import { readUserConfigFile } from "./config-file.js";
@@ -12,11 +10,10 @@ import { buildCommandGenerationPrompt, createProviderPromptRequest } from "./pro
 import { checkCommandInPath, type CommandPathCheck } from "./validation/command-tool.js";
 import { generateValidatedCommandCandidates } from "./validation/generated-commands.js";
 import { ensureInteractiveTty } from "./ui/tty.js";
-import { executeCommand } from "./execute.js";
 import { toAppError } from "./errors.js";
-import { App } from "./ui/App.js";
+import { createInteractiveSession, type InteractiveSession } from "./ui/interactive-session.js";
+import { runInteractiveCommand } from "./ui/run-interactive-command.js";
 import { initializeConfig } from "./init/index.js";
-import { toResizeSafeOutput } from "./ui/resize-safe-output.js";
 import { renderTerminalSafeText } from "./terminal-text.js";
 import { readPackageVersion } from "./version.js";
 
@@ -25,6 +22,12 @@ interface CliResult {
 }
 
 async function run(argv: string[]): Promise<CliResult> {
+  let session: InteractiveSession | undefined;
+  const getSession = () => {
+    ensureInteractiveTty(process.stdin, process.stdout);
+    session ??= createInteractiveSession({ input: process.stdin, output: process.stdout });
+    return session;
+  };
   try {
     const parsedCli = parseCliArgs(argv);
 
@@ -38,8 +41,7 @@ async function run(argv: string[]): Promise<CliResult> {
       await initializeConfig({
         cliOptions: parsedCli.options,
         env: process.env,
-        input: process.stdin,
-        output: process.stdout,
+        session: getSession(),
       });
       return { exitCode: 0 };
     }
@@ -65,8 +67,7 @@ async function run(argv: string[]): Promise<CliResult> {
       : await initializeConfig({
           cliOptions: parsedCli.options,
           env: process.env,
-          input: process.stdin,
-          output: process.stdout,
+          session: getSession(),
         });
     const useCommandPathCheck: CommandPathCheck | undefined =
       parsedCli.useCommand === undefined
@@ -104,39 +105,11 @@ async function run(argv: string[]): Promise<CliResult> {
       );
     }
 
-    let finalCommand: string | undefined;
-    let appError: Error | undefined;
-
-    const { waitUntilExit, unmount, clear } = render(
-      <App
-        provider={provider}
-        request={{ ...promptRequest, systemPrompt, userPrompt }}
-        onSuccess={(command) => {
-          finalCommand = command;
-          clear();
-          unmount();
-        }}
-        onError={(error) => {
-          appError = error;
-          clear();
-          unmount();
-        }}
-      />,
-      { stdout: toResizeSafeOutput(process.stdout), exitOnCtrlC: false },
-    );
-
-    await waitUntilExit();
-
-    if (appError) {
-      throw appError;
-    }
-
-    if (finalCommand === undefined) {
-      return { exitCode: 1 };
-    }
-
-    const exitCode = await executeCommand(finalCommand);
-
+    const exitCode = await runInteractiveCommand({
+      session: getSession(),
+      provider,
+      request: { ...promptRequest, systemPrompt, userPrompt },
+    });
     return { exitCode };
   } catch (error: unknown) {
     const appError = toAppError(error);
@@ -144,6 +117,8 @@ async function run(argv: string[]): Promise<CliResult> {
       console.error(appError.message);
     }
     return { exitCode: appError.exitCode };
+  } finally {
+    session?.dispose();
   }
 }
 
