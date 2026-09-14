@@ -143,7 +143,52 @@ for (const command of [
   });
 }
 
-// 这些动作来自 npm install/uninstall 的正式别名，均只做静态检测。
+test("追加赋值不能遮蔽危险命令，包括后续命令段和一层 shell 命令体", () => {
+  for (const command of [
+    "HOWTO_APPEND+=x rm -rf /",
+    "HOWTO_APPEND+= rm -rf /",
+    'HOWTO_APPEND+="a b" rm -rf /',
+    "A=x HOWTO_APPEND+=x rm -rf /",
+    "printf safe; HOWTO_APPEND+=x rm -rf /",
+    "sh -c 'HOWTO_APPEND+=x rm -rf /'",
+  ]) {
+    assert.equal(detectDangerousCommand(command)?.rule, "indeterminate-shell-command", command);
+  }
+  assert.equal(detectDangerousCommand("env HOWTO_APPEND+=x rm -rf /")?.rule, "destructive-rm");
+  assert.equal(detectDangerousCommand("printf '%s' HOWTO_APPEND+=x"), undefined);
+});
+
+test("zsh 展开在工具、危险参数和 wrapper 赋值位置均保守处理", () => {
+  for (const expression of [
+    "$=HOWTO_VALUE",
+    "$==HOWTO_VALUE",
+    "$~HOWTO_VALUE",
+    "$^HOWTO_VALUE",
+    "$^^HOWTO_VALUE",
+    "$+HOWTO_VALUE",
+  ]) {
+    for (const command of [
+      `export HOWTO_VALUE=rm; ${expression} -rf /`,
+      `export HOWTO_VALUE=-rf; rm ${expression} /`,
+      `rm "${expression}" /`,
+      `env DATA="${expression}" git status`,
+      `zsh -c 'export HOWTO_VALUE=rm; ${expression} -rf /'`,
+    ]) {
+      assert.equal(detectDangerousCommand(command)?.rule, "indeterminate-shell-command", command);
+    }
+    for (const command of [
+      `printf "${expression}"`,
+      `rm -f '${expression}'`,
+      `rm -f \\${expression}`,
+    ]) {
+      assert.equal(detectDangerousCommand(command), undefined, command);
+    }
+  }
+  assert.equal(detectDangerousCommand('rm -f "price$"')?.rule, "indeterminate-shell-command");
+  assert.equal(detectDangerousCommand('rm -f "price\\$"'), undefined);
+});
+
+// 这些动作来自 npm install/uninstall 及复合安装命令，均只做静态检测。
 for (const action of [
   "install",
   "add",
@@ -157,6 +202,9 @@ for (const action of [
   "isnta",
   "isntal",
   "isntall",
+  "install-test",
+  "installTest",
+  "it",
   "uninstall",
   "unlink",
   "remove",
@@ -198,6 +246,12 @@ for (const action of [
   "unl",
   "unli",
   "unlin",
+  "install-t",
+  "install-te",
+  "install-tes",
+  "installT",
+  "installTe",
+  "installTes",
 ]) {
   test(`npm ${action} 的高影响动作前缀保守要求确认`, () => {
     assert.equal(
@@ -217,6 +271,7 @@ test("npm 的别名与前缀处理不扩展其他动作或包管理器语义", (
     "npm ls -g",
     "npm view example-package",
     "pip i --user example-package",
+    "pip it --user example-package",
     "brew un example-package",
     "apt unin example-package",
   ]) {

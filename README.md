@@ -54,6 +54,7 @@ howto --init
 The initializer writes a user-level config file at `~/.howto/config.json`.
 
 Initialization and placeholder input delete complete characters on Backspace, including emoji and combining sequences. Alt/Meta shortcuts are not inserted into configuration fields as text.
+Key release events never confirm, cancel, navigate, or delete; pressing and releasing Enter once cannot skip the final confirmation.
 
 > [!NOTE]
 > OpenAI API keys may be empty for local OpenAI-compatible services. Gemini requires a non-empty API key.
@@ -172,6 +173,7 @@ Dangerous-command detection currently covers high-risk patterns such as recursiv
 Local analysis handles literal quoting, absolute command paths, and supported `sudo`/`env` options, and checks each command segment. Unknown wrapper options, dynamic executable prefixes, and shell syntax outside the supported subset also require `EXECUTE`, so an inconclusive analysis does not skip the additional confirmation.
 
 Assignments passed to `env` can use names starting with digits or containing hyphens or dots; the actual command after them is still checked. Official npm global install/uninstall aliases such as `i`, `add`, `un`, and `unlink` receive the same additional confirmation. Inconclusive abbreviations of those actions also require confirmation.
+Leading `NAME+=value` requires additional confirmation and is rejected by `use` because its meaning differs between shells. Dollar expressions outside single quotes or backslash protection are treated conservatively as dynamic values. Compound npm installs through `install-test`, `installTest`, `it`, and their abbreviations also receive global-install checks.
 
 If howto detects bracketed paste during an interactive run, including automatic initialization, that run permanently switches to printing the final command for manual execution. At final confirmation, Enter prints the command without running it, and the terminal shows an explanation. Returning to selection or resizing the terminal does not restore execution. Keyboard-only runs keep the usual Enter or `EXECUTE` confirmation.
 

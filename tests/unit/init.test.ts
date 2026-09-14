@@ -300,6 +300,31 @@ test("Ctrl+C cancels initialization", () => {
   assert.equal(update.cancelled, true);
 });
 
+test("初始化状态机丢弃所有释放事件，不确认、取消、导航或删除", () => {
+  const provider = applyInitializationInput(
+    createInitialInitializationState(),
+    keypress("", { downArrow: true }),
+  ).state;
+  const input = applyInitializationInput(provider, keypress("", { return: true })).state;
+  const filled = applyInitializationInput(input, keypress("FAKE-abc")).state;
+  for (const state of [provider, filled]) {
+    for (const key of [
+      { return: true },
+      { escape: true },
+      { ctrl: true },
+      { upArrow: true },
+      { downArrow: true },
+      { backspace: true },
+      { delete: true },
+    ]) {
+      assert.deepEqual(
+        applyInitializationInput(state, keypress("c", { ...key, eventType: "release" })),
+        { state },
+      );
+    }
+  }
+});
+
 function keypress(
   input: string,
   key: Partial<InitializationKeyInput["key"]> = {},

@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
@@ -18,6 +21,46 @@ const GEMINI_SDK_URLS = {
   GOOGLE_GEMINI_BASE_URL: "https://sdk-override.invalid/gemini/",
   GOOGLE_VERTEX_BASE_URL: "https://sdk-override.invalid/vertex/",
 };
+
+for (const [name, customHeaders, succeeds] of [
+  ["非法 api-key 值", "api-key: HOWTO_FAKE_HEADER_SECRET\rTAIL", false],
+  ["非法 Basic Authorization", "Authorization: Basic HOWTO_FAKE_HEADER_SECRET\rTAIL", false],
+  ["非法 header 名", "X HOWTO_FAKE_HEADER_SECRET: value", false],
+  ["非法普通 header 值", "X-Token: HOWTO_FAKE_HEADER_SECRET\rTAIL", false],
+  ["合法普通 header", "X-Token: HOWTO_FAKE_HEADER_SECRET", true],
+] as const) {
+  test(`OpenAI SDK 初始化的${name}不向 CLI 输出泄露凭据`, (t) => {
+    const home = mkdtempSync(join(tmpdir(), "howto-provider-init-"));
+    t.after(() => rmSync(home, { recursive: true, force: true }));
+    const child = spawnSync(
+      process.execPath,
+      [fileURLToPath(new URL("./fixtures/provider-initialization-child.js", import.meta.url))],
+      {
+        env: { HOME: home, PATH: "/usr/bin:/bin", OPENAI_CUSTOM_HEADERS: customHeaders },
+        encoding: "utf8",
+        timeout: 5_000,
+        killSignal: "SIGKILL",
+        maxBuffer: 1024 * 1024,
+      },
+    );
+    assert.ifError(child.error);
+    assert.equal(child.signal, null);
+    assert.equal(child.status, succeeds ? 0 : 1);
+    assert.equal(
+      child.stdout,
+      succeeds ? 'ls\n{"requests":1,"exitCode":0}\n' : '{"requests":0,"exitCode":1}\n',
+    );
+    assert.equal(
+      child.stderr,
+      succeeds ? "" : "AI provider request failed (provider: openai, model: gpt-test)\n",
+    );
+    assert.doesNotMatch(
+      child.stdout + child.stderr,
+      /HOWTO_FAKE_HEADER_SECRET|howto-fake-config-key|TypeError|Headers\.append/,
+    );
+    assert.equal((child.stdout + child.stderr).includes("\u001b"), false);
+  });
+}
 
 interface BoundaryCase {
   name: string;

@@ -69,6 +69,8 @@ export function applyInitializationInput(
     return updateCurrentField(state, (value) => value + event.input);
   }
 
+  if (event.key.eventType === "release") return { state };
+
   if (event.key.ctrl && event.input === "c") {
     return { state, cancelled: true };
   }

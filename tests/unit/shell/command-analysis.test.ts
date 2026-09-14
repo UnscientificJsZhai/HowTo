@@ -20,8 +20,8 @@ test("词法分析保留原文位置并区分引用、转义、空参数与动�
     ['FOO="a b"', "/usr/bin/git", "'a;b'", '"x\\$y"', "a\\ b", "''", '"$HOME"'],
   );
   assert.deepEqual(
-    words.map((word) => word.isAssignment),
-    [true, false, false, false, false, false, false],
+    words.map((word) => word.assignmentOperator),
+    ["=", undefined, undefined, undefined, undefined, undefined, undefined],
   );
   assert.deepEqual(
     words.map((word) => word.hasExpansion),
@@ -293,6 +293,36 @@ test("zsh 开头等号展开保持动态，引用或转义等号保持字面值"
     const word = parsedCommands(command)[0].words[0];
     assert.equal(word.value, "=rm");
     assert.equal(word.hasExpansion, false);
+  }
+});
+
+test("追加赋值前缀因 shell 方言差异保守拒绝，普通参数与 env argv 保持独立语义", () => {
+  for (const command of [
+    "HOWTO_APPEND+=x git status",
+    "HOWTO_APPEND+= git status",
+    'HOWTO_APPEND+="a b" git status',
+    "A=x HOWTO_APPEND+=x git status",
+    "sudo HOWTO_APPEND+=x git status",
+  ]) {
+    assertUnsupportedPrefix(command, "prefix");
+  }
+  assert.equal(executable("env HOWTO_APPEND+=x git status"), "git");
+  assert.equal(executable("printf '%s' HOWTO_APPEND+=x"), "printf");
+  for (const prefix of ["'HOWTO_APPEND+=x'", "'HOWTO_APPEND'+=x", "HOWTO_APPEND\\+=x"]) {
+    assert.equal(executable(`${prefix} git status`), "HOWTO_APPEND+=x");
+  }
+});
+
+test("未受引用或转义保护的美元表达式不能证明执行前缀是字面工具", () => {
+  for (const expression of ["$=TOOL", "$==TOOL", "$~TOOL", "$^TOOL", "$^^TOOL", "$+TOOL", "$"]) {
+    for (const command of [`${expression} status`, `"${expression}" status`]) {
+      const parsed = parseShellCommand(command);
+      const result =
+        parsed.kind === "parsed" ? resolveCommandPrefix(parsed.commands[0].words) : parsed;
+      assert.equal(result.kind, "unsupported", command);
+    }
+    assert.equal(executable(`'${expression}' status`), expression);
+    assert.equal(executable(`\\${expression} status`), expression);
   }
 });
 

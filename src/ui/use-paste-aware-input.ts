@@ -1,4 +1,5 @@
-import { useInput, usePaste, type Key } from "ink";
+import { usePaste, type Key } from "ink";
+import { useKeyboardInput } from "./use-keyboard-input.js";
 
 interface Options {
   onInput: (input: string, key: Key) => void;
@@ -14,6 +15,6 @@ export function usePasteAwareInput({
   isPasteActive = true,
 }: Options): void {
   // 原始会话按顺序交付完整粘贴；此 hook 不承担恢复或授予执行权限的职责。
-  useInput(onInput, { isActive: isInputActive });
+  useKeyboardInput(onInput, { isActive: isInputActive });
   usePaste(onPaste, { isActive: isPasteActive });
 }

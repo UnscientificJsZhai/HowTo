@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Box, Text, useInput, usePaste, useWindowSize, type Key } from "ink";
+import { Box, Text, usePaste, useWindowSize, type Key } from "ink";
+import { useKeyboardInput } from "./use-keyboard-input.js";
 import { useInteractiveSession } from "./InteractiveSessionProvider.js";
 import { LoadingView } from "./LoadingView.js";
 import { SelectCommandView } from "./SelectCommandView.js";
@@ -53,7 +54,7 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
     onError(new InteractionCancelledError());
   }, [onError, session]);
 
-  useInput((input: string, key: Key) => {
+  useKeyboardInput((input: string, key: Key) => {
     if (frameRows === 0) return;
     if (status !== "loading") return;
 

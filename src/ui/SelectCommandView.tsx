@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
-import { Box, Text, useInput, type Key } from "ink";
+import { Box, Text, type Key } from "ink";
+import { useKeyboardInput } from "./use-keyboard-input.js";
 import type { CommandCandidateContract } from "../ai/types.js";
 import { toSingleLinePreview } from "./single-line-preview.js";
 
@@ -34,7 +35,7 @@ export const SelectCommandView: React.FC<Props> = ({
     setActiveIndex(nextIndex);
   }
 
-  useInput((input: string, key: Key) => {
+  useKeyboardInput((input: string, key: Key) => {
     if (!isInputActive || availableRows <= 0) return;
 
     if (key.escape || (key.ctrl && input === "c")) {

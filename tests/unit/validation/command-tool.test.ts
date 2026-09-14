@@ -19,6 +19,24 @@ test("candidateUsesRequestedCommand accepts env prefixes", () => {
   assert.equal(candidateUsesRequestedCommand("env FOO=bar git status", "git"), true);
 });
 
+test("use 不把方言相关追加赋值或美元展开当作确定工具", () => {
+  assert.equal(candidateUsesRequestedCommand("HOWTO_APPEND+=x git status", "git"), false);
+  assert.equal(
+    candidateUsesRequestedCommand("HOWTO_APPEND+=x git status", "HOWTO_APPEND+=x"),
+    false,
+  );
+  assert.equal(candidateUsesRequestedCommand("env HOWTO_APPEND+=x git status", "git"), true);
+  assert.equal(candidateUsesRequestedCommand("printf '%s' HOWTO_APPEND+=x", "printf"), true);
+  for (const expression of ["$=TOOL", "$~TOOL", "$^TOOL", "$+TOOL"]) {
+    assert.equal(candidateUsesRequestedCommand(`${expression} status`, expression), false);
+    assert.equal(candidateUsesRequestedCommand(`'${expression}' status`, expression), true);
+    assert.equal(
+      candidateUsesRequestedCommand(`env DATA="${expression}" git status`, "git"),
+      false,
+    );
+  }
+});
+
 test("candidateUsesRequestedCommand rejects shell wrappers", () => {
   assert.equal(candidateUsesRequestedCommand('sh -c "git status"', "git"), false);
 });

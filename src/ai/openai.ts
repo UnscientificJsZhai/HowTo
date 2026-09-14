@@ -12,7 +12,12 @@ export class OpenAiCommandProvider implements CommandProvider {
 
   constructor(config: AppConfig["openai"]) {
     this.model = config.model;
-    this.client = new OpenAI(buildOpenAiClientOptions(config));
+    try {
+      this.client = new OpenAI(buildOpenAiClientOptions(config));
+    } catch {
+      // SDK 初始化异常可能含自定义请求头原值，与请求失败使用同一固定错误边界。
+      throw new AiProviderError("openai", this.model);
+    }
   }
 
   async generateCommands(

@@ -6,7 +6,14 @@ import React from "react";
 import type { AppConfig } from "../../../src/config.js";
 import type { InitializationValues } from "../../../src/init/index.js";
 import { importWithoutColor } from "./import-without-color.js";
-import { sessionHarness, testCandidate, testRequest, waitFor } from "./session-test-helpers.js";
+import {
+  deferred,
+  sessionHarness,
+  testCandidate,
+  testRequest,
+  waitFor,
+} from "./session-test-helpers.js";
+import { InteractionCancelledError } from "../../../src/ui/tty.js";
 
 const modules = importWithoutColor(async () => {
   const [
@@ -15,14 +22,16 @@ const modules = importWithoutColor(async () => {
     { ConfirmView },
     { InteractiveSessionProvider },
     runner,
+    { App },
   ] = await Promise.all([
     import("ink"),
     import("../../../src/init/InitializationApp.js"),
     import("../../../src/ui/ConfirmView.js"),
     import("../../../src/ui/InteractiveSessionProvider.js"),
     import("../../../src/ui/run-interactive-command.js"),
+    import("../../../src/ui/App.js"),
   ]);
-  return { render, InitializationApp, ConfirmView, InteractiveSessionProvider, ...runner };
+  return { render, InitializationApp, ConfirmView, InteractiveSessionProvider, App, ...runner };
 });
 
 const graphemes = ["😀", "𠮷", "e\u0301", "👩🏽‍💻"];
@@ -176,6 +185,219 @@ void test("初始化拒绝真实 Alt/Meta 文本事件并保留 Shift 字符及�
   ]);
   assert.equal(view.session.getExecutionPolicy(), "execute");
 });
+
+const enterPress = "\u001b[13;1:1u";
+const enterRelease = "\u001b[13;1:3u";
+const backspacePress = "\u001b[127;1:1u";
+const backspaceRelease = "\u001b[127;1:3u";
+const deletePress = "\u001b[3;1:1~";
+const deleteRelease = "\u001b[3;1:3~";
+
+for (const hasPlaceholder of [false, true]) {
+  for (const pasted of [false, true]) {
+    void test(`Enter 释放事件不会跨越${hasPlaceholder ? "占位符" : "候选选择"}后的${pasted ? "仅输出" : "执行"}确认`, async (t) => {
+      const { App } = await modules;
+      const command = hasPlaceholder ? "printf '%s' '{{value}}'" : "printf keyboard-safe";
+      const candidate = {
+        ...testCandidate(command),
+        placeholders: hasPlaceholder ? [{ name: "value", description: "测试值" }] : [],
+      };
+      const confirmed: string[] = [];
+      const view = await renderInSession(
+        t,
+        <App
+          provider={{
+            generateCommands: () =>
+              Promise.resolve({ rawText: JSON.stringify({ commands: [candidate] }) }),
+          }}
+          request={testRequest()}
+          onSuccess={(value) => confirmed.push(value)}
+          onError={(error) => assert.fail(error.message)}
+        />,
+      );
+      await waitFor(() => view.text().includes("Select a command"), "候选未显示");
+      if (pasted) await sendAndFlush(view, "\u001b[200~\u001b[201~");
+      await sendAndFlush(view, enterPress);
+      if (hasPlaceholder) {
+        await sendAndFlush(view, enterRelease);
+        await sendAndFlush(view, "abc");
+        await sendAndFlush(view, backspacePress);
+        await sendAndFlush(view, backspaceRelease);
+        await sendAndFlush(view, enterPress);
+      }
+      await waitFor(
+        () => view.text().includes(pasted ? "仅输出:" : "Final command:"),
+        "最终确认未显示",
+      );
+      assert.deepEqual(confirmed, []);
+      await sendAndFlush(view, enterRelease);
+      await sendAndFlush(view, "\u001b[27;1:3u\u001b[99;5:3u");
+      assert.deepEqual(confirmed, []);
+      await sendAndFlush(view, enterPress);
+      assert.deepEqual(confirmed, [hasPlaceholder ? "printf '%s' 'ab'" : command]);
+      assert.equal(view.session.getExecutionPolicy(), pasted ? "print" : "execute");
+    });
+  }
+}
+
+void test("候选导航忽略方向键释放事件，保留最后一次实际移动", async (t) => {
+  const { App } = await modules;
+  const confirmed: string[] = [];
+  const candidates = ["printf first", "printf second", "printf third"].map(testCandidate);
+  const view = await renderInSession(
+    t,
+    <App
+      provider={{
+        generateCommands: () =>
+          Promise.resolve({ rawText: JSON.stringify({ commands: candidates }) }),
+      }}
+      request={testRequest()}
+      onSuccess={(command) => confirmed.push(command)}
+      onError={(error) => assert.fail(error.message)}
+    />,
+  );
+  await waitFor(() => view.text().includes("Select a command"), "候选未显示");
+  await sendAndFlush(view, "\u001b[1;1:1B\u001b[1;1:3B");
+  await sendAndFlush(view, "\r");
+  await sendAndFlush(view, "\r");
+  assert.deepEqual(confirmed, ["printf second"]);
+});
+
+void test("加载时 Ctrl+C release 不取消请求，press 仍立即取消", async (t) => {
+  const { App } = await modules;
+  const pending = deferred<{ rawText: string }>();
+  let signal: AbortSignal | undefined;
+  const errors: Error[] = [];
+  const view = await renderInSession(
+    t,
+    <App
+      provider={{
+        generateCommands: (_request, currentSignal) => {
+          signal = currentSignal;
+          return pending.promise;
+        },
+      }}
+      request={testRequest()}
+      onSuccess={() => assert.fail("加载时不应确认")}
+      onError={(error) => errors.push(error)}
+    />,
+  );
+  await waitFor(() => signal !== undefined, "请求未启动");
+  await sendAndFlush(view, "\u001b[99;5:3u");
+  assert.equal(signal?.aborted, false);
+  assert.equal(errors.length, 0);
+  await sendAndFlush(view, "\u001b[99;5:1u");
+  assert.equal(signal?.aborted, true);
+  assert.equal(errors.length, 1);
+  assert.ok(errors[0] instanceof InteractionCancelledError);
+});
+
+void test("初始化 Enter 与 Backspace 的 press/release 各只生效一次", async (t) => {
+  const { InitializationApp } = await modules;
+  const submissions: InitializationValues[] = [];
+  const view = await renderInSession(
+    t,
+    <InitializationApp
+      onSubmit={(values) => {
+        submissions.push(values);
+        return Promise.resolve(testConfig());
+      }}
+      onComplete={() => {}}
+      onCancel={() => assert.fail("释放事件不应取消")}
+      onError={(error) => assert.fail(error.message)}
+    />,
+  );
+  await sendAndFlush(view, "\u001b[1;1:1B\u001b[1;1:3B");
+  await sendAndFlush(view, enterPress);
+  await sendAndFlush(view, enterRelease);
+  await sendAndFlush(view, "FAKE-a");
+  // 按下和重复各输入一个 b，释放不输入；之后只删除一个完整字符。
+  await sendAndFlush(view, "\u001b[98;1:1u\u001b[98;1:2u\u001b[98;1:3u");
+  await sendAndFlush(view, backspacePress);
+  await sendAndFlush(view, backspaceRelease);
+  await sendAndFlush(view, "\u001b[27;1:3u\u001b[99;5:3u");
+  await sendAndFlush(view, enterPress);
+  await sendAndFlush(view, enterRelease);
+  await sendAndFlush(view, "model-test");
+  await sendAndFlush(view, enterPress);
+  await sendAndFlush(view, enterRelease);
+  await sendAndFlush(view, "https://example.invalid/v1");
+  await sendAndFlush(view, enterPress);
+  await waitFor(() => submissions.length === 1, "初始化未完成");
+  assert.deepEqual(submissions, [
+    {
+      provider: "openai",
+      apiKey: "FAKE-ab",
+      model: "model-test",
+      openaiBaseUrl: "https://example.invalid/v1",
+    },
+  ]);
+});
+
+void test("危险确认不因 Backspace/Delete release 多删字符，Return release 不确认", async (t) => {
+  const { ConfirmView } = await modules;
+  let confirmations = 0;
+  const view = await renderInSession(
+    t,
+    <ConfirmView
+      candidate={testCandidate()}
+      command={testCandidate().command}
+      resolvedValues={new Map()}
+      danger={{ rule: "测试风险", reason: "仅验证回调" }}
+      onConfirm={() => confirmations++}
+      onCancel={() => assert.fail("release 不应取消或修改确认短语")}
+    />,
+  );
+  await sendAndFlush(view, "EXECUTEAX");
+  await sendAndFlush(view, backspacePress);
+  await sendAndFlush(view, backspaceRelease);
+  await sendAndFlush(view, deletePress);
+  await sendAndFlush(view, deleteRelease);
+  await sendAndFlush(view, enterRelease);
+  assert.equal(confirmations, 0);
+  await sendAndFlush(view, enterPress);
+  assert.equal(confirmations, 1);
+});
+
+for (const command of [
+  "HOWTO_APPEND+=x rm -rf /",
+  "export HOWTO_TOOL=rm; $=HOWTO_TOOL -rf /",
+  "npm install-test -g example-package",
+  "npm it -g example-package",
+]) {
+  for (const confirmation of ["", "EXECUTE"]) {
+    void test(`生成链路对新识别风险${confirmation ? "接受确认短语" : "拒绝仅 Enter"}：${command}`, async (t) => {
+      const { App } = await modules;
+      const confirmed: string[] = [];
+      const errors: Error[] = [];
+      const view = await renderInSession(
+        t,
+        <App
+          provider={{
+            generateCommands: () =>
+              Promise.resolve({ rawText: JSON.stringify({ commands: [testCandidate(command)] }) }),
+          }}
+          request={testRequest()}
+          onSuccess={(value) => confirmed.push(value)}
+          onError={(error) => errors.push(error)}
+        />,
+      );
+      await waitFor(() => view.text().includes("Select a command"), "候选未显示");
+      await sendAndFlush(view, "\r");
+      // 只记录 App 回调，绝不执行待验证的危险命令。
+      if (confirmation) await sendAndFlush(view, confirmation);
+      await sendAndFlush(view, "\r");
+      if (confirmation) {
+        assert.deepEqual(confirmed, [command]);
+        assert.equal(errors.length, 0);
+      } else {
+        assert.deepEqual(confirmed, []);
+        assert.equal(errors.length, 1);
+        assert.ok(errors[0] instanceof InteractionCancelledError);
+      }
+    });
+  }
+}
 
 async function renderInSession(t: TestContext, element: React.ReactNode) {
   const { render, InteractiveSessionProvider } = await modules;

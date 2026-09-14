@@ -5,7 +5,7 @@ export interface ShellWord {
   start: number;
   end: number;
   hasExpansion: boolean;
-  isAssignment: boolean;
+  assignmentOperator?: "=" | "+=";
 }
 
 export type ShellSeparator = ";" | "\n" | "&&" | "||" | "|" | "&";
@@ -149,11 +149,17 @@ export function parseShellCommand(command: string): ShellParseResult {
 
 export function resolveCommandPrefix(words: readonly ShellWord[]): ShellPrefixResult {
   let index = 0;
-  while (words[index]?.isAssignment) index += 1;
+  while (words[index]?.assignmentOperator === "=") index += 1;
 
   while (index < words.length) {
     const word = words[index];
-    if (word.hasExpansion || word.value === "" || word.value.startsWith("-"))
+    // += 在 Bash/zsh 与 dash 中语义不同；无法确定 shell 时不能跳过它证明工具身份。
+    if (
+      word.assignmentOperator === "+=" ||
+      word.hasExpansion ||
+      word.value === "" ||
+      word.value.startsWith("-")
+    )
       return unsupported("prefix");
     const name = posix.basename(word.value);
     if (REINTERPRETING_PREFIXES.has(name) || RESERVED_WORDS.has(word.value))
@@ -295,7 +301,7 @@ function readWord(
   let quote: "'" | '"' | undefined;
   let hasExpansion = false;
   let assignmentEligible = true;
-  let isAssignment = false;
+  let assignmentOperator: ShellWord["assignmentOperator"];
   while (index < command.length) {
     const char = command[index];
     if (quote === "'") {
@@ -345,7 +351,8 @@ function readWord(
         index += parameter[0].length;
         continue;
       }
-      if (next !== undefined && /[A-Za-z_0-9@*#?$!-]/.test(next)) hasExpansion = true;
+      // 未引用或转义的美元字符保守视为动态，不能用不完整白名单排除 shell 扩展。
+      hasExpansion = true;
     }
     if (quote === undefined) {
       if (" \t\n;&|<>".includes(char)) break;
@@ -356,14 +363,16 @@ function readWord(
         (char === "=" && value === "" && assignmentEligible)
       )
         hasExpansion = true;
-      if (char === "=" && assignmentEligible && /^[A-Za-z_][A-Za-z0-9_]*$/.test(value))
-        isAssignment = true;
+      if (char === "=" && assignmentEligible) {
+        if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) assignmentOperator = "=";
+        else if (/^[A-Za-z_][A-Za-z0-9_]*\+$/.test(value)) assignmentOperator = "+=";
+      }
     }
     value += char;
     index += 1;
   }
   if (quote !== undefined) return unsupported("syntax");
-  return { kind: "parsed", word: { value, start, end: index, hasExpansion, isAssignment } };
+  return { kind: "parsed", word: { value, start, end: index, hasExpansion, assignmentOperator } };
 }
 
 function unsupported(reason: UnsupportedShellCommand["reason"]): UnsupportedShellCommand {
