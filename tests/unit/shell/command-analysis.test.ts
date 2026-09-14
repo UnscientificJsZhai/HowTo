@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import {
   isShellExecutable,
@@ -87,6 +88,69 @@ for (const [command, expected] of [
     assert.equal(executable(command), expected);
   });
 }
+
+test("shell 前导赋值、sudo argv 与 env argv 分别保留各自的识别边界", () => {
+  for (const assignment of ["1=x", "a-b=c", "a.b=c"]) {
+    assert.equal(executable(`${assignment} git status`), assignment);
+    assertUnsupportedPrefix(`sudo '${assignment}' git status`, "prefix");
+    assert.equal(executable(`env '${assignment}' git status`), "git");
+  }
+  for (const command of [
+    "env a.b= git status",
+    "env 'a.b=c=d' git status",
+    "env 'a b=c' git status",
+    "env -- '-a=b' git status",
+    "env -- 1=x git status",
+    "env A=x a-b=c a.b=d git status",
+    "FOO=bar /usr/bin/env -i 1=x /usr/bin/sudo -n git status",
+  ]) {
+    assert.equal(executable(command), "git", command);
+  }
+});
+
+test("env 不把空名称、动态赋值或赋值后的选项重新解释为确定工具", () => {
+  for (const command of [
+    "env '=x' git status",
+    "env '=' git status",
+    "env -- '=x' git status",
+    "env =git git status",
+    'env "1=$VALUE" git status',
+    'env A=x "a-b=$VALUE" git status',
+    'env "$NAME=value" git status',
+    "env a.b=x -- git status",
+    "env a.b=x -u NAME git status",
+  ]) {
+    assertUnsupportedPrefix(command, "prefix");
+  }
+  assertUnsupportedPrefix("env a.b=x", "missing-executable");
+  assertUnsupportedPrefix("env -- '-a=b'", "missing-executable");
+});
+
+test(
+  "真实 env 将非 shell 标识符赋值传给后续无害子进程",
+  { skip: process.platform === "win32", timeout: 8_000 },
+  () => {
+    for (const assignments of [
+      ["1=x"],
+      ["a-b=c"],
+      ["a.b=c"],
+      ["a.b="],
+      ["a.b=c=d"],
+      ["--", "-a=b"],
+      ["A=x", "a-b=c"],
+    ]) {
+      const result = spawnSync(
+        "/usr/bin/env",
+        [...assignments, process.execPath, "-e", "process.stdout.write('howto-env-probe')"],
+        { encoding: "utf8", env: { PATH: "/usr/bin:/bin" }, timeout: 1_000 },
+      );
+      assert.equal(result.error, undefined, assignments.join(" "));
+      assert.equal(result.status, 0, assignments.join(" "));
+      assert.equal(result.stdout, "howto-env-probe");
+      assert.equal(result.stderr, "");
+    }
+  },
+);
 
 for (const wrapper of [
   {

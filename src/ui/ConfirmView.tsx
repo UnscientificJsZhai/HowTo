@@ -3,7 +3,7 @@ import { Box, Text, useStdout, type Key } from "ink";
 import type { DangerousCommandMatch } from "../safety/dangerous-command.js";
 import type { CommandCandidateContract } from "../ai/types.js";
 import { hasUnsafeTerminalControlCharacters } from "../terminal-text.js";
-import { isTextInputEvent } from "./text-input.js";
+import { deleteLastGrapheme, isTextInputEvent } from "./text-input.js";
 import { toSingleLinePreview, toTailPreview } from "./single-line-preview.js";
 import { useExecutionPolicy } from "./InteractiveSessionProvider.js";
 import { usePasteAwareInput } from "./use-paste-aware-input.js";
@@ -73,7 +73,7 @@ export const ConfirmView: React.FC<Props> = ({
         }
 
         if (key.backspace || key.delete) {
-          updateBuffer((previous) => previous.slice(0, -1));
+          updateBuffer(deleteLastGrapheme);
           return;
         }
 

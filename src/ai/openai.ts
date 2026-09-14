@@ -19,19 +19,20 @@ export class OpenAiCommandProvider implements CommandProvider {
     request: GenerateCommandsRequest,
     signal?: AbortSignal,
   ): Promise<GenerateCommandsResult> {
-    let rawText: string | null | undefined;
+    let rawText: unknown;
     try {
       const parameters = buildOpenAiChatCompletionRequest(this.model, request);
+      // SDK 重试等待不响应取消；交互请求关闭自动重试，避免取消后残留计时器。
       const response =
         signal === undefined
           ? await this.client.chat.completions.create(parameters)
-          : await this.client.chat.completions.create(parameters, { signal });
+          : await this.client.chat.completions.create(parameters, { signal, maxRetries: 0 });
       rawText = response.choices[0]?.message?.content;
     } catch {
       throw new AiProviderError("openai", this.model);
     }
 
-    if (rawText === undefined || rawText === null || rawText.trim() === "") {
+    if (typeof rawText !== "string" || rawText.trim() === "") {
       throw new AiProviderError("openai", this.model);
     }
 
@@ -47,6 +48,10 @@ export function buildOpenAiClientOptions(config: AppConfig["openai"]): ClientOpt
       apiKey: config.apiKey,
       baseURL,
       logLevel: "off",
+      // 最终认证头必须覆盖 SDK 隐式读取的 OPENAI_CUSTOM_HEADERS。
+      defaultHeaders: {
+        Authorization: `Bearer ${config.apiKey}`,
+      },
     };
   }
 

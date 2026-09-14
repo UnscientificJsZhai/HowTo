@@ -2,6 +2,7 @@ import type { GenerateCommandsRequest } from "../../../src/ai/types.js";
 
 const RESPONSE_TEXT = "howto boundary response";
 const envelopeMode = process.env.HOWTO_TEST_GEMINI_ENVELOPE;
+const openAiEnvelopeMode = process.env.HOWTO_TEST_OPENAI_ENVELOPE;
 const validCandidate = {
   title: "List files",
   command: "ls",
@@ -26,11 +27,7 @@ globalThis.fetch = (input, init) => {
       request.headers.get("Authorization") === null;
   requests.push({ url: request.url, method: request.method, credentialsMatch });
 
-  return Promise.resolve(
-    Response.json(
-      isOpenAi ? { choices: [{ message: { content: RESPONSE_TEXT } }] } : geminiEnvelope(),
-    ),
-  );
+  return Promise.resolve(Response.json(isOpenAi ? openAiEnvelope() : geminiEnvelope()));
 };
 
 const { loadConfig } = await import("../../../src/config.js");
@@ -56,7 +53,7 @@ const request: GenerateCommandsRequest = {
   systemPrompt: "system prompt",
   userPrompt: "user prompt",
 };
-if (envelopeMode === undefined) {
+if (envelopeMode === undefined && openAiEnvelopeMode === undefined) {
   const result = await provider.generateCommands(request);
   // 只报告假凭据是否原样匹配，不把 header 或 key 写进输出。
   process.stdout.write(
@@ -76,6 +73,22 @@ if (envelopeMode === undefined) {
     process.exitCode = appError.exitCode;
   }
   process.stdout.write(`${JSON.stringify({ requests, responseMatches, getterReads })}\n`);
+}
+
+function openAiEnvelope(): unknown {
+  if (openAiEnvelopeMode === "missing") return { choices: [{ message: {} }] };
+  const contents: Record<string, unknown> = {
+    valid: commandJson,
+    number: 7,
+    boolean: false,
+    object: { text: `\u001b[2J${fakeSecret}` },
+    array: [{ text: `\u001b[2J${fakeSecret}` }],
+    null: null,
+    blank: " \n ",
+    "invalid-json": `not JSON ${fakeSecret}`,
+  };
+  const content = openAiEnvelopeMode === undefined ? RESPONSE_TEXT : contents[openAiEnvelopeMode];
+  return { choices: [{ message: { content } }] };
 }
 
 function geminiEnvelope(): unknown {

@@ -62,6 +62,29 @@ const cases: BoundaryCase[] = [
     env: { ...OPENAI_SDK_ENV, HOWTO_OPENAI_API_URL: "" },
     url: OPENAI_URL,
   },
+  ...[
+    ["标准大小写", "Authorization: Bearer howto-fake-sdk-header-key"],
+    ["全小写", "authorization: Bearer howto-fake-sdk-header-key"],
+    ["混合大小写", "aUtHoRiZaTiOn: Bearer howto-fake-sdk-header-key"],
+    [
+      "重复认证头",
+      "Authorization: Bearer howto-fake-sdk-first-key\nauthorization: Bearer howto-fake-sdk-last-key",
+    ],
+  ].flatMap(([headerCase, customHeaders]) =>
+    ["howto-fake-openai-key", "", " \t "].flatMap((apiKey) =>
+      [undefined, "https://howto-custom.invalid/v1"].map((baseUrl): BoundaryCase => ({
+        name: `OpenAI ${baseUrl === undefined ? "官方" : "自定义"}地址的${apiKey.trim() ? "显式" : apiKey === "" ? "空" : "空白"} key 不受 SDK ${headerCase}覆盖`,
+        provider: "openai",
+        env: {
+          ...OPENAI_SDK_ENV,
+          HOWTO_OPENAI_API_KEY: apiKey,
+          ...(baseUrl === undefined ? {} : { HOWTO_OPENAI_API_URL: baseUrl }),
+          OPENAI_CUSTOM_HEADERS: customHeaders,
+        },
+        url: `${baseUrl ?? "https://api.openai.com/v1"}/chat/completions`,
+      })),
+    ),
+  ),
   { name: "Gemini 默认使用官方 v1beta 地址", provider: "gemini", url: GEMINI_URL },
   {
     name: "Gemini 忽略两个 SDK 隐式地址并保留 HOWTO 假 key",
@@ -132,6 +155,54 @@ for (const scenario of cases) {
         requests: [{ url: scenario.url, method: "POST", credentialsMatch: true }],
         responseMatches: true,
       })}\n`,
+    );
+  });
+}
+
+for (const [mode, exitCode] of [
+  ["valid", 0],
+  ["number", 1],
+  ["boolean", 1],
+  ["object", 1],
+  ["array", 1],
+  ["null", 1],
+  ["missing", 1],
+  ["blank", 1],
+  ["invalid-json", 2],
+] as const) {
+  test(`OpenAI content ${mode} 保持固定错误类别且不回显上游内容`, () => {
+    const child = spawnSync(process.execPath, [CHILD_ENTRYPOINT], {
+      env: {
+        HOWTO_AI_PROVIDER: "openai",
+        HOWTO_OPENAI_API_KEY: "howto-fake-openai-key",
+        HOWTO_OPENAI_MODEL: "gpt-test",
+        HOWTO_TEST_OPENAI_ENVELOPE: mode,
+      },
+      encoding: "utf8",
+      timeout: 5_000,
+      killSignal: "SIGKILL",
+      maxBuffer: 1024 * 1024,
+    });
+    assert.ifError(child.error);
+    assert.equal(child.signal, null);
+    assert.equal(child.status, exitCode);
+    assert.equal((child.stdout + child.stderr).includes("\u001b"), false);
+    assert.doesNotMatch(child.stdout + child.stderr, /HOWTO_FAKE_ENVELOPE_SECRET|TypeError|\.trim/);
+    assert.equal(
+      child.stdout,
+      `${JSON.stringify({
+        requests: [{ url: OPENAI_URL, method: "POST", credentialsMatch: true }],
+        responseMatches: exitCode === 0,
+        getterReads: 0,
+      })}\n`,
+    );
+    assert.equal(
+      child.stderr,
+      exitCode === 0
+        ? ""
+        : exitCode === 1
+          ? "AI provider request failed (provider: openai, model: gpt-test)\n"
+          : "AI response format error: AI response is not valid JSON\n",
     );
   });
 }

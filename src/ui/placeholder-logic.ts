@@ -1,4 +1,5 @@
 import type { CommandCandidateContract, CommandPlaceholderContract } from "../ai/types.js";
+import { deleteLastGrapheme } from "./text-input.js";
 
 const PLACEHOLDER_REFERENCE_PATTERN = /{{([^{}]*)}}/g;
 
@@ -92,7 +93,7 @@ export function applyPlaceholderResolutionInput(
         type: "editing",
         state: {
           ...state,
-          buffer: state.buffer.slice(0, -1),
+          buffer: deleteLastGrapheme(state.buffer),
         },
       };
 

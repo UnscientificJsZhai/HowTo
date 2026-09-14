@@ -53,6 +53,8 @@ howto --init
 
 The initializer writes a user-level config file at `~/.howto/config.json`.
 
+Initialization and placeholder input delete complete characters on Backspace, including emoji and combining sequences. Alt/Meta shortcuts are not inserted into configuration fields as text.
+
 > [!NOTE]
 > OpenAI API keys may be empty for local OpenAI-compatible services. Gemini requires a non-empty API key.
 
@@ -145,6 +147,8 @@ For each setting, the first configured source in that order wins:
 
 howto sets the request endpoint and Gemini API mode explicitly. `OPENAI_BASE_URL`, `GOOGLE_GEMINI_BASE_URL`, `GOOGLE_VERTEX_BASE_URL`, and the Google SDK's Vertex/Enterprise environment switches do not override them. Gemini uses the official `generativelanguage.googleapis.com` `v1beta` API. Use the HOWTO settings above for a custom OpenAI endpoint.
 
+OpenAI Authorization uses the key configured in howto and is omitted when that key is blank. Authorization in `OPENAI_CUSTOM_HEADERS` cannot override this choice. Interactive OpenAI requests report rate limits and temporary service errors without automatic retries so cancellation can exit promptly; `--print` keeps the SDK's default retry behavior.
+
 Example:
 
 ```bash
@@ -166,6 +170,8 @@ howto --print "show current branch"
 Dangerous-command detection currently covers high-risk patterns such as recursive destructive `rm`, disk and filesystem operations, broad recursive permission changes, downloaded scripts piped into a shell, high-impact package manager operations, and service changes.
 
 Local analysis handles literal quoting, absolute command paths, and supported `sudo`/`env` options, and checks each command segment. Unknown wrapper options, dynamic executable prefixes, and shell syntax outside the supported subset also require `EXECUTE`, so an inconclusive analysis does not skip the additional confirmation.
+
+Assignments passed to `env` can use names starting with digits or containing hyphens or dots; the actual command after them is still checked. Official npm global install/uninstall aliases such as `i`, `add`, `un`, and `unlink` receive the same additional confirmation. Inconclusive abbreviations of those actions also require confirmation.
 
 If howto detects bracketed paste during an interactive run, including automatic initialization, that run permanently switches to printing the final command for manual execution. At final confirmation, Enter prints the command without running it, and the terminal shows an explanation. Returning to selection or resizing the terminal does not restore execution. Keyboard-only runs keep the usual Enter or `EXECUTE` confirmation.
 

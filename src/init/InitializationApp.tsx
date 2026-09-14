@@ -12,7 +12,7 @@ import {
   createInitialInitializationState,
   getProviderOptions,
   type InitializationFieldState,
-  type InitializationKeyInput,
+  type InitializationInput,
   type InitializationState,
 } from "./state.js";
 
@@ -26,15 +26,6 @@ interface Props {
 type SubmitStatus = "editing" | "saving" | "error" | "cancelled";
 
 const RICH_LAYOUT_MIN_ROWS = 15;
-const PASTE_KEY: InitializationKeyInput["key"] = {
-  upArrow: false,
-  downArrow: false,
-  return: false,
-  escape: false,
-  ctrl: false,
-  backspace: false,
-  delete: false,
-};
 
 export const InitializationApp: React.FC<Props> = ({ onSubmit, onComplete, onCancel, onError }) => {
   const session = useInteractiveSession();
@@ -46,7 +37,7 @@ export const InitializationApp: React.FC<Props> = ({ onSubmit, onComplete, onCan
   const [errorMessage, setErrorMessage] = useState("");
   const frameRows = Math.max(0, rows - 1);
 
-  const handleInput = (input: string, key: InitializationKeyInput["key"]) => {
+  const handleInput = (event: InitializationInput) => {
     if (frameRows === 0) {
       return;
     }
@@ -55,7 +46,7 @@ export const InitializationApp: React.FC<Props> = ({ onSubmit, onComplete, onCan
       return;
     }
 
-    const update = applyInitializationInput(stateRef.current, { input, key });
+    const update = applyInitializationInput(stateRef.current, event);
     stateRef.current = update.state;
     setState(update.state);
 
@@ -87,12 +78,10 @@ export const InitializationApp: React.FC<Props> = ({ onSubmit, onComplete, onCan
 
   usePasteAwareInput({
     onInput: (input: string, key: Key) => {
-      handleInput(input, key);
+      handleInput({ type: "keyboard", input, key });
     },
     onPaste: (input) => {
-      if (stateRef.current.step === "input") {
-        handleInput(input, PASTE_KEY);
-      }
+      handleInput({ type: "paste", input });
     },
     isInputActive: frameRows === 0 || submitStatus === "editing",
     isPasteActive: frameRows > 0 && submitStatus === "editing",

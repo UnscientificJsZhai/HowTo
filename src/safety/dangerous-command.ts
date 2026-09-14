@@ -75,6 +75,26 @@ const PACKAGE_ZERO_OPTIONS = new Set([
   "--verbose",
 ]);
 const SERVICE_ZERO_OPTIONS = new Set(["--user", "--system"]);
+const NPM_ACTION_ALIASES: ReadonlyMap<string, "install" | "uninstall"> = new Map([
+  ["install", "install"],
+  ["add", "install"],
+  ["i", "install"],
+  ["in", "install"],
+  ["ins", "install"],
+  ["inst", "install"],
+  ["insta", "install"],
+  ["instal", "install"],
+  ["isnt", "install"],
+  ["isnta", "install"],
+  ["isntal", "install"],
+  ["isntall", "install"],
+  ["uninstall", "uninstall"],
+  ["unlink", "uninstall"],
+  ["remove", "uninstall"],
+  ["rm", "uninstall"],
+  ["r", "uninstall"],
+  ["un", "uninstall"],
+]);
 
 export function detectDangerousCommand(command: string): DangerousCommandMatch | undefined {
   return inspectCommand(command, false);
@@ -183,9 +203,11 @@ function inspectPackageCommand(
   name: string,
   args: readonly ShellWord[],
 ): DangerousCommandMatch | undefined {
-  const action = leadingAction(args, PACKAGE_ZERO_OPTIONS);
+  const parsedAction = leadingAction(args, PACKAGE_ZERO_OPTIONS);
+  if (parsedAction === null) return INDETERMINATE;
+  if (parsedAction === undefined) return undefined;
+  const action = name === "npm" ? resolveNpmAction(parsedAction) : parsedAction;
   if (action === null) return INDETERMINATE;
-  if (action === undefined) return undefined;
   if (name === "brew")
     return ["upgrade", "uninstall", "remove"].includes(action) ? PACKAGE_OPERATION : undefined;
   if (name !== "npm" && name !== "pip" && name !== "pip3") {
@@ -202,6 +224,16 @@ function inspectPackageCommand(
   )
     ? INDETERMINATE
     : undefined;
+}
+
+function resolveNpmAction(action: string): string | null {
+  const canonical = NPM_ACTION_ALIASES.get(action);
+  if (canonical !== undefined) return canonical;
+  // npm 也接受唯一前缀缩写；不复制完整命令表，相关前缀统一要求额外确认。
+  for (const knownAction of NPM_ACTION_ALIASES.keys()) {
+    if (knownAction.startsWith(action)) return null;
+  }
+  return action;
 }
 
 function serviceAction(args: readonly ShellWord[]): string | null | undefined {

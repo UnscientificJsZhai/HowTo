@@ -89,6 +89,31 @@ test("use 仅精确匹配实际工具 token，不将同名路径视为相同工�
   assert.equal(candidateUsesRequestedCommand("/custom/git status", "/usr/bin/git"), false);
 });
 
+test("use 越过 env 的非 shell 标识符赋值，只匹配后续实际工具", () => {
+  for (const assignment of ["1=x", "a-b=c", "a.b=", "a.b=c=d"]) {
+    const command = `env '${assignment}' git status`;
+    assert.equal(candidateUsesRequestedCommand(command, "git"), true, command);
+    assert.equal(candidateUsesRequestedCommand(command, assignment), false, command);
+  }
+  assert.equal(candidateUsesRequestedCommand("env -- '-a=b' git status", "git"), true);
+  assert.equal(candidateUsesRequestedCommand("sudo -n /usr/bin/env 1=x git status", "git"), true);
+  assert.equal(candidateUsesRequestedCommand("env 'git=value' id", "git"), false);
+  assert.equal(candidateUsesRequestedCommand("env 'git=value' id", "id"), true);
+});
+
+test("use 拒绝 env 空名称、动态赋值、缺失工具及不确定的 sudo 赋值", () => {
+  for (const command of [
+    "env '=x' git status",
+    "env -- '=' git status",
+    "env 1=x",
+    'env A=x "a-b=$VALUE" git status',
+    "env a.b=x -- git status",
+    "sudo 'a-b=c' git status",
+  ]) {
+    assert.equal(candidateUsesRequestedCommand(command, "git"), false, command);
+  }
+});
+
 test("use 拒绝已知 shell 本身及标准路径包装", () => {
   for (const shell of ["sh", "bash", "zsh", "fish", "csh", "tcsh", "ksh", "dash"]) {
     for (const executable of [shell, `/bin/${shell}`]) {

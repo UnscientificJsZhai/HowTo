@@ -1,5 +1,14 @@
+/// <reference lib="es2022.intl" />
+
 import type { Key } from "ink";
 import { hasUnsafeTerminalControlCharacters } from "../terminal-text.js";
+
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+export function deleteLastGrapheme(value: string): string {
+  const lastGrapheme = graphemeSegmenter.segment(value).containing(value.length - 1);
+  return lastGrapheme === undefined ? "" : value.slice(0, lastGrapheme.index);
+}
 
 export function isTextInputEvent(input: string, key: Key): boolean {
   return (

@@ -165,9 +165,17 @@ export function resolveCommandPrefix(words: readonly ShellWord[]): ShellPrefixRe
     const skipped = skipWrapperOptions(words, index + 1, name);
     if (typeof skipped !== "number") return skipped;
     index = skipped;
-    // sudo/env 在去引号后的 argv 中识别赋值，与 shell 对前导赋值的语法不同。
-    while (words[index] !== undefined && ASSIGNMENT.test(words[index].value)) {
-      if (words[index].hasExpansion) return unsupported("prefix");
+    // wrapper 按 argv 识别赋值；env 的非空名称不受 shell 标识符规则限制。
+    // sudo 保留 NAME= 白名单，其他含等号形式及动态赋值不推测为工具。
+    while (words[index] !== undefined) {
+      const assignment = words[index];
+      const equals = assignment.value.indexOf("=");
+      if (equals < 0) break;
+      if (
+        assignment.hasExpansion ||
+        (name === "env" ? equals === 0 : !ASSIGNMENT.test(assignment.value))
+      )
+        return unsupported("prefix");
       index += 1;
     }
   }

@@ -113,7 +113,7 @@ test("Gemini initialization uses the default model when model input is empty", (
   });
 });
 
-test("initialization drops a whole input chunk containing any forbidden terminal control", () => {
+test("初始化整块丢弃包含禁用控制字符的键盘文本与粘贴", () => {
   const initialInputState = applyInitializationInput(
     createInitialInitializationState(),
     keypress("1"),
@@ -121,14 +121,16 @@ test("initialization drops a whole input chunk containing any forbidden terminal
 
   for (const codeUnit of unsafeTerminalCodeUnits()) {
     const attack = `safe-prefix${String.fromCharCode(codeUnit)}safe-suffix`;
-    const update = applyInitializationInput(initialInputState, keypress(attack));
+    for (const event of [keypress(attack), { type: "paste", input: attack } as const]) {
+      const update = applyInitializationInput(initialInputState, event);
 
-    assert.equal(update.state.step, "input");
-    assert.equal(
-      update.state.step === "input" ? update.state.fields[0]?.value : undefined,
-      "",
-      `expected U+${codeUnit.toString(16).toUpperCase().padStart(4, "0")} to reject the chunk`,
-    );
+      assert.equal(update.state.step, "input");
+      assert.equal(
+        update.state.step === "input" ? update.state.fields[0]?.value : undefined,
+        "",
+        `U+${codeUnit.toString(16).toUpperCase().padStart(4, "0")} 应使整个输入块被丢弃`,
+      );
+    }
   }
 });
 
@@ -138,13 +140,41 @@ test("initialization accepts ordinary and CR/LF paste values", () => {
     keypress("1"),
   ).state;
   const pastedValue = "ordinary\r\nvalue";
-  const update = applyInitializationInput(initialInputState, keypress(pastedValue));
+  const update = applyInitializationInput(initialInputState, { type: "paste", input: pastedValue });
 
   assert.equal(update.state.step, "input");
   assert.equal(
     update.state.step === "input" ? update.state.fields[0]?.value : undefined,
     pastedValue,
   );
+});
+
+test("初始化忽略 provider 粘贴与带快捷键修饰符的数字选择", () => {
+  const state = createInitialInitializationState();
+  assert.deepEqual(applyInitializationInput(state, { type: "paste", input: "1\r" }), { state });
+  for (const modifier of ["ctrl", "meta", "super", "hyper"] as const) {
+    assert.deepEqual(applyInitializationInput(state, keypress("1", { [modifier]: true })), {
+      state,
+    });
+  }
+});
+
+test("初始化字段忽略快捷键与释放事件并接受 Shift 文本", () => {
+  let state = applyInitializationInput(createInitialInitializationState(), keypress("1")).state;
+  state = applyInitializationInput(state, keypress("abc")).state;
+
+  for (const modifier of ["ctrl", "meta", "super", "hyper"] as const) {
+    assert.deepEqual(applyInitializationInput(state, keypress("b", { [modifier]: true })), {
+      state,
+    });
+  }
+  assert.deepEqual(applyInitializationInput(state, keypress("b", { eventType: "release" })), {
+    state,
+  });
+
+  const update = applyInitializationInput(state, keypress("Z!", { shift: true }));
+  assert.equal(update.state.step, "input");
+  assert.equal(update.state.fields[0].value, "abcZ!");
 });
 
 test("initialization keeps standalone Backspace and Delete behavior", () => {
@@ -275,15 +305,29 @@ function keypress(
   key: Partial<InitializationKeyInput["key"]> = {},
 ): InitializationKeyInput {
   return {
+    type: "keyboard",
     input,
     key: {
       upArrow: false,
       downArrow: false,
+      leftArrow: false,
+      rightArrow: false,
+      pageDown: false,
+      pageUp: false,
+      home: false,
+      end: false,
       return: false,
       escape: false,
       ctrl: false,
+      shift: false,
+      tab: false,
       backspace: false,
       delete: false,
+      meta: false,
+      super: false,
+      hyper: false,
+      capsLock: false,
+      numLock: false,
       ...key,
     },
   };

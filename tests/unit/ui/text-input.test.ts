@@ -1,7 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Key } from "ink";
-import { isTextInputEvent } from "../../../src/ui/text-input.js";
+import { deleteLastGrapheme, isTextInputEvent } from "../../../src/ui/text-input.js";
+
+void test("删除空输入保持为空", () => {
+  assert.equal(deleteLastGrapheme(""), "");
+});
+
+for (const grapheme of ["a", "中", "😀", "𠮷", "e\u0301", "👩🏽‍💻", "🇨🇳", "\r\n"]) {
+  void test(`退格完整删除字素簇 ${JSON.stringify(grapheme)} 并保留前文原值`, () => {
+    const prefix = "e\u0301/𠮷/";
+    assert.equal(deleteLastGrapheme(grapheme), "");
+    const result = deleteLastGrapheme(prefix + grapheme);
+    assert.equal(result, prefix);
+    assert.equal(Buffer.from(result, "utf8").toString("utf8"), prefix);
+  });
+}
 
 void test("isTextInputEvent accepts text with non-shortcut modifiers and Kitty press states", () => {
   assert.equal(isTextInputEvent("A", key({ shift: true })), true);

@@ -74,7 +74,7 @@ test("OpenAI client options preserve non-empty API key", () => {
   assert.equal(options.apiKey, "openai-key");
   assert.equal(options.baseURL, "https://api.openai.com/v1");
   assert.equal(options.logLevel, "off");
-  assert.equal(options.defaultHeaders, undefined);
+  assert.deepEqual(options.defaultHeaders, { Authorization: "Bearer openai-key" });
 });
 
 test("OpenAI provider initializes when API key is empty", () => {
@@ -88,7 +88,7 @@ test("OpenAI provider initializes when API key is empty", () => {
   );
 });
 
-test("OpenAI provider passes the supplied signal as SDK request options only when present", async () => {
+test("OpenAI 仅在有取消信号时传递 Signal 并关闭 SDK 自动重试", async () => {
   const provider = new OpenAiCommandProvider({
     apiKey: "openai-key",
     model: "gpt-test",
@@ -111,7 +111,7 @@ test("OpenAI provider passes the supplied signal as SDK request options only whe
 
   assert.equal(calls.length, 2);
   assert.equal(calls[0].length, 2);
-  assert.deepEqual(calls[0][1], { signal: controller.signal });
+  assert.deepEqual(calls[0][1], { signal: controller.signal, maxRetries: 0 });
   assert.equal(calls[1].length, 1);
 });
 

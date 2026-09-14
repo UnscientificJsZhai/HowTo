@@ -53,6 +53,8 @@ howto --init
 
 初始化程序会把用户级配置写入 `~/.howto/config.json`。
 
+初始化和占位符输入支持按完整字符退格，包括 emoji 和组合字符；Alt/Meta 快捷键不会作为文本写入配置字段。
+
 > [!NOTE]
 > OpenAI API key 可以为空，以支持本地 OpenAI 兼容服务。Gemini 必须提供非空 API key。
 
@@ -145,6 +147,8 @@ howto "explain this flag" -- --force
 
 请求地址和 Gemini API 模式由 howto 显式设置。`OPENAI_BASE_URL`、`GOOGLE_GEMINI_BASE_URL`、`GOOGLE_VERTEX_BASE_URL` 及 Google SDK 的 Vertex/Enterprise 模式环境开关不会改写它们。Gemini 使用官方 `generativelanguage.googleapis.com` 的 `v1beta` API；自定义 OpenAI 地址请使用上述 HOWTO 配置项。
 
+OpenAI 的 Authorization 使用 howto 配置的 key，空白 key 时不发送该请求头；`OPENAI_CUSTOM_HEADERS` 中的 Authorization 不会覆盖此选择。交互模式收到 OpenAI 限流或临时服务错误时直接报错，不自动重试，以保证取消后能及时退出；`--print` 保留 SDK 默认重试行为。
+
 示例：
 
 ```bash
@@ -166,6 +170,8 @@ howto --print "show current branch"
 危险命令检测当前覆盖递归破坏性 `rm`、磁盘和文件系统操作、大范围递归权限变更、下载脚本后直接交给 shell 执行、高影响包管理器操作以及服务变更等高风险模式。
 
 本地分析会处理字面引号、绝对命令路径及已支持的 `sudo`/`env` 选项，并检查各命令段。遇到未知 wrapper 选项、动态执行前缀或超出解析范围的 shell 语法时，也会要求输入 `EXECUTE`，避免把无法判断的命令直接视为安全。
+
+`env` 赋值中的数字开头、连字符或点名称也会正确识别，继续检查后面的实际命令。npm 全局安装/卸载的正式别名（如 `i`、`add`、`un`、`unlink`）使用同样的危险确认；不能确定的等价缩写也要求额外确认。
 
 一次交互调用中只要识别到 bracketed paste（包括自动初始化阶段），本次调用就永久改为输出最终命令供手动运行。最终确认页按 Enter 只输出命令，终端会显示说明；返回候选选择或调整终端大小都不会恢复执行权限。全程键盘输入仍使用原有的 Enter 或 `EXECUTE` 确认。
 
