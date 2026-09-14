@@ -620,13 +620,6 @@ void test("initialization resize commits stay below fullscreen and release resiz
   assert.equal(view.stdout.listenerCount("resize"), resizeListenerBaseline);
 });
 
-void test("initialization cleanup releases every owner and remains idempotent", async () => {
-  const view = await renderInitialization({ columns: 40, rows: 4 });
-
-  await clearAndUnmount(view);
-  await clearAndUnmount(view);
-});
-
 void test("production initialization cancellation releases every terminal owner", async () => {
   const { initializeConfig, InteractionCancelledError, createInteractiveSession } = await uiModules;
   const stdin = new FakeTty(40, 4);

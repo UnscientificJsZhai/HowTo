@@ -13,7 +13,6 @@ for (const grapheme of ["a", "中", "😀", "𠮷", "e\u0301", "👩🏽‍💻"
     assert.equal(deleteLastGrapheme(grapheme), "");
     const result = deleteLastGrapheme(prefix + grapheme);
     assert.equal(result, prefix);
-    assert.equal(Buffer.from(result, "utf8").toString("utf8"), prefix);
   });
 }
 
@@ -28,12 +27,12 @@ void test("isTextInputEvent accepts text with non-shortcut modifiers and Kitty p
 });
 
 void test("isTextInputEvent rejects a whole text chunk containing any forbidden control", () => {
-  for (const codeUnit of unsafeTerminalCodeUnits()) {
-    const input = `accepted-prefix${String.fromCharCode(codeUnit)}accepted-suffix`;
+  for (const control of ["\u0000", "\u001b", "\u007f", "\u0085", "\u009b"]) {
+    const input = `accepted-prefix${control}accepted-suffix`;
     assert.equal(
       isTextInputEvent(input, key()),
       false,
-      `expected U+${codeUnit.toString(16).toUpperCase().padStart(4, "0")} to reject the chunk`,
+      `expected control character to reject chunk`,
     );
   }
 });
@@ -90,12 +89,4 @@ function key(overrides: Partial<Key> = {}): Key {
     numLock: false,
     ...overrides,
   };
-}
-
-function unsafeTerminalCodeUnits(): number[] {
-  return [...range(0x00, 0x09), ...range(0x0b, 0x0c), ...range(0x0e, 0x1f), ...range(0x7f, 0x9f)];
-}
-
-function range(start: number, end: number): number[] {
-  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
 }

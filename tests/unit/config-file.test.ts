@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir, userInfo } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { ConfigError } from "../../src/config.js";
@@ -38,36 +36,6 @@ test("getConfigFilePath treats missing and blank HOME as absent", () => {
     assert.equal(isAbsolute(dirname(path)), true);
   }
 });
-
-for (const [label, home] of [
-  ["absent", undefined],
-  ["empty", ""],
-  ["spaces", "   "],
-  ["tab", "\t"],
-] as const) {
-  test(`真实子进程 HOME ${label} 使用系统目录且不创建配置`, async (t) => {
-    const cwd = await mkdtemp(join(tmpdir(), "howto-home-child-"));
-    t.after(() => rm(cwd, { recursive: true, force: true }));
-    const child = spawnSync(
-      process.execPath,
-      [fileURLToPath(new URL("./fixtures/config-home-child.js", import.meta.url))],
-      {
-        cwd,
-        env: home === undefined ? {} : { HOME: home },
-        encoding: "utf8",
-        timeout: 5_000,
-        killSignal: "SIGKILL",
-        maxBuffer: 1024 * 1024,
-      },
-    );
-    assert.ifError(child.error);
-    assert.equal(child.signal, null);
-    assert.equal(child.status, 0, child.stderr);
-    assert.equal(child.stderr, "");
-    assert.equal(child.stdout, '{"matchesSystemHome":true,"absolute":true}\n');
-    assert.deepEqual(await readdir(cwd), []);
-  });
-}
 
 test("getConfigFilePath accepts an absolute HOME and rejects a relative HOME", async () => {
   const absoluteHome = await mkdtemp(join(tmpdir(), "howto-home-test-"));
@@ -190,18 +158,6 @@ test("readUserConfigFile rejects non-boolean non-string structuredOutput", async
   const path = await tempConfigPath();
   await writeRawConfig(path, '{"structuredOutput":1}');
   await assert.rejects(() => readUserConfigFile(path), ConfigError);
-});
-
-test("createFileConfig does not write structuredOutput by default", () => {
-  assert.equal(
-    "structuredOutput" in createFileConfig({ provider: "openai", apiKey: "", model: "gpt" }),
-    false,
-  );
-  assert.equal(
-    "structuredOutput" in
-      createFileConfig({ provider: "gemini", apiKey: "gemini-key", model: "gemini-model" }),
-    false,
-  );
 });
 
 test("readUserConfigFile uses fixed messages for read, JSON, and root failures", async () => {

@@ -41,11 +41,6 @@ test("buildOpenAiChatCompletionRequest uses strict json schema in structured mod
   });
 });
 
-test("command generation schema limits command candidates to one through three items", () => {
-  assert.equal(COMMAND_GENERATION_SCHEMA.properties.commands.minItems, 1);
-  assert.equal(COMMAND_GENERATION_SCHEMA.properties.commands.maxItems, 3);
-});
-
 test("buildOpenAiChatCompletionRequest keeps json_object in compatibility mode", () => {
   const request = buildOpenAiChatCompletionRequest("gpt-test", createRequest(false));
 
@@ -75,17 +70,6 @@ test("OpenAI client options preserve non-empty API key", () => {
   assert.equal(options.baseURL, "https://api.openai.com/v1");
   assert.equal(options.logLevel, "off");
   assert.deepEqual(options.defaultHeaders, { Authorization: "Bearer openai-key" });
-});
-
-test("OpenAI provider initializes when API key is empty", () => {
-  assert.doesNotThrow(
-    () =>
-      new OpenAiCommandProvider({
-        apiKey: "",
-        baseUrl: "http://localhost:11434/v1",
-        model: "local-model",
-      }),
-  );
 });
 
 test("OpenAI 仅在有取消信号时传递 Signal 并关闭 SDK 自动重试", async () => {

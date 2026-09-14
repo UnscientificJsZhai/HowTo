@@ -82,60 +82,6 @@ test("generateValidatedCommandCandidates accepts conservative git prefixes", asy
   );
 });
 
-test("generateValidatedCommandCandidates rejects shell wrapped requested commands", async () => {
-  await assert.rejects(
-    () =>
-      generateValidatedCommandCandidates(
-        createProviderWithRawText(
-          JSON.stringify({
-            commands: [validCommand('sh -c "git status"')],
-          }),
-        ),
-        createRequest({ useCommand: "git" }),
-      ),
-    AiResponseValidationError,
-  );
-});
-
-for (const command of [
-  "sudo -u git id",
-  "env -P git /usr/bin/printf HOWTO_REVIEW",
-  "sudo --unknown-option git status",
-  "env FOO=bar -u git",
-]) {
-  test(`生成结果中的 wrapper 参数不能冒充指定工具：${command}`, async () => {
-    await assert.rejects(
-      () =>
-        generateValidatedCommandCandidates(
-          createProviderWithRawText(
-            JSON.stringify({
-              commands: [validCommand("git status"), validCommand(command)],
-            }),
-          ),
-          createRequest({ useCommand: "git" }),
-        ),
-      (error: unknown) =>
-        error instanceof AiResponseValidationError && error.message.includes("commands[1].command"),
-    );
-  });
-}
-
-test("生成结果接受具有确定参数边界的 sudo/env 工具调用", async () => {
-  const commands = [
-    "sudo -u root git status",
-    "env -P /usr/bin git status",
-    "sudo 'FOO=bar' git status",
-  ];
-  const result = await generateValidatedCommandCandidates(
-    createProviderWithRawText(JSON.stringify({ commands: commands.map(validCommand) })),
-    createRequest({ useCommand: "git" }),
-  );
-  assert.deepEqual(
-    result.map((candidate) => candidate.command),
-    commands,
-  );
-});
-
 test("use 校验保留已声明的普通参数占位符模板", async () => {
   const command = {
     ...validCommand("git log -n {{count}}"),

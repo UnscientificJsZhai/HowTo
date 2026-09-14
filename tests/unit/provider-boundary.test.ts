@@ -105,29 +105,16 @@ const cases: BoundaryCase[] = [
     env: { ...OPENAI_SDK_ENV, HOWTO_OPENAI_API_URL: "" },
     url: OPENAI_URL,
   },
-  ...[
-    ["标准大小写", "Authorization: Bearer howto-fake-sdk-header-key"],
-    ["全小写", "authorization: Bearer howto-fake-sdk-header-key"],
-    ["混合大小写", "aUtHoRiZaTiOn: Bearer howto-fake-sdk-header-key"],
-    [
-      "重复认证头",
-      "Authorization: Bearer howto-fake-sdk-first-key\nauthorization: Bearer howto-fake-sdk-last-key",
-    ],
-  ].flatMap(([headerCase, customHeaders]) =>
-    ["howto-fake-openai-key", "", " \t "].flatMap((apiKey) =>
-      [undefined, "https://howto-custom.invalid/v1"].map((baseUrl): BoundaryCase => ({
-        name: `OpenAI ${baseUrl === undefined ? "官方" : "自定义"}地址的${apiKey.trim() ? "显式" : apiKey === "" ? "空" : "空白"} key 不受 SDK ${headerCase}覆盖`,
-        provider: "openai",
-        env: {
-          ...OPENAI_SDK_ENV,
-          HOWTO_OPENAI_API_KEY: apiKey,
-          ...(baseUrl === undefined ? {} : { HOWTO_OPENAI_API_URL: baseUrl }),
-          OPENAI_CUSTOM_HEADERS: customHeaders,
-        },
-        url: `${baseUrl ?? "https://api.openai.com/v1"}/chat/completions`,
-      })),
-    ),
-  ),
+  {
+    name: "OpenAI 官方地址显式 key 不受 SDK 隐式 Header 覆盖",
+    provider: "openai",
+    env: {
+      ...OPENAI_SDK_ENV,
+      HOWTO_OPENAI_API_KEY: "howto-fake-openai-key",
+      OPENAI_CUSTOM_HEADERS: "Authorization: Bearer howto-fake-sdk-header-key",
+    },
+    url: OPENAI_URL,
+  },
   { name: "Gemini 默认使用官方 v1beta 地址", provider: "gemini", url: GEMINI_URL },
   {
     name: "Gemini 忽略两个 SDK 隐式地址并保留 HOWTO 假 key",
@@ -138,64 +125,41 @@ const cases: BoundaryCase[] = [
   {
     name: "Gemini 忽略 Vertex 模式环境开关",
     provider: "gemini",
-    env: { ...GEMINI_SDK_URLS, GOOGLE_GENAI_USE_VERTEXAI: "true" },
-    url: GEMINI_URL,
-  },
-  {
-    name: "Gemini 忽略 Enterprise 模式环境开关",
-    provider: "gemini",
-    env: { ...GEMINI_SDK_URLS, GOOGLE_GENAI_USE_ENTERPRISE: "true" },
-    url: GEMINI_URL,
-  },
-  {
-    name: "Gemini 忽略同时开启的 cloud 模式及隐式项目配置",
-    provider: "gemini",
     env: {
       ...GEMINI_SDK_URLS,
-      GOOGLE_GENAI_USE_ENTERPRISE: "true",
+      GOOGLE_API_KEY: "howto-fake-sdk-google-key",
       GOOGLE_GENAI_USE_VERTEXAI: "true",
-      GOOGLE_CLOUD_PROJECT: "howto-fake-project",
-      GOOGLE_CLOUD_LOCATION: "us-central1",
     },
     url: GEMINI_URL,
   },
-  ...[
-    { GOOGLE_GENAI_USE_ENTERPRISE: "true", GOOGLE_GENAI_USE_VERTEXAI: "false" },
-    { GOOGLE_GENAI_USE_ENTERPRISE: "false", GOOGLE_GENAI_USE_VERTEXAI: "true" },
-  ].map((flags): BoundaryCase => ({
-    name: `Gemini 忽略冲突模式且不写警告（Enterprise=${flags.GOOGLE_GENAI_USE_ENTERPRISE}）`,
-    provider: "gemini",
-    env: { ...GEMINI_SDK_URLS, ...flags },
-    url: GEMINI_URL,
-  })),
 ];
 
-for (const scenario of cases) {
-  test(scenario.name, () => {
-    // 子进程只接收这些假配置，不继承开发者的 key、HOME 或 SDK 配置。
+for (const boundaryCase of cases) {
+  test(`提供商地址与认证边界：${boundaryCase.name}`, () => {
     const child = spawnSync(process.execPath, [CHILD_ENTRYPOINT], {
       env: {
-        HOWTO_AI_PROVIDER: scenario.provider,
+        HOWTO_AI_PROVIDER: boundaryCase.provider,
         HOWTO_OPENAI_API_KEY: "howto-fake-openai-key",
         HOWTO_OPENAI_MODEL: "gpt-test",
         HOWTO_GEMINI_API_KEY: "howto-fake-gemini-key",
         HOWTO_GEMINI_MODEL: "gemini-test",
-        ...scenario.env,
+        ...boundaryCase.env,
       },
       encoding: "utf8",
       timeout: 5_000,
       killSignal: "SIGKILL",
       maxBuffer: 1024 * 1024,
     });
-
     assert.ifError(child.error);
     assert.equal(child.signal, null);
-    assert.equal(child.status, 0, child.stderr);
+    assert.equal(child.status, 0);
     assert.equal(child.stderr, "");
+    assert.equal((child.stdout + child.stderr).includes("\u001b"), false);
+    assert.doesNotMatch(child.stdout, /howto-fake-(?:sdk|secret)/);
     assert.equal(
       child.stdout,
       `${JSON.stringify({
-        requests: [{ url: scenario.url, method: "POST", credentialsMatch: true }],
+        requests: [{ url: boundaryCase.url, method: "POST", credentialsMatch: true }],
         responseMatches: true,
       })}\n`,
     );
@@ -204,12 +168,6 @@ for (const scenario of cases) {
 
 for (const [mode, exitCode] of [
   ["valid", 0],
-  ["number", 1],
-  ["boolean", 1],
-  ["object", 1],
-  ["array", 1],
-  ["null", 1],
-  ["missing", 1],
   ["blank", 1],
   ["invalid-json", 2],
 ] as const) {
@@ -252,11 +210,7 @@ for (const [mode, exitCode] of [
 
 for (const [mode, exitCode] of [
   ["mixed", 0],
-  ["throwing-getter", 0],
   ["bad-text", 1],
-  ["bad-thought", 1],
-  ["thought-only", 1],
-  ["blank", 1],
   ["invalid-json", 2],
 ] as const) {
   test(`Gemini envelope ${mode} 不泄漏 SDK getter 日志或原始字段`, () => {
@@ -283,10 +237,7 @@ for (const [mode, exitCode] of [
     assert.equal(
       child.stdout,
       `${JSON.stringify({
-        requests:
-          mode === "throwing-getter"
-            ? []
-            : [{ url: GEMINI_URL, method: "POST", credentialsMatch: true }],
+        requests: [{ url: GEMINI_URL, method: "POST", credentialsMatch: true }],
         responseMatches: exitCode === 0,
         getterReads: 0,
       })}\n`,

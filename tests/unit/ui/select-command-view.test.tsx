@@ -14,43 +14,7 @@ const uiModules = importWithoutColor(async () => {
   return { Box, renderToString, SelectCommandView };
 });
 
-void test("SelectCommandView renders a blank line between candidates", async () => {
-  const { renderToString, SelectCommandView } = await uiModules;
-  const titleIndent = " ".repeat(2);
-  const output = renderToString(
-    <SelectCommandView
-      candidates={[
-        candidate("List directory contents", "ls -lh ./doc", "List files"),
-        candidate("List files recursively", "find ./doc -maxdepth 1 -type f", "List direct files"),
-        candidate("List hidden files", "ls -lah ./doc", "Include hidden files"),
-      ]}
-      availableRows={15}
-      onSelect={() => {}}
-      onCancel={() => {}}
-    />,
-  );
-
-  assert.ok(output.includes(`List files\n\n${titleIndent}List files recursively`));
-  assert.ok(output.includes(`List direct files\n\n${titleIndent}List hidden files`));
-});
-
-void test("SelectCommandView renders a blank line before footer help", async () => {
-  const { renderToString, SelectCommandView } = await uiModules;
-  const output = renderToString(
-    <SelectCommandView
-      candidates={[candidate("List hidden files", "ls -lah ./doc", "Include hidden files")]}
-      availableRows={5}
-      onSelect={() => {}}
-      onCancel={() => {}}
-    />,
-  );
-
-  assert.ok(
-    output.includes("Include hidden files\nUp/Down move; Enter select; Esc/Ctrl+C cancel."),
-  );
-});
-
-void test("SelectCommandView keeps candidate spacing in a bounded frame", async () => {
+void test("SelectCommandView renders candidates and footer help in a bounded frame", async () => {
   const { Box, renderToString, SelectCommandView } = await uiModules;
   const titleIndent = " ".repeat(2);
   const output = renderToString(
@@ -72,7 +36,9 @@ void test("SelectCommandView keeps candidate spacing in a bounded frame", async 
     </Box>,
   );
 
+  assert.ok(output.includes(`List files\n\n${titleIndent}List files recursively`));
   assert.ok(output.includes(`List direct files\n\n${titleIndent}List hidden files`));
+  assert.ok(output.includes("Up/Down move; Enter select; Esc/Ctrl+C cancel."));
 });
 
 void test("SelectCommandView keeps its natural height below a larger row limit", async () => {

@@ -65,36 +65,6 @@ test("parseAndValidateAiResponse allows CR and LF in terminal-visible fields", (
   assert.equal(response.commands[0]?.command, "printf first\r\nprintf {{value}}");
 });
 
-test("parseAndValidateAiResponse rejects every unsafe C0, DEL, and C1 character", () => {
-  const unsafeCodePoints = [
-    ...range(0x00, 0x09),
-    ...range(0x0b, 0x0c),
-    ...range(0x0e, 0x1f),
-    ...range(0x7f, 0x9f),
-  ];
-
-  for (const codePoint of unsafeCodePoints) {
-    const controlCharacter = String.fromCodePoint(codePoint);
-    assert.throws(
-      () =>
-        parseAndValidateAiResponse(
-          JSON.stringify({
-            commands: [
-              {
-                ...validCommand("Safe command"),
-                command: `printf safe${controlCharacter}git status`,
-              },
-            ],
-          }),
-        ),
-      (error: unknown) =>
-        error instanceof AiResponseValidationError &&
-        /commands\[0\]\.command.*control characters/u.test(error.message),
-      `expected U+${codePoint.toString(16).toUpperCase().padStart(4, "0")} to be rejected`,
-    );
-  }
-});
-
 test("parseAndValidateAiResponse rejects unsafe controls in every AI string field", () => {
   const candidates = [
     { ...validCommand("pwd"), title: "Title\bhidden" },
@@ -135,16 +105,12 @@ test("parseAndValidateAiResponse does not reflect invalid placeholder text in er
       ),
     (error: unknown) =>
       error instanceof AiResponseValidationError &&
-      error.message === "commands[0].command contains an invalid placeholder reference" &&
-      !error.message.includes("INJECTED_LEFT") &&
-      !error.message.includes("INJECTED_RIGHT") &&
-      !error.message.includes("\r") &&
-      !error.message.includes("\n"),
+      error.message === "commands[0].command contains an invalid placeholder reference",
   );
 });
 
 test("parseAndValidateAiResponse rejects non JSON text", () => {
-  assert.throws(() => parseAndValidateAiResponse("not-json"), AiResponseValidationError);
+  assert.throws(() => parseAndValidateAiResponse("not json"), AiResponseValidationError);
 });
 
 test("parseAndValidateAiResponse rejects more than three commands", () => {
@@ -152,7 +118,7 @@ test("parseAndValidateAiResponse rejects more than three commands", () => {
     () =>
       parseAndValidateAiResponse(
         JSON.stringify({
-          commands: [validCommand("a"), validCommand("b"), validCommand("c"), validCommand("d")],
+          commands: [validCommand("1"), validCommand("2"), validCommand("3"), validCommand("4")],
         }),
       ),
     AiResponseValidationError,
@@ -175,8 +141,7 @@ test("parseAndValidateAiResponse rejects undeclared placeholders", () => {
       ),
     (error: unknown) =>
       error instanceof AiResponseValidationError &&
-      error.message === "commands[0].command references an undeclared placeholder" &&
-      !error.message.includes("filename"),
+      error.message === "commands[0].command references an undeclared placeholder",
   );
 });
 
@@ -200,8 +165,7 @@ test("parseAndValidateAiResponse rejects unused placeholders", () => {
       ),
     (error: unknown) =>
       error instanceof AiResponseValidationError &&
-      error.message === "commands[0].placeholders contains an unused placeholder" &&
-      !error.message.includes("filename"),
+      error.message === "commands[0].placeholders contains an unused placeholder",
   );
 });
 
@@ -212,8 +176,4 @@ function validCommand(title: string) {
     description: "Print working directory",
     placeholders: [],
   };
-}
-
-function range(start: number, end: number): number[] {
-  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
 }

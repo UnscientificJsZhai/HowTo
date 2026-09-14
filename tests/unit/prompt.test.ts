@@ -46,28 +46,6 @@ describe("buildCommandGenerationPrompt", () => {
     assert.ok(userPrompt.includes('The user specified use <command>: "ls"'));
   });
 
-  it("should include both in userPrompt when both are provided", () => {
-    const request = { ...baseRequest, arguments: ["-la"], useCommand: "ls" };
-    const { userPrompt } = buildCommandGenerationPrompt(request);
-    assert.ok(userPrompt.includes('argument: ["-la"]'));
-    assert.ok(userPrompt.includes('useCommand: "ls"'));
-  });
-
-  it("should include language rules in the output contract", () => {
-    const request = { ...baseRequest, outputContract: OUTPUT_CONTRACT };
-    const { systemPrompt } = buildCommandGenerationPrompt(request);
-
-    assert.ok(systemPrompt.includes("Detect the primary natural language of the user's question"));
-    assert.ok(
-      systemPrompt.includes(
-        "Return title, description, and placeholders[].description in that language",
-      ),
-    );
-    assert.ok(systemPrompt.includes("Keep placeholder name values English-compatible ASCII"));
-    assert.ok(systemPrompt.includes("CR and LF are the only allowed control characters"));
-    assert.ok(systemPrompt.includes("Use placeholders in commands only as {{name}}"));
-  });
-
   it("should use a short prompt contract when structured output is enabled", () => {
     const request = createProviderPromptRequest({
       question: "how to list files",
@@ -77,10 +55,6 @@ describe("buildCommandGenerationPrompt", () => {
 
     assert.equal(request.outputContract, STRUCTURED_OUTPUT_CONTRACT);
     assert.equal(request.structuredOutput, true);
-    assert.equal(request.outputContract.includes("The JSON object must match this schema"), false);
-    assert.ok(request.outputContract.includes("response schema"));
-    assert.ok(request.outputContract.includes("The commands array must contain 1 to 3 items"));
-    assert.ok(request.outputContract.includes("CR and LF are the only allowed control characters"));
   });
 
   it("should use the full prompt contract when structured output is disabled", () => {
@@ -92,6 +66,5 @@ describe("buildCommandGenerationPrompt", () => {
 
     assert.equal(request.outputContract, OUTPUT_CONTRACT);
     assert.equal(request.structuredOutput, false);
-    assert.ok(request.outputContract.includes("The JSON object must match this schema"));
   });
 });

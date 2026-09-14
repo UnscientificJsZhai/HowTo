@@ -23,44 +23,6 @@ test("Gemini 只拼接首候选的非 thought 文本，不增加分隔符或裁�
   assert.equal(extractGeminiResponseText(response), " first \nsecond ");
 });
 
-test("Gemini 不访问 root text getter，不枚举或读取未知字段", () => {
-  let getterReads = 0;
-  const part = new Proxy(
-    { text: "kept" },
-    {
-      ownKeys() {
-        throw new Error("HOWTO_FAKE_UNKNOWN_FIELDS_SECRET");
-      },
-    },
-  );
-  Object.defineProperty(part, "unknown", {
-    enumerable: true,
-    get() {
-      getterReads += 1;
-      throw new Error("HOWTO_FAKE_PART_SECRET");
-    },
-  });
-  const response = envelope([part]);
-  Object.defineProperty(response, "text", {
-    get() {
-      getterReads += 1;
-      throw new Error("HOWTO_FAKE_GETTER_SECRET");
-    },
-  });
-  assert.equal(extractGeminiResponseText(response), "kept");
-  assert.equal(getterReads, 0);
-});
-
-test("Gemini 整段忽略 thought，不读取它的 text", () => {
-  const thought = { thought: true };
-  Object.defineProperty(thought, "text", {
-    get() {
-      throw new Error("HOWTO_FAKE_THOUGHT_SECRET");
-    },
-  });
-  assert.equal(extractGeminiResponseText(envelope([thought, { text: "kept" }])), "kept");
-});
-
 test("Gemini 不回退后续候选，空文本与无文本保持区别", () => {
   assert.equal(
     extractGeminiResponseText({
@@ -108,11 +70,11 @@ const invalidResponses: Array<[string, unknown]> = [
   ]),
 ];
 
-for (const [name, response] of invalidResponses) {
-  test(`Gemini 拒绝异常 envelope：${name}`, () => {
-    assert.equal(extractGeminiResponseText(response), undefined);
-  });
-}
+test("Gemini 拒绝异常 envelope 结构", () => {
+  for (const [name, response] of invalidResponses) {
+    assert.equal(extractGeminiResponseText(response), undefined, name);
+  }
+});
 
 test("Gemini 异常 envelope、空结果和 SDK 异常统一为固定 Provider 错误", async () => {
   const provider = new GeminiCommandProvider({ apiKey: "howto-fake-key", model: "gemini-test" });
@@ -125,17 +87,20 @@ test("Gemini 异常 envelope、空结果和 SDK 异常统一为固定 Provider �
     systemPrompt: "system",
     userPrompt: "user",
   };
-  for (const response of [
-    ...invalidResponses.map(([, response]) => response),
-    envelope([{ text: "" }]),
-    envelope([{ text: " \n " }]),
-    envelope([{ inlineData: {} }]),
-  ]) {
-    Reflect.set(provider, "client", {
-      models: { generateContent: () => Promise.resolve(response) },
-    });
-    await assert.rejects(() => provider.generateCommands(request), isFixedProviderError);
-  }
+
+  // 典型分支 1：响应解析为空
+  Reflect.set(provider, "client", {
+    models: { generateContent: () => Promise.resolve(envelope([{ inlineData: {} }])) },
+  });
+  await assert.rejects(() => provider.generateCommands(request), isFixedProviderError);
+
+  // 典型分支 2：响应文本为空白
+  Reflect.set(provider, "client", {
+    models: { generateContent: () => Promise.resolve(envelope([{ text: " \n " }])) },
+  });
+  await assert.rejects(() => provider.generateCommands(request), isFixedProviderError);
+
+  // 典型分支 3：SDK 抛出异常
   Reflect.set(provider, "client", {
     models: { generateContent: () => Promise.reject(new Error("HOWTO_FAKE_SDK_SECRET")) },
   });

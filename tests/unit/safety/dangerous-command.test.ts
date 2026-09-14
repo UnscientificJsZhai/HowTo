@@ -189,30 +189,32 @@ test("zsh 展开在工具、危险参数和 wrapper 赋值位置均保守处理"
 });
 
 // 这些动作来自 npm install/uninstall 及复合安装命令，均只做静态检测。
-for (const action of [
-  "install",
-  "add",
-  "i",
-  "in",
-  "ins",
-  "inst",
-  "insta",
-  "instal",
-  "isnt",
-  "isnta",
-  "isntal",
-  "isntall",
-  "install-test",
-  "installTest",
-  "it",
-  "uninstall",
-  "unlink",
-  "remove",
-  "rm",
-  "r",
-  "un",
-]) {
-  test(`npm ${action} 的全局操作保持规范动作的风险判断`, () => {
+test("npm 规范动作与别名的全局操作保持高影响风险判断", () => {
+  const actions = [
+    "install",
+    "add",
+    "i",
+    "in",
+    "ins",
+    "inst",
+    "insta",
+    "instal",
+    "isnt",
+    "isnta",
+    "isntal",
+    "isntall",
+    "install-test",
+    "installTest",
+    "it",
+    "uninstall",
+    "unlink",
+    "remove",
+    "rm",
+    "r",
+    "un",
+  ];
+
+  for (const action of actions) {
     for (const command of [
       `npm ${action} -g example-package`,
       `npm --global ${action} example-package`,
@@ -229,41 +231,45 @@ for (const action of [
       detectDangerousCommand(`npm ${action} --global=true example-package`)?.rule,
       "indeterminate-shell-command",
     );
-  });
-}
+  }
+});
 
 // 本地 npm deref 能将这些唯一前缀解析为 uninstall；静态分析不猜测完整命令表。
-for (const action of [
-  "rem",
-  "remo",
-  "remov",
-  "uni",
-  "unin",
-  "unins",
-  "uninst",
-  "uninsta",
-  "uninstal",
-  "unl",
-  "unli",
-  "unlin",
-  "install-t",
-  "install-te",
-  "install-tes",
-  "installT",
-  "installTe",
-  "installTes",
-]) {
-  test(`npm ${action} 的高影响动作前缀保守要求确认`, () => {
+test("npm 的高影响动作前缀保守要求确认", () => {
+  const prefixes = [
+    "rem",
+    "remo",
+    "remov",
+    "uni",
+    "unin",
+    "unins",
+    "uninst",
+    "uninsta",
+    "uninstal",
+    "unl",
+    "unli",
+    "unlin",
+    "install-t",
+    "install-te",
+    "install-tes",
+    "installT",
+    "installTe",
+    "installTes",
+  ];
+
+  for (const action of prefixes) {
     assert.equal(
       detectDangerousCommand(`npm ${action} -g example-package`)?.rule,
       "indeterminate-shell-command",
+      action,
     );
     assert.equal(
       detectDangerousCommand(`npm ${action} example-package`)?.rule,
       "indeterminate-shell-command",
+      action,
     );
-  });
-}
+  }
+});
 
 test("npm 的别名与前缀处理不扩展其他动作或包管理器语义", () => {
   for (const command of [

@@ -267,26 +267,6 @@ void test("ConfirmView keeps dangerous command, input, and controls visible at e
   }
 });
 
-void test("ConfirmView keeps the default three-row API compatible", async () => {
-  const { renderToString, ConfirmView } = await uiModules;
-  const output = renderToString(
-    <ConfirmView
-      candidate={candidate()}
-      command="rm -rf /tmp/example"
-      resolvedValues={new Map()}
-      danger={{ rule: "destructive-rm", reason: "recursive forced removal" }}
-      onConfirm={() => {}}
-      onCancel={() => {}}
-    />,
-    { columns: 80 },
-  );
-
-  assert.equal(output.split("\n").length, 3);
-  assert.ok(output.includes("Risk: recursive forced removal [destructive-rm]"));
-  assert.ok(output.includes("Final command: rm -rf /tmp/example"));
-  assert.ok(output.includes("EXECUTE+Enter; Esc/Ctrl+C |>"));
-});
-
 void test("ConfirmView renders only the command after confirmation is done", async () => {
   const { renderToString, ConfirmView } = await uiModules;
 

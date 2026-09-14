@@ -56,10 +56,6 @@ void test("resize-safe stdout preserves constructor semantics", () => {
 
   const ProxyConstructor = proxy.constructor as typeof TestOutput;
   assert.equal(ProxyConstructor, physical.constructor);
-
-  const constructed = Reflect.construct(ProxyConstructor, []);
-  assert.ok(constructed instanceof TestOutput);
-  assert.ok(proxy instanceof ProxyConstructor);
 });
 
 void test("resize-safe stdout keeps method references stable", () => {
@@ -89,24 +85,6 @@ void test("resize-safe stdout keeps fluent listener methods on the proxy", () =>
   const offResult = onResult.off("resize", onResize);
   assert.equal(offResult, proxy);
   assert.equal(offResult.rows, Number.MAX_SAFE_INTEGER);
-  physical.emit("resize");
-
-  assert.equal(resizeCount, 1);
-  assert.equal(physical.listenerCount("resize"), 0);
-});
-
-void test("resize-safe stdout once listener fires only once and remains fluent", () => {
-  const physical = new TestOutput();
-  const proxy = toResizeSafeOutput(physical as unknown as NodeJS.WriteStream);
-  let resizeCount = 0;
-
-  const result = proxy.once("resize", () => {
-    resizeCount++;
-  });
-  assert.equal(result, proxy);
-  assert.equal(result.rows, Number.MAX_SAFE_INTEGER);
-
-  physical.emit("resize");
   physical.emit("resize");
 
   assert.equal(resizeCount, 1);

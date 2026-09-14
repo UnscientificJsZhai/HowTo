@@ -2,16 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { toSingleLinePreview, toTailPreview } from "../../../src/ui/single-line-preview.js";
 
-test("toSingleLinePreview renders CR and LF as visible markers", () => {
+test("toSingleLinePreview delegates safely to terminal safe text rendering", () => {
   assert.equal(toSingleLinePreview("first\r\nsecond\rthird\nfourth"), "first␍␊second␍third␊fourth");
-});
-
-test("toSingleLinePreview preserves text without line breaks", () => {
   assert.equal(toSingleLinePreview("printf '%s' value"), "printf '%s' value");
-});
-
-test("toSingleLinePreview replaces non-line-break terminal controls", () => {
-  assert.equal(toSingleLinePreview("left\b\u001B[2J\u009Bright"), "left��[2J�right");
+  assert.equal(toSingleLinePreview("left\b\u001B[2J\u009Bright"), "left\uFFFD\uFFFD[2J\uFFFDright");
 });
 
 test("toTailPreview keeps whole grapheme clusters", () => {

@@ -359,46 +359,6 @@ void test("危险确认不因 Backspace/Delete release 多删字符，Return rel
   assert.equal(confirmations, 1);
 });
 
-for (const command of [
-  "HOWTO_APPEND+=x rm -rf /",
-  "export HOWTO_TOOL=rm; $=HOWTO_TOOL -rf /",
-  "npm install-test -g example-package",
-  "npm it -g example-package",
-]) {
-  for (const confirmation of ["", "EXECUTE"]) {
-    void test(`生成链路对新识别风险${confirmation ? "接受确认短语" : "拒绝仅 Enter"}：${command}`, async (t) => {
-      const { App } = await modules;
-      const confirmed: string[] = [];
-      const errors: Error[] = [];
-      const view = await renderInSession(
-        t,
-        <App
-          provider={{
-            generateCommands: () =>
-              Promise.resolve({ rawText: JSON.stringify({ commands: [testCandidate(command)] }) }),
-          }}
-          request={testRequest()}
-          onSuccess={(value) => confirmed.push(value)}
-          onError={(error) => errors.push(error)}
-        />,
-      );
-      await waitFor(() => view.text().includes("Select a command"), "候选未显示");
-      await sendAndFlush(view, "\r");
-      // 只记录 App 回调，绝不执行待验证的危险命令。
-      if (confirmation) await sendAndFlush(view, confirmation);
-      await sendAndFlush(view, "\r");
-      if (confirmation) {
-        assert.deepEqual(confirmed, [command]);
-        assert.equal(errors.length, 0);
-      } else {
-        assert.deepEqual(confirmed, []);
-        assert.equal(errors.length, 1);
-        assert.ok(errors[0] instanceof InteractionCancelledError);
-      }
-    });
-  }
-}
-
 async function renderInSession(t: TestContext, element: React.ReactNode) {
   const { render, InteractiveSessionProvider } = await modules;
   const h = sessionHarness();

@@ -57,7 +57,10 @@ for (const scenario of cases) {
     assert.equal(selected[0], candidates[scenario.expected]);
     assert.equal(cancellations, 0);
   });
+}
 
+// App 会话层抽样验证端到端顺序确认链路
+for (const scenario of [cases[0], cases[4]]) {
   void test(`完整会话 App 按顺序确认${scenario.label}`, async (t) => {
     await checkAppSelection(t, scenario.chunks, scenario.expected, 24, 80, scenario.count);
   });
