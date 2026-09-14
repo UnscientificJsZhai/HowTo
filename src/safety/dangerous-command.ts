@@ -52,6 +52,45 @@ const PACKAGE_ACTIONS = new Set([
   "purge",
   "autoremove",
 ]);
+// update 等动作在不同管理器中含义不同，只在对应工具内归一化。
+const PACKAGE_ACTION_ALIASES: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map([
+  [
+    "brew",
+    new Map([
+      ["remove", "uninstall"],
+      ["rm", "uninstall"],
+      ["uninstal", "uninstall"],
+    ]),
+  ],
+  [
+    "yum",
+    new Map([
+      ["update", "upgrade"],
+      ["update-to", "upgrade"],
+      ["upgrade-to", "upgrade"],
+      ["localupdate", "upgrade"],
+      ["erase", "remove"],
+    ]),
+  ],
+  [
+    "dnf",
+    new Map([
+      ["up", "upgrade"],
+      ["update", "upgrade"],
+      ["upgrade-to", "upgrade"],
+      ["update-to", "upgrade"],
+      ["localupdate", "upgrade"],
+      ["rm", "remove"],
+      ["erase", "remove"],
+      ["remove-n", "remove"],
+      ["remove-na", "remove"],
+      ["remove-nevra", "remove"],
+      ["erase-n", "remove"],
+      ["erase-na", "remove"],
+      ["erase-nevra", "remove"],
+    ]),
+  ],
+]);
 const SERVICE_ACTIONS = new Set([
   "start",
   "stop",
@@ -209,10 +248,13 @@ function inspectPackageCommand(
   const parsedAction = leadingAction(args, PACKAGE_ZERO_OPTIONS);
   if (parsedAction === null) return INDETERMINATE;
   if (parsedAction === undefined) return undefined;
-  const action = name === "npm" ? resolveNpmAction(parsedAction) : parsedAction;
+  const action =
+    name === "npm"
+      ? resolveNpmAction(parsedAction)
+      : (PACKAGE_ACTION_ALIASES.get(name)?.get(parsedAction) ?? parsedAction);
   if (action === null) return INDETERMINATE;
   if (name === "brew")
-    return ["upgrade", "uninstall", "remove"].includes(action) ? PACKAGE_OPERATION : undefined;
+    return ["upgrade", "uninstall"].includes(action) ? PACKAGE_OPERATION : undefined;
   if (name !== "npm" && name !== "pip" && name !== "pip3") {
     return PACKAGE_ACTIONS.has(action) ? PACKAGE_OPERATION : undefined;
   }

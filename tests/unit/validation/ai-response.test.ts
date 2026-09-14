@@ -169,6 +169,50 @@ test("parseAndValidateAiResponse rejects unused placeholders", () => {
   );
 });
 
+test("同一候选拒绝重复占位符声明，不回显名称或描述", () => {
+  for (const description of ["第一个值", "第二个值"]) {
+    assert.throws(
+      () =>
+        parseAndValidateAiResponse(
+          JSON.stringify({
+            commands: [
+              {
+                ...validCommand("重复声明"),
+                command: 'printf "%s %s" "{{PRIVATE_NAME}}" "{{PRIVATE_NAME}}"',
+                placeholders: [
+                  { name: "PRIVATE_NAME", description: "第一个值" },
+                  { name: "PRIVATE_NAME", description },
+                ],
+              },
+            ],
+          }),
+        ),
+      (error: unknown) =>
+        error instanceof AiResponseValidationError &&
+        error.message === "commands[0].placeholders must have unique names",
+    );
+  }
+});
+
+test("占位符可重复引用、跨候选复用名称，并保留大小写区别与声明顺序", () => {
+  const commands = [
+    {
+      ...validCommand("重复引用"),
+      command: 'printf "%s %s %s" "{{value}}" "{{Value}}" "{{value}}"',
+      placeholders: [
+        { name: "Value", description: "大写名称" },
+        { name: "value", description: "小写名称" },
+      ],
+    },
+    {
+      ...validCommand("另一个候选"),
+      command: "printf {{value}}",
+      placeholders: [{ name: "value", description: "独立输入" }],
+    },
+  ];
+  assert.deepEqual(parseAndValidateAiResponse(JSON.stringify({ commands })), { commands });
+});
+
 function validCommand(title: string) {
   return {
     title,

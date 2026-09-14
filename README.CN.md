@@ -164,7 +164,7 @@ howto --print "show current branch"
 
 - AI 响应是符合命令 schema 的有效 JSON；
 - 响应包含一到三个候选项；
-- 所有占位符使用 `{{name}}` 语法，并且声明与引用一致；
+- 所有占位符使用 `{{name}}` 语法，并且声明与引用一致；同一候选中名称只声明一次，多处引用共用一次输入；
 - `use <command>` 候选项在保守处理前缀后，明确以指定工具开头；
 - 明显危险的命令需要输入 `EXECUTE` 才能继续执行；大小写不敏感。
 
@@ -174,6 +174,8 @@ howto --print "show current branch"
 
 `env` 赋值中的数字开头、连字符或点名称也会正确识别，继续检查后面的实际命令。npm 全局安装/卸载的正式别名（如 `i`、`add`、`un`、`unlink`）使用同样的危险确认；不能确定的等价缩写也要求额外确认。
 前导 `NAME+=value` 因 shell 方言差异要求额外确认，并被 `use` 校验拒绝；未受单引号或反斜杠保护的美元表达式保守按动态值判断。npm 的 `install-test`、`installTest`、`it` 复合安装及其缩写也纳入全局安装确认。
+
+Homebrew 的 `rm/uninstal` 卸载别名，以及 yum/dnf 的 `update/erase` 升级或卸载入口，也使用相同的危险确认。各工具的动作分别识别，`apt update`、`brew update/up` 的索引更新不按系统软件升级处理。
 
 一次交互调用中只要识别到 bracketed paste（包括自动初始化阶段），本次调用就永久改为输出最终命令供手动运行。最终确认页按 Enter 只输出命令，终端会显示说明；返回候选选择或调整终端大小都不会恢复执行权限。全程键盘输入仍使用原有的 Enter 或 `EXECUTE` 确认。
 

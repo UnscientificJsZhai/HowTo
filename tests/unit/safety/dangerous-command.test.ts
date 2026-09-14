@@ -288,3 +288,47 @@ test("npm 的别名与前缀处理不扩展其他动作或包管理器语义", (
     "indeterminate-shell-command",
   );
 });
+
+test("brew yum dnf 的升级和卸载等价动作要求相同的危险确认", () => {
+  for (const command of [
+    "brew rm example-package",
+    "brew uninstal example-package",
+    "brew remove example-package",
+    "yum -y update",
+    "yum -y erase example-package",
+    "dnf -y update",
+    "dnf -y erase example-package",
+    "dnf up",
+    "dnf rm example-package",
+    "yum update-to example-package-1.0",
+    "dnf upgrade-to example-package-1.0",
+    "dnf localupdate example-package.rpm",
+    "dnf remove-nevra example-package-1.0-1.x86_64",
+    "dnf erase-na example-package.x86_64",
+    "sudo -n env 1=x /opt/homebrew/bin/brew rm example-package",
+    "printf safe; sudo -n /usr/bin/dnf -y update",
+  ]) {
+    assert.equal(
+      detectDangerousCommand(command)?.rule,
+      "package-manager-high-impact-operation",
+      command,
+    );
+  }
+});
+
+test("包管理器等价动作只在各自工具内解释", () => {
+  for (const command of [
+    "apt update",
+    "apt-get update",
+    "brew update",
+    "brew up",
+    "brew list",
+    "yum check-update",
+    "dnf check-update",
+    "pip update example-package",
+    "brew erase example-package",
+    "printf '%s' 'dnf -y update'",
+  ]) {
+    assert.equal(detectDangerousCommand(command), undefined, command);
+  }
+});

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { test, type TestContext } from "node:test";
 import { setImmediate as nextTurn } from "node:timers/promises";
+import { stripVTControlCharacters } from "node:util";
 import React from "react";
 import type { AppConfig } from "../../../src/config.js";
 import type { InitializationValues } from "../../../src/init/index.js";
@@ -359,9 +360,57 @@ void test("危险确认不因 Backspace/Delete release 多删字符，Return rel
   assert.equal(confirmations, 1);
 });
 
-async function renderInSession(t: TestContext, element: React.ReactNode) {
+for (const columns of [20, 30, 31, 36, 37]) {
+  void test(`4 行 ${columns} 列危险确认显示输入并在扩缩宽度后保持编辑状态`, async (t) => {
+    const { App } = await modules;
+    const command = "rm -rf /private/tmp/FAKE-not-executed";
+    const confirmed: string[] = [];
+    const view = await renderInSession(
+      t,
+      <App
+        provider={{
+          generateCommands: () =>
+            Promise.resolve({
+              rawText: JSON.stringify({ commands: [testCandidate(command)] }),
+            }),
+        }}
+        request={testRequest()}
+        onSuccess={(value) => confirmed.push(value)}
+        onError={(error) => assert.fail(error.message)}
+      />,
+      { rows: 4, columns },
+    );
+    await waitFor(() => view.text().includes("1/1"), "候选未显示");
+    await sendAndFlush(view, "\r");
+    await waitFor(() => view.text().includes("Final"), "危险确认未显示");
+    let start = view.bytes().length;
+    await sendAndFlush(view, "ABC");
+    assert.ok(stripVTControlCharacters(view.bytes().subarray(start).toString()).includes("ABC"));
+    for (const width of [40, columns]) {
+      start = view.bytes().length;
+      view.output.columns = width;
+      view.output.resize(4);
+      await bounded(view.instance.waitUntilRenderFlush());
+      await waitFor(
+        () => stripVTControlCharacters(view.bytes().subarray(start).toString()).includes("ABC"),
+        "调整宽度后确认输入不可见",
+      );
+    }
+    await sendAndFlush(view, `${backspace}${deleteKey}${backspace}EXECUTE`);
+    assert.deepEqual(confirmed, []);
+    await sendAndFlush(view, "\r");
+    await waitFor(() => confirmed.length === 1, "编辑后的确认短语未提交");
+    assert.deepEqual(confirmed, [command]);
+  });
+}
+
+async function renderInSession(
+  t: TestContext,
+  element: React.ReactNode,
+  size = { rows: 24, columns: 80 },
+) {
   const { render, InteractiveSessionProvider } = await modules;
-  const h = sessionHarness();
+  const h = sessionHarness(size.rows, size.columns);
   const instance = render(
     <InteractiveSessionProvider session={h.session}>{element}</InteractiveSessionProvider>,
     {

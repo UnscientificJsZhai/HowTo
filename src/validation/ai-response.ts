@@ -98,6 +98,9 @@ function validatePlaceholderReferences(
   candidatePath: string,
 ): void {
   const declaredNames = new Set(placeholders.map((placeholder) => placeholder.name));
+  if (declaredNames.size !== placeholders.length) {
+    throw new AiResponseValidationError(`${candidatePath}.placeholders must have unique names`);
+  }
   const usedNames = new Set<string>();
 
   for (const match of command.matchAll(PLACEHOLDER_REFERENCE_PATTERN)) {

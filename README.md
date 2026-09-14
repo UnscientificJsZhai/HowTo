@@ -164,7 +164,7 @@ howto --print "show current branch"
 
 - the AI response is valid JSON matching the required command schema;
 - the response contains between one and three candidates;
-- all placeholders use `{{name}}` syntax and are declared consistently;
+- all placeholders use `{{name}}` syntax and are declared consistently, with each name declared once per candidate and repeated references sharing one input value;
 - `use <command>` candidates clearly start with the requested tool after conservative prefix handling;
 - obvious dangerous patterns require typing `EXECUTE` before they can run; matching is case-insensitive.
 
@@ -174,6 +174,8 @@ Local analysis handles literal quoting, absolute command paths, and supported `s
 
 Assignments passed to `env` can use names starting with digits or containing hyphens or dots; the actual command after them is still checked. Official npm global install/uninstall aliases such as `i`, `add`, `un`, and `unlink` receive the same additional confirmation. Inconclusive abbreviations of those actions also require confirmation.
 Leading `NAME+=value` requires additional confirmation and is rejected by `use` because its meaning differs between shells. Dollar expressions outside single quotes or backslash protection are treated conservatively as dynamic values. Compound npm installs through `install-test`, `installTest`, `it`, and their abbreviations also receive global-install checks.
+
+Homebrew uninstall aliases such as `rm/uninstal`, and yum/dnf upgrade or removal commands such as `update/erase`, receive the same additional confirmation. Actions are interpreted separately for each tool; metadata updates through `apt update` and `brew update/up` are not classified as system package upgrades.
 
 If howto detects bracketed paste during an interactive run, including automatic initialization, that run permanently switches to printing the final command for manual execution. At final confirmation, Enter prints the command without running it, and the terminal shows an explanation. Returning to selection or resizing the terminal does not restore execution. Keyboard-only runs keep the usual Enter or `EXECUTE` confirmation.
 

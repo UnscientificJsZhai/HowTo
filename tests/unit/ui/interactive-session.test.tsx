@@ -696,6 +696,17 @@ void test("真实最外层调度保持纯键盘普通和危险确认行为，取
     { command: "rm -rf /private/tmp/FAKE-not-executed", keys: "WRONG\r", executed: 0 },
     { command: "printf session-safe", keys: "\u001b", executed: 0 },
     { command: "printf session-safe", keys: "\u0003", executed: 0 },
+    ...[
+      "brew rm example-package",
+      "brew uninstal example-package",
+      "yum -y update",
+      "yum -y erase example-package",
+      "dnf -y update",
+      "dnf -y erase example-package",
+    ].flatMap((command) => [
+      { command, keys: "\r", executed: 0 },
+      { command, keys: "EXECUTE\r", executed: 1 },
+    ]),
   ]) {
     const h = sessionHarness();
     t.after(() => h.close());

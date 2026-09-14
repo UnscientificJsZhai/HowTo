@@ -21,8 +21,11 @@ interface Props {
   availableColumns?: number;
 }
 
+const DANGER_CONFIRMATION_PHRASE = "EXECUTE";
+const DANGER_CONFIRMATION_SUFFIX = "+Enter; Esc/Ctrl+C |> ";
+
 export function isDangerConfirmationInput(input: string): boolean {
-  return input.toUpperCase() === "EXECUTE";
+  return input.toUpperCase() === DANGER_CONFIRMATION_PHRASE;
 }
 
 export const ConfirmView: React.FC<Props> = ({
@@ -189,6 +192,13 @@ export const ConfirmView: React.FC<Props> = ({
       );
     }
 
+    // 完整提示、确认短语和光标放不下时，缩短提示，为输入尾部保留空间。
+    const compactPrompt =
+      columns < DANGER_CONFIRMATION_PHRASE.length * 2 + DANGER_CONFIRMATION_SUFFIX.length + 1;
+    const promptSuffix = compactPrompt ? ":" : DANGER_CONFIRMATION_SUFFIX;
+    const promptWidth = DANGER_CONFIRMATION_PHRASE.length + promptSuffix.length;
+    const controls = compactPrompt ? " Ent Esc" : "";
+
     return (
       <Box flexDirection="column">
         <Text color="red" bold wrap="truncate-middle">
@@ -198,11 +208,23 @@ export const ConfirmView: React.FC<Props> = ({
           Final command: <Text color="yellow">{toSingleLinePreview(command)}</Text>
         </Text>
         {!isDone && (
-          <Box>
-            <Text wrap="truncate-end">
-              <Text color="yellow">EXECUTE</Text>+Enter; Esc/Ctrl+C |{"> "}
-            </Text>
-            <TailClippedBuffer buffer={buffer} width={Math.max(1, columns - 29)} showCursor />
+          <Box height={1} maxHeight={1} overflowX="hidden" overflowY="hidden">
+            <Box width={promptWidth} flexShrink={0}>
+              <Text>
+                <Text color="yellow">{DANGER_CONFIRMATION_PHRASE}</Text>
+                {promptSuffix}
+              </Text>
+            </Box>
+            <TailClippedBuffer
+              buffer={buffer}
+              width={Math.max(1, columns - promptWidth - controls.length)}
+              showCursor
+            />
+            {controls !== "" && (
+              <Box width={controls.length} flexShrink={0}>
+                <Text>{controls}</Text>
+              </Box>
+            )}
           </Box>
         )}
       </Box>
