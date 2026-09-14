@@ -53,7 +53,7 @@ void test("SelectCommandView keeps its natural height below a larger row limit",
     { columns: 80 },
   );
 
-  assert.equal(output.split("\n").length, 5);
+  assert.equal(output.split("\n").length, 7);
 });
 
 void test("SelectCommandView paginates and bounds long content in a four-row frame", async () => {

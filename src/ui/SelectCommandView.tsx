@@ -112,6 +112,7 @@ export const SelectCommandView: React.FC<Props> = ({
   const showCompactTitleInHeader = isCompact && availableRows < 4;
   const showTitle = !showCompactTitleInHeader;
   const showDescription = !isCompact || availableRows >= 5;
+  const showCandidateSpacing = availableRows >= (isCompact ? 5 : expandedRows) + 2;
 
   return (
     <Box flexDirection="column" maxHeight={availableRows} overflowX="hidden" overflowY="hidden">
@@ -127,7 +128,7 @@ export const SelectCommandView: React.FC<Props> = ({
           ? Select a command{isCompact ? ` (${activeIndex + 1}/${candidates.length})` : ""}
         </Text>
       )}
-      <Box flexDirection="column" overflowY="hidden">
+      <Box flexDirection="column" marginY={showCandidateSpacing ? 1 : 0} overflowY="hidden">
         {visibleCandidates.map((candidate, visibleIndex) => {
           const candidateIndex = isCompact ? activeIndex : visibleIndex;
           const isLast = visibleIndex === visibleCandidates.length - 1;
