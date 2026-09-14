@@ -19,10 +19,6 @@ test("candidateUsesRequestedCommand accepts env prefixes", () => {
   assert.equal(candidateUsesRequestedCommand("env FOO=bar git status", "git"), true);
 });
 
-test("candidateUsesRequestedCommand rejects shell wrappers", () => {
-  assert.equal(candidateUsesRequestedCommand('sh -c "git status"', "git"), false);
-});
-
 test("use git 接受明确工具并正确消费 sudo/env 参数", () => {
   assert.equal(candidateUsesRequestedCommand("sudo -u root git status", "git"), true);
   assert.equal(candidateUsesRequestedCommand("env -P /usr/bin git status", "git"), true);

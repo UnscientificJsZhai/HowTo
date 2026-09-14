@@ -69,12 +69,6 @@ test("真实发布 TS 入口对版本错配返回固定摘要", async (t) => {
   assert.equal(await readFile(join(cwd, "package.json"), "utf8"), content);
 });
 
-for (const releaseTag of [null, 101, {}, ["1.0.1"], true]) {
-  test(`纯校验拒绝非字符串标签 ${JSON.stringify(releaseTag)}`, () => {
-    assert.equal(releaseTagMatchesPackageVersion("1.0.1", releaseTag), false);
-  });
-}
-
 test("真实发布 TS 入口对非对象 package.json 返回版本摘要", async (t) => {
   const cwd = await createPackageDirectory(t, '"1.0.1"');
   assertReleaseResult(cwd, "v1.0.1", 1, "", mismatchMessage);

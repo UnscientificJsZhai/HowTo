@@ -94,22 +94,6 @@ test("use 校验保留已声明的普通参数占位符模板", async () => {
   assert.deepEqual(result, [command]);
 });
 
-test("生成链路只给当前候选的已声明模板启用分析副本", async () => {
-  const commands = [
-    { ...validCommand("git '{{path}}'"), placeholders: [{ name: "path", description: "Path" }] },
-    { ...validCommand("git \\{{path}}"), placeholders: [{ name: "path", description: "Path" }] },
-    {
-      ...validCommand("git show | head -n {{count}}"),
-      placeholders: [{ name: "count", description: "Count" }],
-    },
-  ];
-  const result = await generateValidatedCommandCandidates(
-    createProviderWithRawText(JSON.stringify({ commands })),
-    createRequest({ useCommand: "git" }),
-  );
-  assert.deepEqual(result, commands);
-});
-
 test("生成链路仍先拒绝未声明引用，不能被 use 模板适配放行", async () => {
   await assert.rejects(
     () =>

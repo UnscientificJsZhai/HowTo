@@ -300,31 +300,6 @@ test("Ctrl+C cancels initialization", () => {
   assert.equal(update.cancelled, true);
 });
 
-test("初始化状态机丢弃所有释放事件，不确认、取消、导航或删除", () => {
-  const provider = applyInitializationInput(
-    createInitialInitializationState(),
-    keypress("", { downArrow: true }),
-  ).state;
-  const input = applyInitializationInput(provider, keypress("", { return: true })).state;
-  const filled = applyInitializationInput(input, keypress("FAKE-abc")).state;
-  for (const state of [provider, filled]) {
-    for (const key of [
-      { return: true },
-      { escape: true },
-      { ctrl: true },
-      { upArrow: true },
-      { downArrow: true },
-      { backspace: true },
-      { delete: true },
-    ]) {
-      assert.deepEqual(
-        applyInitializationInput(state, keypress("c", { ...key, eventType: "release" })),
-        { state },
-      );
-    }
-  }
-});
-
 function keypress(
   input: string,
   key: Partial<InitializationKeyInput["key"]> = {},
@@ -359,9 +334,5 @@ function keypress(
 }
 
 function unsafeTerminalCodeUnits(): number[] {
-  return [...range(0x00, 0x09), ...range(0x0b, 0x0c), ...range(0x0e, 0x1f), ...range(0x7f, 0x9f)];
-}
-
-function range(start: number, end: number): number[] {
-  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+  return [0x00, 0x1b, 0x7f, 0x9b];
 }

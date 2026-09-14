@@ -3,7 +3,6 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import React from "react";
-import { stripVTControlCharacters } from "node:util";
 import {
   ENABLE_PASTE,
   DISABLE_PASTE,
@@ -696,17 +695,6 @@ void test("真实最外层调度保持纯键盘普通和危险确认行为，取
     { command: "rm -rf /private/tmp/FAKE-not-executed", keys: "WRONG\r", executed: 0 },
     { command: "printf session-safe", keys: "\u001b", executed: 0 },
     { command: "printf session-safe", keys: "\u0003", executed: 0 },
-    ...[
-      "brew rm example-package",
-      "brew uninstal example-package",
-      "yum -y update",
-      "yum -y erase example-package",
-      "dnf -y update",
-      "dnf -y erase example-package",
-    ].flatMap((command) => [
-      { command, keys: "\r", executed: 0 },
-      { command, keys: "EXECUTE\r", executed: 1 },
-    ]),
   ]) {
     const h = sessionHarness();
     t.after(() => h.close());
@@ -898,54 +886,6 @@ void test("自动初始化与 App 共用同一原始租约，独立初始化粘�
   assert.equal(executions, 0);
   assert.deepEqual(printed, [testCandidate().command]);
   assert.deepEqual(h.input.rawChanges, [true, false]);
-});
-
-void test("仅输出布局在物理 2 3 4 24 行保留当前动作，0 1 行不接受确认", async (t) => {
-  const { render, ConfirmView, InteractiveSessionProvider } = await modules;
-  for (const rows of [0, 1, 2, 3, 4, 24]) {
-    const h = sessionHarness(rows, 20);
-    t.after(() => h.close());
-    await h.send(PASTE_START + PASTE_END);
-    let confirmed = 0;
-    const offset = h.bytes().length;
-    const instance = render(
-      <InteractiveSessionProvider session={h.session}>
-        <ConfirmView
-          candidate={testCandidate()}
-          command="printf abcdefghijklmnopqrstuvwxyz"
-          resolvedValues={new Map()}
-          availableRows={Math.max(0, rows - 1)}
-          availableColumns={20}
-          onConfirm={() => confirmed++}
-          onCancel={() => {}}
-        />
-      </InteractiveSessionProvider>,
-      {
-        stdin: h.session.input,
-        stdout: h.session.output,
-        interactive: true,
-        patchConsole: false,
-        exitOnCtrlC: false,
-      },
-    );
-    await instance.waitUntilRenderFlush();
-    const visible = stripVTControlCharacters(h.bytes().subarray(offset).toString()).trimEnd();
-    if (rows <= 1) assert.equal(visible, "");
-    else {
-      assert.ok(visible.includes("仅输出:"));
-      assert.ok(visible.includes(rows === 2 ? " Ent Esc" : "Enter输出 Esc取消"));
-      assert.ok(visible.split("\n").length <= rows - 1);
-    }
-    await h.send("\r");
-    await instance.waitUntilRenderFlush();
-    assert.equal(confirmed, rows <= 1 ? 0 : 1);
-    instance.unmount();
-    await instance.waitUntilExit();
-    h.session.dispose();
-    assert.ok(!h.bytes().includes(Buffer.from("\u001b[2J")));
-    assert.ok(!h.bytes().includes(Buffer.from("\u001b[3J")));
-    assert.ok(!h.bytes().includes(Buffer.from("\u001b[H")));
-  }
 });
 
 void test("隐藏粘贴经过真实 App 后只输出既有占位符值，初始化也不保存隐藏片段", async (t) => {

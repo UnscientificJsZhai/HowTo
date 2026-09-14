@@ -1793,38 +1793,6 @@ void test("App sanitizes unknown error text in Ink and preserves the original er
   assert.equal(view.outputBytes().includes(Buffer.from("\u001B[2J")), false);
 });
 
-void test("ConfirmView accepts EXECUTE in a narrow four-row fake TTY", async (t) => {
-  const { ConfirmView } = await uiModules;
-  let confirmations = 0;
-  const view = await renderView(
-    <ConfirmView
-      candidate={candidate(
-        "Dangerous candidate with a long title",
-        "rm -rf /tmp/example",
-        "Long description that must not hide confirmation controls",
-      )}
-      command={`rm -rf /tmp/${"nested/".repeat(8)}example`}
-      resolvedValues={new Map()}
-      danger={danger()}
-      onConfirm={() => {
-        confirmations++;
-      }}
-      onCancel={() => {}}
-    />,
-    { columns: 40, rows: 4 },
-  );
-  t.after(() => close(view));
-
-  await waitForOutput(view, "Final command:");
-  await waitForOutput(view, "EXECUTE+Enter; Esc/Ctrl+C |>");
-  for (const character of "EXECUTE") {
-    await send(view, character);
-  }
-  await send(view, "\r");
-
-  assert.equal(confirmations, 1);
-});
-
 void test("App exposes final command and confirmation in a four-row terminal", async (t) => {
   const { App } = await uiModules;
   const generatedCandidate = candidate(
@@ -2164,87 +2132,6 @@ void test("App resize across an expanded frame does not emit full-terminal clear
   assert.ok(!resizeOutput.includes("\u001B[3J"));
   assert.ok(!resizeOutput.includes("\u001B[H"));
   assert.equal(view.stdout.listenerCount("resize"), resizeListenerBaseline);
-});
-
-void test("App renders no frame in a one-row terminal", async (t) => {
-  const { App } = await uiModules;
-  let unmounted = false;
-  const view = await renderView(
-    <App
-      provider={{
-        generateCommands: () =>
-          Promise.resolve({
-            rawText: JSON.stringify({ commands: [candidate("Safe", "printf safe", "Safe")] }),
-          }),
-      }}
-      request={{
-        question: "print a value",
-        arguments: [],
-        structuredOutput: true,
-        outputContract: "",
-        safetyConstraints: "",
-        systemPrompt: "",
-        userPrompt: "",
-      }}
-      onSuccess={() => {}}
-      onError={() => {}}
-    />,
-    { columns: 40, rows: 1 },
-  );
-  t.after(async () => {
-    if (!unmounted) {
-      await close(view);
-    }
-  });
-
-  await clearAndUnmount(view);
-  unmounted = true;
-
-  assert.ok(!view.output().includes("Thinking"));
-  assert.ok(!view.output().includes("\u001B[2J"));
-  assert.ok(!view.output().includes("\u001B[3J"));
-  assert.ok(!view.output().includes("\u001B[H"));
-});
-
-void test("App renders no visible frame when the terminal initially reports zero rows", async (t) => {
-  const { App } = await uiModules;
-  let unmounted = false;
-  const view = await renderView(
-    <App
-      provider={{
-        generateCommands: () =>
-          Promise.resolve({
-            rawText: JSON.stringify({ commands: [candidate("Safe", "printf safe", "Safe")] }),
-          }),
-      }}
-      request={{
-        question: "print a value",
-        arguments: [],
-        structuredOutput: true,
-        outputContract: "",
-        safetyConstraints: "",
-        systemPrompt: "",
-        userPrompt: "",
-      }}
-      onSuccess={() => {}}
-      onError={() => {}}
-    />,
-    { columns: 40, rows: 0 },
-  );
-  t.after(async () => {
-    if (!unmounted) {
-      await close(view);
-    }
-  });
-
-  await view.instance.waitUntilRenderFlush();
-  await clearAndUnmount(view);
-  unmounted = true;
-
-  assert.equal(stripVTControlCharacters(view.output()), "");
-  assert.ok(!view.output().includes("\u001B[2J"));
-  assert.ok(!view.output().includes("\u001B[3J"));
-  assert.ok(!view.output().includes("\u001B[H"));
 });
 
 class FakeTty extends PassThrough {

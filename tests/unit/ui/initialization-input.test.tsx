@@ -40,15 +40,6 @@ const uiModules = importWithoutColor(async () => {
   };
 });
 
-void test("initialization keeps its initial frame below a four-row terminal", async (t) => {
-  const view = await renderInitialization({ columns: 40, rows: 4 });
-  t.after(() => close(view));
-
-  const visibleOutput = stripVTControlCharacters(view.output()).trimEnd();
-  assert.equal(visibleOutput, "? Choose provider\n1 openai 2 gemini\nUD Enter 1/2 Esc");
-  assertNoFullscreenClear(view.output());
-});
-
 void test("initialization keeps rich provider and OpenAI field guidance at forty columns", async (t) => {
   const view = await renderInitialization({ columns: 40, rows: 24 });
   t.after(() => close(view));

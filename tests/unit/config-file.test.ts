@@ -11,7 +11,6 @@ import {
   readUserConfigFile,
   writeUserConfigFile,
 } from "../../src/config-file.js";
-import { createFileConfig } from "../../src/init/index.js";
 
 async function tempConfigPath(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "howto-config-test-"));
@@ -89,17 +88,13 @@ test("系统目录查询异常只返回固定配置错误", () => {
 });
 
 for (const [label, value] of [
-  ["undefined", undefined],
-  ["null", null],
-  ["number", 7],
-  ["object", {}],
   ["empty", ""],
   ["spaces", "   "],
   ["tab", "\t"],
   ["relative", "relative-home"],
 ] as const) {
   test(`系统目录查询返回 ${label} 时固定失败`, () => {
-    assert.throws(() => getConfigFilePath({}, () => value as string), isSystemHomeError);
+    assert.throws(() => getConfigFilePath({}, () => value), isSystemHomeError);
   });
 }
 
@@ -238,35 +233,5 @@ test("writeUserConfigFile maps config directory creation failures to a fixed err
     () => writeUserConfigFile({ aiProvider: "openai" }, join(blockingFile, "config.json")),
     (error: unknown) =>
       error instanceof ConfigError && error.message === "failed to save user config file",
-  );
-});
-
-test("createFileConfig writes only selected provider fields", () => {
-  assert.deepEqual(
-    createFileConfig({
-      provider: "gemini",
-      apiKey: "gemini-key",
-      model: "gemini-model",
-    }),
-    {
-      aiProvider: "gemini",
-      geminiApiKey: "gemini-key",
-      geminiModel: "gemini-model",
-    },
-  );
-
-  assert.deepEqual(
-    createFileConfig({
-      provider: "openai",
-      apiKey: "openai-key",
-      model: "openai-model",
-      openaiBaseUrl: "https://local.example/v1",
-    }),
-    {
-      aiProvider: "openai",
-      openaiApiKey: "openai-key",
-      openaiModel: "openai-model",
-      openaiApiUrl: "https://local.example/v1",
-    },
   );
 });

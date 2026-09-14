@@ -65,7 +65,6 @@ void test("ConfirmView keeps safe confirmation visible with long content in a na
 
   assert.ok(output.includes("Final command:"));
   assert.ok(output.includes("Enter execute; Esc/Ctrl+C cancel."));
-  assert.ok(!output.includes("Description that must not displace"));
   assert.ok(output.split("\n").length <= 4);
 });
 

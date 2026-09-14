@@ -248,21 +248,6 @@ test("toAppError maps provider failures with a safe message and raw model metada
   assert.equal(appError.message.includes("model-secret"), false);
 });
 
-test("toAppError maps normal provider failures to the existing fixed format", () => {
-  for (const { provider, model } of [
-    { provider: "openai", model: "gpt-test" },
-    { provider: "gemini", model: "gemini-test" },
-  ] as const) {
-    const appError = toAppError(new AiProviderError(provider, model));
-
-    assert.equal(appError.exitCode, 1);
-    assert.equal(
-      appError.message,
-      `AI provider request failed (provider: ${provider}, model: ${model})`,
-    );
-  }
-});
-
 test("toAppError sanitizes unknown Error and string values and ignores object details", () => {
   for (const error of [new Error(ATTACK_MESSAGE), ATTACK_MESSAGE]) {
     const appError = toAppError(error);

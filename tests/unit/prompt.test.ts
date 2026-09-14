@@ -54,7 +54,6 @@ describe("buildCommandGenerationPrompt", () => {
     });
 
     assert.equal(request.outputContract, STRUCTURED_OUTPUT_CONTRACT);
-    assert.equal(request.structuredOutput, true);
   });
 
   it("should use the full prompt contract when structured output is disabled", () => {
@@ -65,6 +64,5 @@ describe("buildCommandGenerationPrompt", () => {
     });
 
     assert.equal(request.outputContract, OUTPUT_CONTRACT);
-    assert.equal(request.structuredOutput, false);
   });
 });

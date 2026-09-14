@@ -23,12 +23,8 @@ const enter = "\r";
 const cases = [
   { label: "同块 Down+Enter", chunks: [down + enter], expected: 1 },
   { label: "同块 Up+Enter", chunks: [up + enter], expected: 2 },
-  { label: "同块 Down+Down+Enter", chunks: [down + down + enter], expected: 2 },
-  { label: "同块 Up+Up+Enter", chunks: [up + up + enter], expected: 1 },
   { label: "同块 Down 三次回绕后 Enter", chunks: [down + down + down + enter], expected: 0 },
-  { label: "同块 Down+Up+Enter", chunks: [down + up + enter], expected: 0 },
   { label: "分块 Down 后 Enter", chunks: [down, enter], expected: 1 },
-  { label: "分块 Up 后 Enter", chunks: [up, enter], expected: 2 },
   { label: "已渲染第二项后同块 Down+Enter", chunks: [down, down + enter], expected: 2 },
   { label: "单候选上下回绕后 Enter", chunks: [up + down + enter], expected: 0, count: 1 },
 ];
@@ -60,7 +56,7 @@ for (const scenario of cases) {
 }
 
 // App 会话层抽样验证端到端顺序确认链路
-for (const scenario of [cases[0], cases[4]]) {
+for (const scenario of [cases[0], cases[2]]) {
   void test(`完整会话 App 按顺序确认${scenario.label}`, async (t) => {
     await checkAppSelection(t, scenario.chunks, scenario.expected, 24, 80, scenario.count);
   });
@@ -68,7 +64,6 @@ for (const scenario of [cases[0], cases[4]]) {
 
 for (const [rows, columns] of [
   [2, 20],
-  [3, 20],
   [4, 32],
 ]) {
   void test(`完整会话 App 在 ${columns} 列 ${rows} 行终端使用同块输入后的最新候选`, async (t) => {

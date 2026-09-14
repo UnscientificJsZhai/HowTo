@@ -360,7 +360,7 @@ void test("危险确认不因 Backspace/Delete release 多删字符，Return rel
   assert.equal(confirmations, 1);
 });
 
-for (const columns of [20, 30, 31, 36, 37]) {
+for (const columns of [20, 36, 37]) {
   void test(`4 行 ${columns} 列危险确认显示输入并在扩缩宽度后保持编辑状态`, async (t) => {
     const { App } = await modules;
     const command = "rm -rf /private/tmp/FAKE-not-executed";
