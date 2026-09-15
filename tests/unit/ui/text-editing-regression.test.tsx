@@ -80,7 +80,7 @@ for (const grapheme of graphemes) {
     await waitFor(() => h.text().includes("Select a command"), "候选列表未显示");
     await h.send("\r");
     await waitFor(() => h.text().includes("Fill command placeholders"), "占位符输入未显示");
-    // 文本和两种删除键同批到达；独立 Enter 不与未分帧文本中的 CR 混淆。
+    // 文本和两种删除键同批到达，删除后继续确认最终值。
     await h.send(`${prefix}${grapheme}${backspace}${grapheme}${deleteKey}safe`);
     await h.send("\r");
     await waitFor(() => h.text().includes("Final command:"), "最终确认未显示");
@@ -403,6 +403,166 @@ for (const columns of [20, 36, 37]) {
     assert.deepEqual(confirmed, [command]);
   });
 }
+
+for (const command of ["2\\\n>/dev/null rm -rf /", "rm -rf ./../important", "dd of=///dev/disk2"]) {
+  void test(`新修复的危险写法只有 EXECUTE 才交付原文：${JSON.stringify(command)}`, async () => {
+    const { runInteractiveCommand } = await modules;
+    for (const confirmation of ["\r", "EXECUTE\r"]) {
+      const h = sessionHarness();
+      const executions: string[] = [];
+      const result = runInteractiveCommand({
+        session: h.session,
+        provider: {
+          generateCommands: () =>
+            Promise.resolve({ rawText: JSON.stringify({ commands: [testCandidate(command)] }) }),
+        },
+        request: testRequest(),
+        execute: (value) => {
+          executions.push(value);
+          return Promise.resolve(0);
+        },
+      }).catch((error: unknown) => error);
+      try {
+        await waitFor(() => h.text().includes("Select a command"), "候选未显示");
+        await h.send("\r");
+        await waitFor(() => h.text().includes("EXECUTE+Enter"), "危险确认未显示");
+        await h.send(confirmation);
+        const outcome = await bounded(result);
+        if (confirmation === "\r") {
+          assert.ok(outcome instanceof InteractionCancelledError);
+          assert.deepEqual(executions, []);
+        } else {
+          assert.equal(outcome, 0);
+          assert.deepEqual(executions, [command]);
+        }
+      } finally {
+        h.close();
+      }
+    }
+  });
+}
+
+for (const chunks of [
+  ["EXECUTE\r"],
+  ["EXE", "CUT", "E", "\r"],
+  ["EXECUTE\r\r"],
+  ["EXECUTE\r\u0003"],
+  ["EXECUTE", "\n"],
+]) {
+  void test(`确认文本与 Enter 分片后恰好完成一次：${JSON.stringify(chunks)}`, async (t) => {
+    const { ConfirmView } = await modules;
+    let confirmations = 0;
+    let cancellations = 0;
+    const view = await renderInSession(
+      t,
+      <ConfirmView
+        candidate={testCandidate()}
+        command={testCandidate().command}
+        resolvedValues={new Map()}
+        danger={{ rule: "测试风险", reason: "仅验证回调" }}
+        onConfirm={() => confirmations++}
+        onCancel={() => cancellations++}
+      />,
+    );
+    for (const chunk of chunks) await sendAndFlush(view, chunk);
+    assert.equal(confirmations, 1);
+    assert.equal(cancellations, 0);
+  });
+}
+
+for (const chunks of [["safe-value\r\rignored\r"], ["safe-", "value", "\r"]]) {
+  void test(`占位符按键分片保持值且剩余 Enter 不进入最终确认：${JSON.stringify(chunks)}`, async (t) => {
+    const { runInteractiveCommand } = await modules;
+    const h = sessionHarness();
+    t.after(() => h.close());
+    const executions: string[] = [];
+    const candidate = {
+      ...testCandidate("printf '%s' '{{value}}'"),
+      placeholders: [{ name: "value", description: "测试值" }],
+    };
+    const result = runInteractiveCommand({
+      session: h.session,
+      provider: {
+        generateCommands: () =>
+          Promise.resolve({ rawText: JSON.stringify({ commands: [candidate] }) }),
+      },
+      request: testRequest(),
+      execute: (value) => {
+        executions.push(value);
+        return Promise.resolve(0);
+      },
+    });
+    await waitFor(() => h.text().includes("Select a command"), "候选未显示");
+    await h.send("\r\r");
+    await waitFor(() => h.text().includes("Fill command placeholders"), "占位符未显示");
+    for (const chunk of chunks) await h.send(chunk);
+    await waitFor(() => h.text().includes("Final command:"), "最终确认未显示");
+    assert.deepEqual(executions, []);
+    await h.send("\r");
+    assert.equal(await bounded(result), 0);
+    assert.deepEqual(executions, ["printf '%s' 'safe-value'"]);
+  });
+}
+
+void test("初始化同批键盘字段按顺序提交，提交后的输入不能再次完成或取消", async (t) => {
+  const { InitializationApp } = await modules;
+  const submissions: InitializationValues[] = [];
+  const view = await renderInSession(
+    t,
+    <InitializationApp
+      onSubmit={(value) => {
+        submissions.push(value);
+        return Promise.resolve(testConfig());
+      }}
+      onComplete={() => {}}
+      onCancel={() => assert.fail("提交后的 Ctrl+C 不应再次取消")}
+      onError={(error) => assert.fail(error.message)}
+    />,
+  );
+  await sendAndFlush(view, "1");
+  await sendAndFlush(view, "FAKE-key\rmodel-test\rhttps://example.invalid/v1\rignored\r\u0003");
+  assert.deepEqual(submissions, [
+    {
+      provider: "openai",
+      apiKey: "FAKE-key",
+      model: "model-test",
+      openaiBaseUrl: "https://example.invalid/v1",
+    },
+  ]);
+});
+
+void test("Kitty 文本码点中的 CR 保持数据，释放事件不追加或提交", async (t) => {
+  const { runInteractiveCommand } = await modules;
+  const h = sessionHarness();
+  t.after(() => h.close());
+  const executions: string[] = [];
+  const candidate = {
+    ...testCandidate("printf '%s' '{{value}}'"),
+    placeholders: [{ name: "value", description: "测试值" }],
+  };
+  const result = runInteractiveCommand({
+    session: h.session,
+    provider: {
+      generateCommands: () =>
+        Promise.resolve({ rawText: JSON.stringify({ commands: [candidate] }) }),
+    },
+    request: testRequest(),
+    execute: (value) => {
+      executions.push(value);
+      return Promise.resolve(0);
+    },
+  });
+  await waitFor(() => h.text().includes("Select a command"), "候选未显示");
+  await h.send("\r");
+  await waitFor(() => h.text().includes("Fill command placeholders"), "占位符未显示");
+  await h.send("\u001b[97;1:3;65:13:66u\u001b[97;1:1;65:13:66u");
+  await h.send("\r");
+  await waitFor(() => h.text().includes("Final command:"), "最终确认未显示");
+  assert.deepEqual(executions, []);
+  await h.send("\r");
+  assert.equal(await bounded(result), 0);
+  assert.deepEqual(executions, ["printf '%s' 'A\rB'"]);
+});
 
 async function renderInSession(
   t: TestContext,

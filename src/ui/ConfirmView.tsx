@@ -41,6 +41,7 @@ export const ConfirmView: React.FC<Props> = ({
   const { policy, getPolicy } = useExecutionPolicy();
   const [buffer, setBuffer] = useState("");
   const bufferRef = useRef(buffer);
+  const finishedRef = useRef(false);
   const { stdout } = useStdout();
   const stdoutColumns =
     typeof stdout.columns === "number" && stdout.columns > 0 ? stdout.columns : 80;
@@ -48,25 +49,31 @@ export const ConfirmView: React.FC<Props> = ({
 
   usePasteAwareInput({
     onInput: (input: string, key: Key) => {
-      if (!isInputActive || availableRows <= 0 || isDone) return;
+      if (finishedRef.current || !isInputActive || availableRows <= 0 || isDone) return;
 
       if (key.ctrl && input === "c") {
+        finishedRef.current = true;
         onCancel();
         return;
       }
 
       if (key.escape) {
+        finishedRef.current = true;
         onCancel();
         return;
       }
 
       if (getPolicy() === "print") {
-        if (key.return) onConfirm();
+        if (key.return) {
+          finishedRef.current = true;
+          onConfirm();
+        }
         return;
       }
 
       if (danger) {
         if (key.return) {
+          finishedRef.current = true;
           if (isDangerConfirmationInput(bufferRef.current)) {
             onConfirm();
           } else {
@@ -84,11 +91,13 @@ export const ConfirmView: React.FC<Props> = ({
           updateBuffer((previous) => previous + input);
         }
       } else if (key.return) {
+        finishedRef.current = true;
         onConfirm();
       }
     },
     onPaste: (input) => {
       if (
+        finishedRef.current ||
         getPolicy() === "print" ||
         danger === undefined ||
         hasUnsafeTerminalControlCharacters(input)

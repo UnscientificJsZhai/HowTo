@@ -495,7 +495,7 @@ void test("ConfirmView discards pasted Enter for safe commands", async (t) => {
   assert.equal(cancellations, 0);
 });
 
-void test("伪结束后组件确认不会恢复会话执行权限", async (t) => {
+void test("伪结束后只确认输出一次，后续输入不恢复执行权限或再次取消", async (t) => {
   let confirmations = 0;
   let cancellations = 0;
   const { ConfirmView } = await uiModules;
@@ -522,7 +522,8 @@ void test("伪结束后组件确认不会恢复会话执行权限", async (t) =>
 
   await send(view, "EXECUTE");
   await send(view, "\r");
-  assert.equal(confirmations, 2);
+  await send(view, "\u0003");
+  assert.equal(confirmations, 1);
   assert.equal(view.session.getExecutionPolicy(), "print");
   assert.equal(cancellations, 0);
 });

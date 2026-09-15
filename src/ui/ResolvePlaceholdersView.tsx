@@ -38,10 +38,12 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
     createPlaceholderResolution(candidate),
   );
   const resolutionStateRef = useRef(resolutionState);
+  const finishedRef = useRef(false);
   const { currentPlaceholder, currentBuffer, resolvedValues } =
     getPlaceholderResolutionView(resolutionState);
 
   const handleResolutionInput = (resolutionInput: PlaceholderResolutionInput) => {
+    if (finishedRef.current) return;
     const transition = applyPlaceholderResolutionInput(resolutionStateRef.current, resolutionInput);
 
     switch (transition.type) {
@@ -50,9 +52,11 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
         setResolutionState(transition.state);
         return;
       case "back-to-selection":
+        finishedRef.current = true;
         onBack();
         return;
       case "complete":
+        finishedRef.current = true;
         onResolve(transition.resolved);
         return;
     }
@@ -60,9 +64,10 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
 
   usePasteAwareInput({
     onInput: (input: string, key: Key) => {
-      if (!isInputActive || availableRows <= 0) return;
+      if (finishedRef.current || !isInputActive || availableRows <= 0) return;
 
       if (key.ctrl && input === "c") {
+        finishedRef.current = true;
         onCancel();
         return;
       }

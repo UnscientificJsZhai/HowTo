@@ -66,6 +66,32 @@ for (const command of [
   });
 }
 
+test("数字 fd 中的续行因 shell 方言歧义保守拒绝", () => {
+  for (const prefix of ["2\\\n>", "2\\\n\\\n>>", "1\\\n2>", "1\\\n2\\\n<", "2\\\n>&1 "]) {
+    assert.deepEqual(parseShellCommand(`${prefix}output git status`), {
+      kind: "unsupported",
+      reason: "syntax",
+    });
+  }
+});
+
+test("普通续行和引用或转义的数字保持字面工具与原文位置", () => {
+  for (const [source, expected] of [
+    ["2\\\n >output git status", "2"],
+    ["'2'\\\n>output git status", "2"],
+    ['"2\\\n">output git status', "2"],
+    ["\\2\\\n>output git status", "2"],
+    ["'2\\\n'>output git status", "2\\\n"],
+    ["\\\n# comment\ng\\\nit status", "git"],
+  ]) {
+    assert.equal(executable(source), expected, source);
+  }
+  const source = "printf 😀 1\\\n2";
+  const word = parsedCommands(source)[0].words[2];
+  assert.equal(word.value, "12");
+  assert.equal(source.slice(word.start, word.end), "1\\\n2");
+});
+
 for (const [command, expected] of [
   ['FOO="a b" git status', "git"],
   ["A=$VALUE B=x git status", "git"],

@@ -10,8 +10,10 @@ const initialRaw = process.argv[2] === "raw";
 if (initialRaw) original.setRawMode(true);
 const originalEncoding = original.readableEncoding;
 const session = createInteractiveSession({ input: original, output: process.stdout });
-const command =
+const body =
   "test -t 0 || exit 31; printf 'REVIEW_%s\\n' CHILD_READY; IFS= read -r review_value; printf 'REVIEW_CHILD_%s:%s\\n' LINE \"$review_value\"";
+// 新模式只增加有方言歧义的 fd 前缀，确认后仍只运行原有的无害读取与打印。
+const command = process.argv[2] === "fd-continuation" ? `2\\\n>/dev/null ${body}` : body;
 
 try {
   const result = await runInteractiveCommand({

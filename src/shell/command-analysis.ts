@@ -286,6 +286,16 @@ function lexShellCommand(command: string): LexResult {
 
     const word = readWord(command, index);
     if (word.kind === "unsupported") return word;
+    const rawWord = command.slice(index, word.word.end);
+    if (
+      (command[word.word.end] === "<" || command[word.word.end] === ">") &&
+      /^\d+$/.test(word.word.value) &&
+      rawWord.includes("\\\n") &&
+      rawWord.replaceAll("\\\n", "") === word.word.value
+    ) {
+      // 数字 fd 内的续行在 sh/bash 与 zsh 中分词不同，不能把它当作确定的工具名。
+      return unsupported("syntax");
+    }
     tokens.push({ kind: "word", word: word.word });
     index = word.word.end;
   }

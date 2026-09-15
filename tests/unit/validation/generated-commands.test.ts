@@ -82,6 +82,20 @@ test("generateValidatedCommandCandidates accepts conservative git prefixes", asy
   );
 });
 
+test("use 不能把带续行的歧义 fd 当作请求工具", async () => {
+  for (const useCommand of ["2", "git"]) {
+    await assert.rejects(
+      generateValidatedCommandCandidates(
+        createProviderWithRawText(
+          JSON.stringify({ commands: [validCommand("2\\\n>output git status")] }),
+        ),
+        createRequest({ useCommand }),
+      ),
+      AiResponseValidationError,
+    );
+  }
+});
+
 test("use 校验保留已声明的普通参数占位符模板", async () => {
   const command = {
     ...validCommand("git log -n {{count}}"),

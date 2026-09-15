@@ -1,7 +1,48 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Key } from "ink";
-import { deleteLastGrapheme, isTextInputEvent } from "../../../src/ui/text-input.js";
+import {
+  deleteLastGrapheme,
+  isTextInputEvent,
+  splitKeyboardInput,
+} from "../../../src/ui/text-input.js";
+
+void test("legacy 文本中的 Enter 和控制动作按顺序拆分，Shift 文本保留", () => {
+  const events = splitKeyboardInput("A\tB\rC\n\u0003\u0008\u007f\u001b", key({ shift: true }));
+  assert.deepEqual(
+    events.map((event) => event.input),
+    ["A", "", "B", "", "C", "", "c", "", "", ""],
+  );
+  assert.equal(events[0].key.shift, true);
+  assert.equal(events[1].key.tab, true);
+  assert.equal(events[3].key.return, true);
+  assert.equal(events[3].key.shift, false);
+  assert.equal(events[5].key.return, true);
+  assert.equal(events[6].key.ctrl, true);
+  assert.equal(events[7].key.backspace, true);
+  assert.equal(events[8].key.backspace, true);
+  assert.equal(events[9].key.escape, true);
+});
+
+void test("Kitty、已有特殊键、快捷键及未知控制字符不被重新解释", () => {
+  for (const modifiers of [
+    { eventType: "press" },
+    { eventType: "repeat" },
+    { eventType: "release" },
+    { ctrl: true },
+    { meta: true },
+    { super: true },
+    { hyper: true },
+    { return: true },
+    { upArrow: true },
+    { backspace: true },
+  ] as const) {
+    const original = { input: "A\rB", key: key(modifiers) };
+    assert.deepEqual(splitKeyboardInput(original.input, original.key), [original]);
+  }
+  const original = { input: "A\u0000\rB", key: key() };
+  assert.deepEqual(splitKeyboardInput(original.input, original.key), [original]);
+});
 
 void test("删除空输入保持为空", () => {
   assert.equal(deleteLastGrapheme(""), "");

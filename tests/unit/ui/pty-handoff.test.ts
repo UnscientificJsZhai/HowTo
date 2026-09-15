@@ -45,6 +45,8 @@ try:
     wait_for(b'Select a command')
     os.write(fd, b'\r')
     wait_for(b'Final command:')
+    if mode == 'fd-continuation':
+        wait_for(b'EXECUTE+Enter')
     # 本测试只用键盘；若本地规则要求危险确认，同样完整输入确认短语。
     os.write(fd, b'EXECUTE\r' if b'EXECUTE+Enter' in output else b'\r')
     wait_for(b'REVIEW_CHILD_READY\r\n')
@@ -75,7 +77,7 @@ finally:
     os.close(fd)
 `;
 
-for (const mode of ["normal", "raw"]) {
+for (const mode of ["normal", "raw", "fd-continuation"]) {
   void test(`真实 PTY ${mode} 模式完整交付子命令首行，原 stdin 可复用且自然退出`, (t) => {
     if (process.platform === "win32") {
       t.skip("此自动回归需要 POSIX PTY；Windows Console/ConPTY 需独立验收");

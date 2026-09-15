@@ -55,6 +55,7 @@ The initializer writes a user-level config file at `~/.howto/config.json`.
 
 Initialization and placeholder input delete complete characters on Backspace, including emoji and combining sequences. Alt/Meta shortcuts are not inserted into configuration fields as text.
 Key release events never confirm, cancel, navigate, or delete; pressing and releasing Enter once cannot skip the final confirmation.
+Keyboard text and Enter are processed in order even when the terminal delivers them together. Once a step finishes, remaining keys in that batch cannot skip the next confirmation screen. Newlines inside paste remain data.
 
 > [!NOTE]
 > OpenAI API keys may be empty for local OpenAI-compatible services. Gemini requires a non-empty API key.
@@ -171,6 +172,8 @@ howto --print "show current branch"
 Dangerous-command detection currently covers high-risk patterns such as recursive destructive `rm`, disk and filesystem operations, broad recursive permission changes, downloaded scripts piped into a shell, high-impact package manager operations, and service changes.
 
 Local analysis handles literal quoting, absolute command paths, and supported `sudo`/`env` options, and checks each command segment. Unknown wrapper options, dynamic executable prefixes, and shell syntax outside the supported subset also require `EXECUTE`, so an inconclusive analysis does not skip the additional confirmation.
+
+Line continuations within numeric file descriptors require additional confirmation and are rejected by `use` because shells interpret them differently. Risk analysis recognizes high-risk paths with redundant dots or slashes, such as `./../important` and `///dev/disk2`, without collapsing `..` or changing the command that runs.
 
 Assignments passed to `env` can use names starting with digits or containing hyphens or dots; the actual command after them is still checked. Official npm global install/uninstall aliases such as `i`, `add`, `un`, and `unlink` receive the same additional confirmation. Inconclusive abbreviations of those actions also require confirmation.
 Leading `NAME+=value` requires additional confirmation and is rejected by `use` because its meaning differs between shells. Dollar expressions outside single quotes or backslash protection are treated conservatively as dynamic values. Compound npm installs through `install-test`, `installTest`, `it`, and their abbreviations also receive global-install checks.

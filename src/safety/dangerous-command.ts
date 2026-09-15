@@ -40,7 +40,7 @@ const SERVICE_OPERATION: DangerousCommandMatch = {
   reason: "system service stop, disable, restart, or configuration operation",
 };
 
-const RISKY_TARGET = /^(?:\/|~(?:\/|$)|\*|\.\.\/|\.\/\*)/;
+const RISKY_TARGET = /^(?:\/|~(?:\/|$)|\*|\.\.(?:\/|$))/;
 const RM_FLAGS = /^(?:-[A-Za-z]*[rRfF][A-Za-z]*|--recursive|--force)$/;
 const RECURSIVE_FLAGS = /^(?:-[A-Za-z]*R[A-Za-z]*|--recursive)$/;
 const PACKAGE_MANAGERS = new Set(["apt", "apt-get", "yum", "dnf", "brew", "npm", "pip", "pip3"]);
@@ -207,7 +207,7 @@ function inspectSimpleCommand(
     const flags = endOptions < 0 ? values : values.slice(0, endOptions);
     if (
       flags.some((value) => flagPattern.test(value)) &&
-      values.some((value) => RISKY_TARGET.test(value))
+      values.some((value) => RISKY_TARGET.test(normalizeRiskPath(value)))
     ) {
       return name === "rm" ? DESTRUCTIVE_RM : PERMISSION_CHANGE;
     }
@@ -224,7 +224,14 @@ function inspectSimpleCommand(
   if (/^mkfs(?:\.[\w-]+)?$/.test(name) || name === "fdisk" || name === "parted")
     return DISK_OPERATION;
   if (name === "dd") {
-    if (values.some((value) => value.startsWith("of=/dev/"))) return DISK_OPERATION;
+    if (
+      values.some((value) => {
+        if (!value.startsWith("of=")) return false;
+        const target = normalizeRiskPath(value.slice(3));
+        return target === "/dev" || target.startsWith("/dev/");
+      })
+    )
+      return DISK_OPERATION;
     return dynamic ? INDETERMINATE : undefined;
   }
   if (name === "diskutil") {
@@ -239,6 +246,12 @@ function inspectSimpleCommand(
     return action !== undefined && SERVICE_ACTIONS.has(action) ? SERVICE_OPERATION : undefined;
   }
   return undefined;
+}
+
+function normalizeRiskPath(value: string): string {
+  // 只整理分析副本的分隔符和点段；保留 ..，避免忽略符号链接的实际解析语义。
+  const segments = value.split("/").filter((segment) => segment !== "" && segment !== ".");
+  return (value.startsWith("/") ? "/" : "") + segments.join("/");
 }
 
 function inspectPackageCommand(

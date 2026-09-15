@@ -28,6 +28,7 @@ export const SelectCommandView: React.FC<Props> = ({
 }) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const activeIndexRef = useRef(0);
+  const finishedRef = useRef(false);
 
   function updateActiveIndex(update: (previous: number) => number): void {
     const nextIndex = update(activeIndexRef.current);
@@ -36,9 +37,10 @@ export const SelectCommandView: React.FC<Props> = ({
   }
 
   useKeyboardInput((input: string, key: Key) => {
-    if (!isInputActive || availableRows <= 0) return;
+    if (finishedRef.current || !isInputActive || availableRows <= 0) return;
 
     if (key.escape || (key.ctrl && input === "c")) {
+      finishedRef.current = true;
       onCancel();
       return;
     }
@@ -52,6 +54,7 @@ export const SelectCommandView: React.FC<Props> = ({
     }
 
     if (key.return) {
+      finishedRef.current = true;
       onSelect(candidates[activeIndexRef.current]);
     }
   });

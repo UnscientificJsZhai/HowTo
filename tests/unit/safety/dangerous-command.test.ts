@@ -143,6 +143,56 @@ for (const command of [
   });
 }
 
+test("fd 续行不能遮蔽危险命令，包括后续命令段和一层 shell 包装", () => {
+  for (const command of [
+    "2\\\n>/dev/null rm -rf /",
+    "2\\\n\\\n>/dev/null rm -rf /",
+    "1\\\n2>/dev/null rm -rf /",
+    "2\\\n>&1 rm -rf /",
+    "printf safe; 2\\\n>/dev/null rm -rf /",
+    "sh -c '2\\\n>/dev/null rm -rf /'",
+  ]) {
+    assert.equal(detectDangerousCommand(command)?.rule, "indeterminate-shell-command", command);
+  }
+});
+
+test("高风险目标的点段与重复斜杠保持等价危险判断", () => {
+  for (const target of ["../important", "./../important", "././/..//important", "../", "./../"]) {
+    assert.equal(detectDangerousCommand(`rm -rf '${target}'`)?.rule, "destructive-rm", target);
+    for (const command of [`chmod -R 777 '${target}'`, `chown -R user:group '${target}'`]) {
+      assert.equal(
+        detectDangerousCommand(command)?.rule,
+        "recursive-permission-ownership-change",
+        command,
+      );
+    }
+  }
+  for (const target of [
+    "/dev/disk2",
+    "///dev/disk2",
+    "/./dev//disk2",
+    "/dev/./disk2",
+    "/dev/",
+    "/dev/../output.img",
+  ]) {
+    assert.equal(
+      detectDangerousCommand(`dd of='${target}'`)?.rule,
+      "disk-filesystem-operation",
+      target,
+    );
+  }
+  for (const command of [
+    "rm -rf ./build//output",
+    "dd of=./dev/disk2",
+    "dd if=///dev/disk2 of=./image.bin",
+    "dd of=/link/../dev/disk2",
+  ]) {
+    assert.equal(detectDangerousCommand(command), undefined, command);
+  }
+  assert.equal(detectDangerousCommand("rm -rf /./")?.rule, "destructive-rm");
+  assert.equal(detectDangerousCommand("rm -rf './*'")?.rule, "destructive-rm");
+});
+
 test("追加赋值不能遮蔽危险命令，包括后续命令段和一层 shell 命令体", () => {
   for (const command of [
     "HOWTO_APPEND+=x rm -rf /",
