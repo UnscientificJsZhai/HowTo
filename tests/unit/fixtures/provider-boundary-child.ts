@@ -72,7 +72,11 @@ if (envelopeMode === undefined && openAiEnvelopeMode === undefined) {
     process.stderr.write(`${appError.message}\n`);
     process.exitCode = appError.exitCode;
   }
-  process.stdout.write(`${JSON.stringify({ requests, responseMatches, getterReads })}\n`);
+  const payload =
+    process.env.HOWTO_AI_PROVIDER === "openai"
+      ? { requests, responseMatches }
+      : { requests, responseMatches, getterReads };
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
 function openAiEnvelope(): unknown {

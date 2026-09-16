@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import React from "react";
 import {
@@ -839,7 +841,7 @@ void test("输入 error end close 与输出 error 会结束运行并恢复资源
 
 void test("自动初始化与 App 共用同一原始租约，独立初始化粘贴也可保存一次", async (t) => {
   const { initializeConfig, runInteractiveCommand } = await modules;
-  const home = await mkdtemp("/private/tmp/howto-ui-init-test-");
+  const home = await mkdtemp(join(tmpdir(), "howto-ui-init-test-"));
   t.after(() => rm(home, { recursive: true, force: true }));
   const h = sessionHarness();
   t.after(() => h.close());
@@ -924,7 +926,7 @@ void test("隐藏粘贴经过真实 App 后只输出既有占位符值，初始�
   assert.deepEqual(printed, ["printf kept"]);
   assert.equal(h.text().includes("HIDDEN"), false);
 
-  const home = await mkdtemp("/private/tmp/howto-ui-hidden-init-");
+  const home = await mkdtemp(join(tmpdir(), "howto-ui-hidden-init-"));
   t.after(() => rm(home, { recursive: true, force: true }));
   const init = sessionHarness();
   t.after(() => init.close());

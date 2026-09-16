@@ -73,6 +73,8 @@ export async function initializeConfig({
         stdin: session.input,
         stdout: session.output,
         exitOnCtrlC: false,
+        // 会话已确认 TTY，避免 CI 环境关闭 Ink 的实时渲染。
+        interactive: true,
       },
     );
     unsubscribe = session.subscribeFailure((error) => settle(() => reject(error)));

@@ -46,7 +46,13 @@ export async function runInteractiveCommand({
         }}
       />
     </InteractiveSessionProvider>,
-    { stdin: session.input, stdout: session.output, exitOnCtrlC: false },
+    {
+      stdin: session.input,
+      stdout: session.output,
+      exitOnCtrlC: false,
+      // 会话已确认 TTY，避免 CI 环境关闭 Ink 的实时渲染。
+      interactive: true,
+    },
   );
   const unsubscribe = session.subscribeFailure((error) => {
     appError = error;

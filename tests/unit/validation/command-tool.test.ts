@@ -44,6 +44,12 @@ test("use 拒绝已知 shell 本身及标准路径包装", () => {
   }
 });
 
+test("use 不能把带续行的歧义 fd 当作请求工具", () => {
+  for (const useCommand of ["2", "git"]) {
+    assert.equal(candidateUsesRequestedCommand("2\\\n>output git status", useCommand), false);
+  }
+});
+
 for (const [command, names] of [
   ["git log -n {{count}}", ["count"]],
   ["git '{{path}}'", ["path"]],

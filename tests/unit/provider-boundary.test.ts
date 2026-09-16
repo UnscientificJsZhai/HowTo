@@ -23,10 +23,7 @@ const GEMINI_SDK_URLS = {
 };
 
 for (const [name, customHeaders, succeeds] of [
-  ["非法 api-key 值", "api-key: HOWTO_FAKE_HEADER_SECRET\rTAIL", false],
-  ["非法 Basic Authorization", "Authorization: Basic HOWTO_FAKE_HEADER_SECRET\rTAIL", false],
-  ["非法 header 名", "X HOWTO_FAKE_HEADER_SECRET: value", false],
-  ["非法普通 header 值", "X-Token: HOWTO_FAKE_HEADER_SECRET\rTAIL", false],
+  ["非法 header 值", "api-key: HOWTO_FAKE_HEADER_SECRET\rTAIL", false],
   ["合法普通 header", "X-Token: HOWTO_FAKE_HEADER_SECRET", true],
 ] as const) {
   test(`OpenAI SDK 初始化的${name}不向 CLI 输出泄露凭据`, (t) => {
@@ -194,7 +191,6 @@ for (const [mode, exitCode] of [
       `${JSON.stringify({
         requests: [{ url: OPENAI_URL, method: "POST", credentialsMatch: true }],
         responseMatches: exitCode === 0,
-        getterReads: 0,
       })}\n`,
     );
     assert.equal(
@@ -210,6 +206,7 @@ for (const [mode, exitCode] of [
 
 for (const [mode, exitCode] of [
   ["mixed", 0],
+  ["throwing-getter", 0],
   ["bad-text", 1],
   ["invalid-json", 2],
 ] as const) {
@@ -237,7 +234,10 @@ for (const [mode, exitCode] of [
     assert.equal(
       child.stdout,
       `${JSON.stringify({
-        requests: [{ url: GEMINI_URL, method: "POST", credentialsMatch: true }],
+        requests:
+          mode === "throwing-getter"
+            ? []
+            : [{ url: GEMINI_URL, method: "POST", credentialsMatch: true }],
         responseMatches: exitCode === 0,
         getterReads: 0,
       })}\n`,

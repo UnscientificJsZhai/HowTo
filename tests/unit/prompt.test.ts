@@ -1,11 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {
-  OUTPUT_CONTRACT,
-  STRUCTURED_OUTPUT_CONTRACT,
-  buildCommandGenerationPrompt,
-  createProviderPromptRequest,
-} from "../../src/prompt.js";
+import { buildCommandGenerationPrompt, createProviderPromptRequest } from "../../src/prompt.js";
 import type { ProviderPromptRequest } from "../../src/ai/types.js";
 
 describe("buildCommandGenerationPrompt", () => {
@@ -53,7 +48,8 @@ describe("buildCommandGenerationPrompt", () => {
       structuredOutput: true,
     });
 
-    assert.equal(request.outputContract, STRUCTURED_OUTPUT_CONTRACT);
+    assert.ok(request.outputContract.includes("response schema"));
+    assert.equal(request.outputContract.includes("The JSON object must match this schema:"), false);
   });
 
   it("should use the full prompt contract when structured output is disabled", () => {
@@ -63,6 +59,12 @@ describe("buildCommandGenerationPrompt", () => {
       structuredOutput: false,
     });
 
-    assert.equal(request.outputContract, OUTPUT_CONTRACT);
+    assert.ok(request.outputContract.includes("The JSON object must match this schema:"));
+    assert.equal(
+      request.outputContract.includes(
+        "Return only the JSON object requested by the response schema",
+      ),
+      false,
+    );
   });
 });

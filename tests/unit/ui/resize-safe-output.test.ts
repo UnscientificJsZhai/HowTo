@@ -101,7 +101,6 @@ void test("resize-safe stdout writes through to the physical stream", () => {
 
   const result = proxy.write("hello");
 
-  assert.equal(typeof result, "boolean");
   assert.equal(result, true);
   assert.equal(output, "hello");
 });

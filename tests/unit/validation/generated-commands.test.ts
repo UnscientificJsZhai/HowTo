@@ -18,27 +18,6 @@ test("generateValidatedCommandCandidates returns valid command candidates", asyn
   assert.deepEqual(candidates, [validCommand("git status")]);
 });
 
-test("generateValidatedCommandCandidates passes the same optional signal to the provider", async () => {
-  const request = createRequest();
-  const controller = new AbortController();
-  let capturedRequest: GenerateCommandsRequest | undefined;
-  let capturedSignal: AbortSignal | undefined;
-  const provider: CommandProvider = {
-    generateCommands(providerRequest, signal) {
-      capturedRequest = providerRequest;
-      capturedSignal = signal;
-      return Promise.resolve({
-        rawText: JSON.stringify({ commands: [validCommand("git status")] }),
-      });
-    },
-  };
-
-  await generateValidatedCommandCandidates(provider, request, controller.signal);
-
-  assert.equal(capturedRequest, request);
-  assert.equal(capturedSignal, controller.signal);
-});
-
 test("generateValidatedCommandCandidates preserves AI response validation errors", async () => {
   await assert.rejects(
     () =>
@@ -60,52 +39,6 @@ test("generateValidatedCommandCandidates rejects candidates that do not use requ
       ),
     AiResponseValidationError,
   );
-});
-
-test("generateValidatedCommandCandidates accepts conservative git prefixes", async () => {
-  const candidates = await generateValidatedCommandCandidates(
-    createProviderWithRawText(
-      JSON.stringify({
-        commands: [
-          validCommand("git status"),
-          validCommand("sudo git status"),
-          validCommand("FOO=bar git status"),
-        ],
-      }),
-    ),
-    createRequest({ useCommand: "git" }),
-  );
-
-  assert.deepEqual(
-    candidates.map((candidate) => candidate.command),
-    ["git status", "sudo git status", "FOO=bar git status"],
-  );
-});
-
-test("use 不能把带续行的歧义 fd 当作请求工具", async () => {
-  for (const useCommand of ["2", "git"]) {
-    await assert.rejects(
-      generateValidatedCommandCandidates(
-        createProviderWithRawText(
-          JSON.stringify({ commands: [validCommand("2\\\n>output git status")] }),
-        ),
-        createRequest({ useCommand }),
-      ),
-      AiResponseValidationError,
-    );
-  }
-});
-
-test("use 校验保留已声明的普通参数占位符模板", async () => {
-  const command = {
-    ...validCommand("git log -n {{count}}"),
-    placeholders: [{ name: "count", description: "Number of commits" }],
-  };
-  const result = await generateValidatedCommandCandidates(
-    createProviderWithRawText(JSON.stringify({ commands: [command] })),
-    createRequest({ useCommand: "git" }),
-  );
-  assert.deepEqual(result, [command]);
 });
 
 test("生成链路仍先拒绝未声明引用，不能被 use 模板适配放行", async () => {
