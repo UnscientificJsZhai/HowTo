@@ -119,7 +119,7 @@ export async function writeUserConfigFile(
   const temporaryPath = join(temporaryDirectory, basename(path));
 
   try {
-    await writeFile(temporaryPath, serializedConfig, "utf8");
+    await writeFile(temporaryPath, serializedConfig, { encoding: "utf8", mode: 0o600 });
     await rename(temporaryPath, path);
   } catch {
     try {
