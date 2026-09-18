@@ -31,7 +31,7 @@ export async function executeCommand(
   const child =
     platform === "win32"
       ? spawnCommand(command, { shell: env.SHELL || true, stdio: "inherit" }, { stdio: "inherit" })
-      : spawnCommand(resolveShell(env), ["-lc", `exec ${command}`], { stdio: "inherit" });
+      : spawnCommand(resolveShell(env), ["-c", command], { stdio: "inherit" });
 
   return new Promise((resolve, reject) => {
     child.once("error", reject);

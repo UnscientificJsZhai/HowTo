@@ -1,7 +1,6 @@
-import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { homedir } from "node:os";
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join } from "node:path";
+import { userInfo } from "node:os";
 import { ConfigError } from "./config.js";
 
 export interface FileConfig {
@@ -24,24 +23,55 @@ const CONFIG_FILE_FIELDS = new Set<keyof FileConfig>([
   "structuredOutput",
 ]);
 
-export function getConfigFilePath(env: NodeJS.ProcessEnv = process.env): string {
-  return join(env.HOME ?? homedir(), ".howto", "config.json");
+export function getConfigFilePath(
+  env: NodeJS.ProcessEnv = process.env,
+  getSystemHomeDirectory: () => string = () => userInfo().homedir,
+): string {
+  const configuredHome = env.HOME;
+  let homeDirectory: string;
+  if (configuredHome === undefined || configuredHome.trim() === "") {
+    try {
+      homeDirectory = getSystemHomeDirectory();
+    } catch {
+      throw new ConfigError("failed to resolve user home directory");
+    }
+    if (
+      typeof homeDirectory !== "string" ||
+      homeDirectory.trim() === "" ||
+      !isAbsolute(homeDirectory)
+    ) {
+      throw new ConfigError("failed to resolve user home directory");
+    }
+  } else {
+    homeDirectory = configuredHome;
+  }
+  const configDirectory = join(homeDirectory, ".howto");
+
+  assertAbsoluteConfigDirectory(configDirectory);
+  return join(configDirectory, "config.json");
 }
 
 export async function readUserConfigFile(path = getConfigFilePath()): Promise<FileConfig> {
-  if (!existsSync(path)) {
-    return {};
+  let contents: string;
+  try {
+    contents = await readFile(path, "utf8");
+  } catch (error: unknown) {
+    if (isFileNotFoundError(error)) {
+      return {};
+    }
+
+    throw new ConfigError("failed to read user config file");
   }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(await readFile(path, "utf8"));
-  } catch (error: unknown) {
-    throw new ConfigError(`failed to read config file ${path}: ${getParseErrorMessage(error)}`);
+    parsed = JSON.parse(contents);
+  } catch {
+    throw new ConfigError("user config file is not valid JSON");
   }
 
   if (!isPlainObject(parsed)) {
-    throw new ConfigError(`config file ${path} must contain a JSON object`);
+    throw new ConfigError("user config file must contain a JSON object");
   }
 
   const config: FileConfig = {};
@@ -73,14 +103,51 @@ export async function writeUserConfigFile(
   config: FileConfig,
   path = getConfigFilePath(),
 ): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+  const configDirectory = dirname(path);
+  assertAbsoluteConfigDirectory(configDirectory);
+
+  const serializedConfig = `${JSON.stringify(config, null, 2)}\n`;
+
+  let temporaryDirectory: string;
+  try {
+    await mkdir(configDirectory, { recursive: true });
+    temporaryDirectory = await mkdtemp(join(configDirectory, `.${basename(path)}-`));
+  } catch {
+    throw new ConfigError("failed to save user config file");
+  }
+
+  const temporaryPath = join(temporaryDirectory, basename(path));
+
+  try {
+    await writeFile(temporaryPath, serializedConfig, { encoding: "utf8", mode: 0o600 });
+    await rename(temporaryPath, path);
+  } catch {
+    try {
+      await rm(temporaryDirectory, { recursive: true, force: true });
+    } catch {
+      throw new ConfigError("failed to save user config file and remove temporary config data");
+    }
+
+    throw new ConfigError("failed to save user config file");
+  }
+
+  try {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  } catch {
+    // 配置已经通过原子重命名提交；空临时目录清理失败不能把成功写入报告为失败。
+  }
+}
+
+function assertAbsoluteConfigDirectory(path: string): void {
+  if (!isAbsolute(path)) {
+    throw new ConfigError("config directory must be an absolute path");
+  }
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function getParseErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "invalid JSON";
+function isFileNotFoundError(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
 }

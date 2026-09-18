@@ -4,6 +4,17 @@ import { ConfigError } from "./config.js";
 import { AiResponseValidationError } from "./validation/ai-response.js";
 import { InteractionCancelledError, InteractiveTtyError } from "./ui/tty.js";
 import { PlaceholderResolutionError } from "./ui/placeholder-logic.js";
+import { sanitizeUserVisibleErrorMessage } from "./user-visible-error.js";
+
+export { sanitizeUserVisibleErrorMessage };
+
+export function getUserVisibleErrorMessage(error: Error): string {
+  if (error instanceof AiProviderError) {
+    return `AI provider request failed (provider: ${error.provider}, model: ${sanitizeUserVisibleErrorMessage(error.model)})`;
+  }
+
+  return sanitizeUserVisibleErrorMessage(error.message);
+}
 
 export class AppError extends Error {
   readonly exitCode: number;
@@ -17,38 +28,44 @@ export class AppError extends Error {
 
 export function toAppError(error: unknown): AppError {
   if (error instanceof AppError) {
-    return error;
+    return new AppError(sanitizeUserVisibleErrorMessage(error.message), error.exitCode);
   }
 
   if (error instanceof CliParseError) {
-    return new AppError(`Error: ${error.message}\n${USAGE}`, 2);
+    return new AppError(`Error: ${sanitizeUserVisibleErrorMessage(error.message)}\n${USAGE}`, 2);
   }
 
   if (error instanceof ConfigError) {
-    return new AppError(`Configuration error: ${error.message}`, 2);
+    return new AppError(
+      `Configuration error: ${sanitizeUserVisibleErrorMessage(error.message)}`,
+      2,
+    );
   }
 
   if (error instanceof AiProviderError) {
-    return new AppError(error.message, 1);
+    return new AppError(getUserVisibleErrorMessage(error), 1);
   }
 
   if (error instanceof AiResponseValidationError) {
-    return new AppError(`AI response format error: ${error.message}`, 2);
+    return new AppError(
+      `AI response format error: ${sanitizeUserVisibleErrorMessage(error.message)}`,
+      2,
+    );
   }
 
   if (error instanceof InteractiveTtyError) {
-    return new AppError(`Error: ${error.message}`, 2);
+    return new AppError(`Error: ${sanitizeUserVisibleErrorMessage(error.message)}`, 2);
   }
 
   if (error instanceof PlaceholderResolutionError) {
-    return new AppError(`Error: ${error.message}`, 2);
+    return new AppError(`Error: ${sanitizeUserVisibleErrorMessage(error.message)}`, 2);
   }
 
   if (error instanceof InteractionCancelledError) {
     return new AppError("", 130);
   }
 
-  return new AppError(`Error: ${sanitizeErrorMessage(getErrorMessage(error))}`, 1);
+  return new AppError(`Error: ${sanitizeUserVisibleErrorMessage(getErrorMessage(error))}`, 1);
 }
 
 function getErrorMessage(error: unknown): string {
@@ -61,14 +78,4 @@ function getErrorMessage(error: unknown): string {
   }
 
   return "unknown error";
-}
-
-function sanitizeErrorMessage(message: string): string {
-  const singleLine = message.replace(/\s+/g, " ").trim();
-  const redacted = singleLine
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
-    .replace(/(api[-_ ]?key["'\s:=]+)[A-Za-z0-9._~+/=-]+/gi, "$1[redacted]")
-    .replace(/(authorization["'\s:=]+)[A-Za-z0-9._~+/=-]+/gi, "$1[redacted]");
-
-  return redacted.length > 220 ? `${redacted.slice(0, 217)}...` : redacted;
 }

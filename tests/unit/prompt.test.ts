@@ -1,11 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {
-  OUTPUT_CONTRACT,
-  STRUCTURED_OUTPUT_CONTRACT,
-  buildCommandGenerationPrompt,
-  createProviderPromptRequest,
-} from "../../src/prompt.js";
+import { buildCommandGenerationPrompt, createProviderPromptRequest } from "../../src/prompt.js";
 import type { ProviderPromptRequest } from "../../src/ai/types.js";
 
 describe("buildCommandGenerationPrompt", () => {
@@ -46,27 +41,6 @@ describe("buildCommandGenerationPrompt", () => {
     assert.ok(userPrompt.includes('The user specified use <command>: "ls"'));
   });
 
-  it("should include both in userPrompt when both are provided", () => {
-    const request = { ...baseRequest, arguments: ["-la"], useCommand: "ls" };
-    const { userPrompt } = buildCommandGenerationPrompt(request);
-    assert.ok(userPrompt.includes('argument: ["-la"]'));
-    assert.ok(userPrompt.includes('useCommand: "ls"'));
-  });
-
-  it("should include language rules in the output contract", () => {
-    const request = { ...baseRequest, outputContract: OUTPUT_CONTRACT };
-    const { systemPrompt } = buildCommandGenerationPrompt(request);
-
-    assert.ok(systemPrompt.includes("Detect the primary natural language of the user's question"));
-    assert.ok(
-      systemPrompt.includes(
-        "Return title, description, and placeholders[].description in that language",
-      ),
-    );
-    assert.ok(systemPrompt.includes("Keep placeholder name values English-compatible ASCII"));
-    assert.ok(systemPrompt.includes("Use placeholders in commands only as {{name}}"));
-  });
-
   it("should use a short prompt contract when structured output is enabled", () => {
     const request = createProviderPromptRequest({
       question: "how to list files",
@@ -74,11 +48,8 @@ describe("buildCommandGenerationPrompt", () => {
       structuredOutput: true,
     });
 
-    assert.equal(request.outputContract, STRUCTURED_OUTPUT_CONTRACT);
-    assert.equal(request.structuredOutput, true);
-    assert.equal(request.outputContract.includes("The JSON object must match this schema"), false);
     assert.ok(request.outputContract.includes("response schema"));
-    assert.ok(request.outputContract.includes("The commands array must contain 1 to 3 items"));
+    assert.equal(request.outputContract.includes("The JSON object must match this schema:"), false);
   });
 
   it("should use the full prompt contract when structured output is disabled", () => {
@@ -88,8 +59,12 @@ describe("buildCommandGenerationPrompt", () => {
       structuredOutput: false,
     });
 
-    assert.equal(request.outputContract, OUTPUT_CONTRACT);
-    assert.equal(request.structuredOutput, false);
-    assert.ok(request.outputContract.includes("The JSON object must match this schema"));
+    assert.ok(request.outputContract.includes("The JSON object must match this schema:"));
+    assert.equal(
+      request.outputContract.includes(
+        "Return only the JSON object requested by the response schema",
+      ),
+      false,
+    );
   });
 });

@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { CommandCandidateContract } from "../ai/types.js";
+import { toSingleLinePreview } from "./single-line-preview.js";
 
 interface Props {
   candidate: CommandCandidateContract;
@@ -28,11 +29,15 @@ export const SelectedCommandDisplay: React.FC<Props> = ({
         <Text color="cyan" bold>
           {"> "}
         </Text>
-        <Text bold>{candidate.title}</Text>
+        <Box flexGrow={1} overflowX="hidden">
+          <Text bold wrap="truncate-end">
+            {toSingleLinePreview(candidate.title)}
+          </Text>
+        </Box>
       </Box>
 
-      <Box marginLeft={2}>
-        <Text>
+      <Box marginLeft={2} overflowX="hidden">
+        <Text wrap="truncate-middle">
           {parts.map((part, index) => {
             const match = part.match(/^{{(.*)}}$/);
             if (match) {
@@ -42,7 +47,7 @@ export const SelectedCommandDisplay: React.FC<Props> = ({
               if (currentBuffer && currentBuffer.name === placeholderName) {
                 return (
                   <Text key={index} color="yellow">
-                    {currentBuffer.value || part}
+                    {toSingleLinePreview(currentBuffer.value || part)}
                   </Text>
                 );
               }
@@ -51,7 +56,7 @@ export const SelectedCommandDisplay: React.FC<Props> = ({
               if (resolvedValues.has(placeholderName)) {
                 return (
                   <Text key={index} color="yellow">
-                    {resolvedValues.get(placeholderName)}
+                    {toSingleLinePreview(resolvedValues.get(placeholderName) ?? "")}
                   </Text>
                 );
               }
@@ -59,20 +64,20 @@ export const SelectedCommandDisplay: React.FC<Props> = ({
               // Otherwise show the original {{placeholder}} in default gray
               return (
                 <Text key={index} color="gray">
-                  {part}
+                  {toSingleLinePreview(part)}
                 </Text>
               );
             }
 
             // Normal text
-            return <Text key={index}>{part}</Text>;
+            return <Text key={index}>{toSingleLinePreview(part)}</Text>;
           })}
         </Text>
       </Box>
 
-      <Box marginLeft={2}>
-        <Text italic color="dim">
-          {candidate.description}
+      <Box marginLeft={2} overflowX="hidden">
+        <Text italic color="dim" wrap="truncate-end">
+          {toSingleLinePreview(candidate.description)}
         </Text>
       </Box>
     </Box>

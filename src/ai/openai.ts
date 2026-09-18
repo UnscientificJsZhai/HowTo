@@ -12,38 +12,58 @@ export class OpenAiCommandProvider implements CommandProvider {
 
   constructor(config: AppConfig["openai"]) {
     this.model = config.model;
-    this.client = new OpenAI(buildOpenAiClientOptions(config));
+    try {
+      this.client = new OpenAI(buildOpenAiClientOptions(config));
+    } catch {
+      // SDK 初始化异常可能含自定义请求头原值，与请求失败使用同一固定错误边界。
+      throw new AiProviderError("openai", this.model);
+    }
   }
 
-  async generateCommands(request: GenerateCommandsRequest): Promise<GenerateCommandsResult> {
+  async generateCommands(
+    request: GenerateCommandsRequest,
+    signal?: AbortSignal,
+  ): Promise<GenerateCommandsResult> {
+    let rawText: unknown;
     try {
-      const response = await this.client.chat.completions.create(
-        buildOpenAiChatCompletionRequest(this.model, request),
-      );
-
-      const rawText = response.choices[0]?.message?.content;
-      if (rawText === undefined || rawText === null || rawText.trim() === "") {
-        throw new Error("provider returned an empty response");
-      }
-
-      return { rawText };
-    } catch (error: unknown) {
-      throw new AiProviderError("openai", this.model, error);
+      const parameters = buildOpenAiChatCompletionRequest(this.model, request);
+      // SDK 重试等待不响应取消；交互请求关闭自动重试，避免取消后残留计时器。
+      const response =
+        signal === undefined
+          ? await this.client.chat.completions.create(parameters)
+          : await this.client.chat.completions.create(parameters, { signal, maxRetries: 0 });
+      rawText = response.choices[0]?.message?.content;
+    } catch {
+      throw new AiProviderError("openai", this.model);
     }
+
+    if (typeof rawText !== "string" || rawText.trim() === "") {
+      throw new AiProviderError("openai", this.model);
+    }
+
+    return { rawText };
   }
 }
 
 export function buildOpenAiClientOptions(config: AppConfig["openai"]): ClientOptions {
+  const baseURL = config.baseUrl || "https://api.openai.com/v1";
+
   if (config.apiKey.trim() !== "") {
     return {
       apiKey: config.apiKey,
-      baseURL: config.baseUrl,
+      baseURL,
+      logLevel: "off",
+      // 最终认证头必须覆盖 SDK 隐式读取的 OPENAI_CUSTOM_HEADERS。
+      defaultHeaders: {
+        Authorization: `Bearer ${config.apiKey}`,
+      },
     };
   }
 
   return {
     apiKey: "howto-empty-api-key",
-    baseURL: config.baseUrl,
+    baseURL,
+    logLevel: "off",
     defaultHeaders: {
       Authorization: null,
     },

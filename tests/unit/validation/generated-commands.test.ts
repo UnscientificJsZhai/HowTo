@@ -41,38 +41,18 @@ test("generateValidatedCommandCandidates rejects candidates that do not use requ
   );
 });
 
-test("generateValidatedCommandCandidates accepts conservative git prefixes", async () => {
-  const candidates = await generateValidatedCommandCandidates(
-    createProviderWithRawText(
-      JSON.stringify({
-        commands: [
-          validCommand("git status"),
-          validCommand("sudo git status"),
-          validCommand("FOO=bar git status"),
-        ],
-      }),
-    ),
-    createRequest({ useCommand: "git" }),
-  );
-
-  assert.deepEqual(
-    candidates.map((candidate) => candidate.command),
-    ["git status", "sudo git status", "FOO=bar git status"],
-  );
-});
-
-test("generateValidatedCommandCandidates rejects shell wrapped requested commands", async () => {
+test("生成链路仍先拒绝未声明引用，不能被 use 模板适配放行", async () => {
   await assert.rejects(
     () =>
       generateValidatedCommandCandidates(
         createProviderWithRawText(
-          JSON.stringify({
-            commands: [validCommand('sh -c "git status"')],
-          }),
+          JSON.stringify({ commands: [validCommand("git {{undeclared}}")] }),
         ),
         createRequest({ useCommand: "git" }),
       ),
-    AiResponseValidationError,
+    (error: unknown) =>
+      error instanceof AiResponseValidationError &&
+      error.message.includes("undeclared placeholder"),
   );
 });
 

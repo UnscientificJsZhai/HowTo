@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from "react";
-import { Box, Text, useWindowSize } from "ink";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Box, Text, usePaste, useWindowSize, type Key } from "ink";
+import { useKeyboardInput } from "./use-keyboard-input.js";
+import { useInteractiveSession } from "./InteractiveSessionProvider.js";
 import { LoadingView } from "./LoadingView.js";
 import { SelectCommandView } from "./SelectCommandView.js";
 import { ResolvePlaceholdersView } from "./ResolvePlaceholdersView.js";
@@ -13,6 +15,8 @@ import { generateValidatedCommandCandidates } from "../validation/generated-comm
 import { detectDangerousCommand, type DangerousCommandMatch } from "../safety/dangerous-command.js";
 import { resolveCandidatePlaceholders, type ResolvedCommand } from "./placeholder-logic.js";
 import { InteractionCancelledError } from "./tty.js";
+import { usePhysicalStdoutRows } from "./resize-safe-output.js";
+import { getUserVisibleErrorMessage } from "../errors.js";
 
 type Status = "loading" | "selecting" | "resolving" | "confirming" | "error" | "done";
 
@@ -24,7 +28,9 @@ interface Props {
 }
 
 export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) => {
-  const { rows } = useWindowSize();
+  const session = useInteractiveSession();
+  const rows = usePhysicalStdoutRows();
+  const { columns } = useWindowSize();
   const [status, setStatus] = useState<Status>("loading");
   const [candidates, setCandidates] = useState<CommandCandidateContract[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState<CommandCandidateContract | null>(null);
@@ -32,21 +38,61 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
   const [finalCommand, setFinalCommand] = useState("");
   const [danger, setDanger] = useState<DangerousCommandMatch | undefined>(undefined);
   const [errorMessage, setErrorMessage] = useState("");
+  const activeRequestControllerRef = useRef<AbortController | null>(null);
+  const cancellationReportedRef = useRef(false);
+  const frameRows = Math.max(0, rows - 1);
+  const isFrameVisible = frameRows > 0;
+
+  usePaste(() => {}, { isActive: isFrameVisible });
+
+  const handleCancel = useCallback(() => {
+    session.suspendViewInput();
+    activeRequestControllerRef.current?.abort();
+    if (cancellationReportedRef.current) return;
+
+    cancellationReportedRef.current = true;
+    onError(new InteractionCancelledError());
+  }, [onError, session]);
+
+  useKeyboardInput((input: string, key: Key) => {
+    if (frameRows === 0) return;
+    if (status !== "loading") return;
+
+    if (key.ctrl && input === "c") {
+      handleCancel();
+    }
+  });
 
   useEffect(() => {
-    if (status === "loading") {
-      generateValidatedCommandCandidates(provider, request)
-        .then((generatedCandidates) => {
-          setCandidates(generatedCandidates);
-          setStatus("selecting");
-        })
-        .catch((error: unknown) => {
-          const appError = normalizeError(error);
-          setErrorMessage(appError.message);
-          setStatus("error");
-          onError(appError);
-        });
-    }
+    if (status !== "loading") return;
+
+    const controller = new AbortController();
+    let isCurrent = true;
+    activeRequestControllerRef.current = controller;
+
+    void generateValidatedCommandCandidates(provider, request, controller.signal)
+      .then((generatedCandidates) => {
+        if (!isCurrent || controller.signal.aborted) return;
+
+        setCandidates(generatedCandidates);
+        setStatus("selecting");
+      })
+      .catch((error: unknown) => {
+        if (!isCurrent || controller.signal.aborted) return;
+
+        const appError = normalizeError(error);
+        setErrorMessage(getUserVisibleErrorMessage(appError));
+        setStatus("error");
+        onError(appError);
+      });
+
+    return () => {
+      isCurrent = false;
+      controller.abort();
+      if (activeRequestControllerRef.current === controller) {
+        activeRequestControllerRef.current = null;
+      }
+    };
   }, [status, provider, request, onError]);
 
   const handleSelect = (candidate: CommandCandidateContract) => {
@@ -63,7 +109,7 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
         setStatus("confirming");
       } catch (error: unknown) {
         const appError = normalizeError(error);
-        setErrorMessage(appError.message);
+        setErrorMessage(getUserVisibleErrorMessage(appError));
         setStatus("error");
         onError(appError);
       }
@@ -85,25 +131,27 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
   }, [status, finalCommand, onSuccess]);
 
   const handleConfirm = () => {
+    session.suspendViewInput();
     setStatus("done");
-  };
-
-  const handleCancel = () => {
-    onError(new InteractionCancelledError());
   };
 
   const handleBackToSelection = () => {
     setStatus("selecting");
   };
 
-  const maxFrameRows = Math.max(1, rows - 1);
-
   return (
-    <Box flexDirection="column" maxHeight={maxFrameRows} overflowY="hidden">
+    <Box
+      flexDirection="column"
+      display={isFrameVisible ? "flex" : "none"}
+      maxHeight={frameRows}
+      overflowY="hidden"
+    >
       {status === "loading" && <LoadingView />}
       {status === "selecting" && (
         <SelectCommandView
           candidates={candidates}
+          availableRows={frameRows}
+          isInputActive={isFrameVisible}
           onSelect={handleSelect}
           onCancel={handleCancel}
         />
@@ -111,6 +159,9 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
       {status === "resolving" && selectedCandidate && (
         <ResolvePlaceholdersView
           candidate={selectedCandidate}
+          availableRows={frameRows}
+          availableColumns={columns}
+          isInputActive={isFrameVisible}
           onResolve={handleResolve}
           onBack={handleBackToSelection}
           onCancel={handleCancel}
@@ -122,6 +173,9 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
           command={finalCommand}
           resolvedValues={resolvedValues}
           danger={danger}
+          availableRows={frameRows}
+          availableColumns={columns}
+          isInputActive={isFrameVisible}
           onConfirm={handleConfirm}
           onCancel={handleCancel}
           isDone={status === "done"}

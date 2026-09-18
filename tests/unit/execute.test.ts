@@ -5,7 +5,7 @@ import type { ChildProcess } from "node:child_process";
 
 import { executeCommand, resolveProcessExitCode } from "../../src/execute.js";
 
-test("executeCommand uses POSIX shell exec semantics with inherited stdio", async () => {
+test("executeCommand 将原命令传给非登录 POSIX shell 并继承 stdio", async () => {
   const child = new EventEmitter() as ChildProcess;
   let receivedCommand: string | undefined;
   let receivedArgs: string[] | undefined;
@@ -30,7 +30,7 @@ test("executeCommand uses POSIX shell exec semantics with inherited stdio", asyn
 
   assert.equal(await execution, 0);
   assert.equal(receivedCommand, "/bin/zsh");
-  assert.deepEqual(receivedArgs, ["-lc", "exec echo hello"]);
+  assert.deepEqual(receivedArgs, ["-c", "echo hello"]);
   assert.deepEqual(receivedOptions, {
     stdio: "inherit",
   });
@@ -55,7 +55,7 @@ test("executeCommand falls back to /bin/sh when SHELL is empty on Unix", async (
 
   assert.equal(await execution, 0);
   assert.equal(receivedCommand, "/bin/sh");
-  assert.deepEqual(receivedArgs, ["-lc", "exec echo hello"]);
+  assert.deepEqual(receivedArgs, ["-c", "echo hello"]);
 });
 
 test("executeCommand keeps spawn-shell fallback on Windows", async () => {

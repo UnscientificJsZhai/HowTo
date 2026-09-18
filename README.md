@@ -53,6 +53,10 @@ howto --init
 
 The initializer writes a user-level config file at `~/.howto/config.json`.
 
+Initialization and placeholder input delete complete characters on Backspace, including emoji and combining sequences. Alt/Meta shortcuts are not inserted into configuration fields as text.
+Key release events never confirm, cancel, navigate, or delete; pressing and releasing Enter once cannot skip the final confirmation.
+Keyboard text and Enter are processed in order even when the terminal delivers them together. Once a step finishes, remaining keys in that batch cannot skip the next confirmation screen. Newlines inside paste remain data.
+
 > [!NOTE]
 > OpenAI API keys may be empty for local OpenAI-compatible services. Gemini requires a non-empty API key.
 
@@ -68,6 +72,10 @@ Limit candidates to a specific tool:
 howto use git "show commits from last week"
 ```
 
+`use` checks the first actual tool exactly after environment assignments and supported `sudo`/`env` options. For example, `sudo -u root git status` satisfies `use git`, while `sudo -u git id` does not. Unknown wrapper options, missing option values, dynamic executable prefixes, and complex shell structures are rejected. This constraint applies to the first command segment, not subsequent segments.
+
+Declared placeholders may appear after the first tool, as in `git log -n {{count}}`. The tool name and preceding prefixes must be identifiable before placeholder resolution. Template analysis does not change the command text.
+
 Print command candidates without entering the interactive UI:
 
 ```bash
@@ -79,6 +87,7 @@ howto --print "list the largest files" /var/log
 ```text
 howto [options] [use <command>] <question> [<argument>...]
 howto --init
+howto --version
 ```
 
 Examples:
@@ -93,6 +102,7 @@ howto --ai-provider openai --print "show listening ports"
 Options:
 
 - `--init` - start interactive provider setup and save `~/.howto/config.json`.
+- `--version` - use alone to print the current package version and exit successfully; requires no configuration or TTY and makes no AI request.
 - `--print` - print validated command candidates and exit without executing.
 - `--ai-provider <openai|gemini>` - select the AI provider.
 - `--gemini-api-key <key>` - provide a Gemini API key.
@@ -125,15 +135,21 @@ Configuration is resolved in this order:
 3. `~/.howto/config.json`
 4. Built-in defaults
 
+The config path uses `HOME` when it is an absolute path. If `HOME` is missing or blank, howto queries the operating system for the user's home directory. A non-empty relative `HOME` or a failed system lookup produces a configuration error before any file is created.
+
 For each setting, the first configured source in that order wins:
 
 - `--ai-provider` / `HOWTO_AI_PROVIDER` / `aiProvider` - `openai` or `gemini`; no default.
 - `--gemini-api-key` / `HOWTO_GEMINI_API_KEY` / `geminiApiKey` - Gemini API key; required for Gemini.
 - `--gemini-model` / `HOWTO_GEMINI_MODEL` / `geminiModel` - Gemini model; default `gemini-3.1-flash-lite`.
-- `--openai-api-url` / `HOWTO_OPENAI_API_URL` / `openaiApiUrl` - OpenAI-compatible base URL; defaults to the OpenAI SDK default.
+- `--openai-api-url` / `HOWTO_OPENAI_API_URL` / `openaiApiUrl` - OpenAI-compatible base URL; defaults to `https://api.openai.com/v1`.
 - `--openai-api-key` / `HOWTO_OPENAI_API_KEY` / `openaiApiKey` - OpenAI API key; defaults to an empty string for local services.
 - `--openai-model` / `HOWTO_OPENAI_MODEL` / `openaiModel` - OpenAI model; default `gpt-5.4-mini`.
 - `--structured-output` / `HOWTO_STRUCTURED_OUTPUT` / `structuredOutput` - use provider schema structured output; default `true`.
+
+howto sets the request endpoint and Gemini API mode explicitly. `OPENAI_BASE_URL`, `GOOGLE_GEMINI_BASE_URL`, `GOOGLE_VERTEX_BASE_URL`, and the Google SDK's Vertex/Enterprise environment switches do not override them. Gemini uses the official `generativelanguage.googleapis.com` `v1beta` API. Use the HOWTO settings above for a custom OpenAI endpoint.
+
+OpenAI Authorization uses the key configured in howto and is omitted when that key is blank. Authorization in `OPENAI_CUSTOM_HEADERS` cannot override this choice. Interactive OpenAI requests report rate limits and temporary service errors without automatic retries so cancellation can exit promptly; `--print` keeps the SDK's default retry behavior.
 
 Example:
 
@@ -149,14 +165,27 @@ howto --print "show current branch"
 
 - the AI response is valid JSON matching the required command schema;
 - the response contains between one and three candidates;
-- all placeholders use `{{name}}` syntax and are declared consistently;
+- all placeholders use `{{name}}` syntax and are declared consistently, with each name declared once per candidate and repeated references sharing one input value;
 - `use <command>` candidates clearly start with the requested tool after conservative prefix handling;
 - obvious dangerous patterns require typing `EXECUTE` before they can run; matching is case-insensitive.
 
 Dangerous-command detection currently covers high-risk patterns such as recursive destructive `rm`, disk and filesystem operations, broad recursive permission changes, downloaded scripts piped into a shell, high-impact package manager operations, and service changes.
 
+Local analysis handles literal quoting, absolute command paths, and supported `sudo`/`env` options, and checks each command segment. Unknown wrapper options, dynamic executable prefixes, and shell syntax outside the supported subset also require `EXECUTE`, so an inconclusive analysis does not skip the additional confirmation.
+
+Line continuations within numeric file descriptors require additional confirmation and are rejected by `use` because shells interpret them differently. Risk analysis recognizes high-risk paths with redundant dots or slashes, such as `./../important` and `///dev/disk2`, without collapsing `..` or changing the command that runs.
+
+Assignments passed to `env` can use names starting with digits or containing hyphens or dots; the actual command after them is still checked. Official npm global install/uninstall aliases such as `i`, `add`, `un`, and `unlink` receive the same additional confirmation. Inconclusive abbreviations of those actions also require confirmation.
+Leading `NAME+=value` requires additional confirmation and is rejected by `use` because its meaning differs between shells. Dollar expressions outside single quotes or backslash protection are treated conservatively as dynamic values. Compound npm installs through `install-test`, `installTest`, `it`, and their abbreviations also receive global-install checks.
+
+Homebrew uninstall aliases such as `rm/uninstal`, and yum/dnf upgrade or removal commands such as `update/erase`, receive the same additional confirmation. Actions are interpreted separately for each tool; metadata updates through `apt update` and `brew update/up` are not classified as system package upgrades.
+
+If howto detects bracketed paste during an interactive run, including automatic initialization, that run permanently switches to printing the final command for manual execution. At final confirmation, Enter prints the command without running it, and the terminal shows an explanation. Returning to selection or resizing the terminal does not restore execution. Keyboard-only runs keep the usual Enter or `EXECUTE` confirmation.
+
+Paste spanning a hidden terminal view is discarded as a whole. These rules apply to recognized bracketed-paste input; the terminal protocol cannot authenticate arbitrary pasted keystrokes or embedded end markers. The execution restriction applies to howto's own command launch.
+
 > [!WARNING]
-> A command not flagged as dangerous is not guaranteed to be safe. The local checks add friction for known high-risk patterns; they do not prove command safety.
+> A command not flagged as dangerous is not guaranteed to be safe. The local checks add confirmation for known high-risk patterns and syntax they cannot analyze; they do not prove command safety.
 
 ## Development
 

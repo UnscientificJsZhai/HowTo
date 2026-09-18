@@ -36,5 +36,8 @@ export interface GenerateCommandsResult {
 }
 
 export interface CommandProvider {
-  generateCommands(request: GenerateCommandsRequest): Promise<GenerateCommandsResult>;
+  generateCommands(
+    request: GenerateCommandsRequest,
+    signal?: AbortSignal,
+  ): Promise<GenerateCommandsResult>;
 }

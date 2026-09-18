@@ -1,12 +1,17 @@
 import type { Key } from "ink";
 import type { AiProvider } from "../config.js";
 import { DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL } from "../config.js";
+import { hasUnsafeTerminalControlCharacters } from "../terminal-text.js";
+import { deleteLastGrapheme, isTextInputEvent } from "../ui/text-input.js";
 import type { InitializationValues } from "./index.js";
 
 export interface InitializationKeyInput {
+  type: "keyboard";
   input: string;
-  key: Pick<Key, "upArrow" | "downArrow" | "return" | "escape" | "ctrl" | "backspace" | "delete">;
+  key: Key;
 }
+
+export type InitializationInput = InitializationKeyInput | { type: "paste"; input: string };
 
 export interface ProviderSelectionState {
   step: "provider";
@@ -54,8 +59,18 @@ export function getProviderOptions(): readonly AiProvider[] {
 
 export function applyInitializationInput(
   state: InitializationState,
-  event: InitializationKeyInput,
+  event: InitializationInput,
 ): InitializationUpdate {
+  if (event.type === "paste") {
+    if (state.step !== "input" || hasUnsafeTerminalControlCharacters(event.input)) {
+      return { state };
+    }
+
+    return updateCurrentField(state, (value) => value + event.input);
+  }
+
+  if (event.key.eventType === "release") return { state };
+
   if (event.key.ctrl && event.input === "c") {
     return { state, cancelled: true };
   }
@@ -75,7 +90,9 @@ function applyProviderInput(
     return { state, cancelled: true };
   }
 
-  const numericSelection = getNumericProviderSelection(event.input);
+  const numericSelection = isTextInputEvent(event.input, event.key)
+    ? getNumericProviderSelection(event.input)
+    : null;
   if (numericSelection !== null) {
     return {
       state: createInputState(PROVIDERS[numericSelection]),
@@ -161,26 +178,14 @@ function applyFieldInput(
   }
 
   if (event.key.backspace || event.key.delete) {
-    return updateCurrentField(state, (value) => value.slice(0, -1));
+    return updateCurrentField(state, deleteLastGrapheme);
   }
 
-  if (event.input !== "" && !hasControlKey(event)) {
+  if (isTextInputEvent(event.input, event.key)) {
     return updateCurrentField(state, (value) => value + event.input);
   }
 
   return { state };
-}
-
-function hasControlKey(event: InitializationKeyInput): boolean {
-  return (
-    event.key.upArrow ||
-    event.key.downArrow ||
-    event.key.return ||
-    event.key.escape ||
-    event.key.ctrl ||
-    event.key.backspace ||
-    event.key.delete
-  );
 }
 
 function createInputState(provider: AiProvider): InitializationInputState {
