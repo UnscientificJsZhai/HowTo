@@ -188,6 +188,8 @@ Leading `NAME+=value` requires additional confirmation and is rejected by `use` 
 
 Homebrew uninstall aliases such as `rm/uninstal`, and yum/dnf upgrade or removal commands such as `update/erase`, receive the same additional confirmation. Actions are interpreted separately for each tool; metadata updates through `apt update` and `brew update/up` are not classified as system package upgrades.
 
+Linux checks also cover system package changes through apk, pacman, and zypper, and OpenRC service or runlevel changes, such as `apk upgrade`, `pacman -Syu`, `zypper dup`, `rc-service sshd stop`, and `rc-update del sshd`. Common queries and apk/zypper metadata refreshes keep ordinary confirmation; unsupported options, dynamic arguments, and additional service commands conservatively require `EXECUTE`. Query arguments are also checked: `zypper repos --export …`, which writes to a file, still requires additional confirmation.
+
 If howto detects bracketed paste during an interactive run, including automatic initialization, that run permanently switches to printing the final command for manual execution. At final confirmation, Enter prints the command without running it, and the terminal shows an explanation. Returning to selection or resizing the terminal does not restore execution. Keyboard-only runs keep the usual Enter or `EXECUTE` confirmation.
 
 Paste spanning a hidden terminal view is discarded as a whole. These rules apply to recognized bracketed-paste input; the terminal protocol cannot authenticate arbitrary pasted keystrokes or embedded end markers. The execution restriction applies to howto's own command launch.

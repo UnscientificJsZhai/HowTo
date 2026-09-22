@@ -188,6 +188,8 @@ howto --print "show current branch"
 
 Homebrew 的 `rm/uninstal` 卸载别名，以及 yum/dnf 的 `update/erase` 升级或卸载入口，也使用相同的危险确认。各工具的动作分别识别，`apt update`、`brew update/up` 的索引更新不按系统软件升级处理。
 
+Linux 还覆盖 apk、pacman、zypper 的系统包变更及 OpenRC 的服务和运行级别变更，例如 `apk upgrade`、`pacman -Syu`、`zypper dup`、`rc-service sshd stop`、`rc-update del sshd`。常见查询及 apk/zypper 索引更新保留普通确认；未支持的选项、动态参数和额外服务命令保守要求 `EXECUTE`。查询动作也检查参数，例如会写入文件的 `zypper repos --export …` 仍需额外确认。
+
 一次交互调用中只要识别到 bracketed paste（包括自动初始化阶段），本次调用就永久改为输出最终命令供手动运行。最终确认页按 Enter 只输出命令，终端会显示说明；返回候选选择或调整终端大小都不会恢复执行权限。全程键盘输入仍使用原有的 Enter 或 `EXECUTE` 确认。
 
 跨越终端视图隐藏阶段的粘贴会整块丢弃。这些规则针对已识别的 bracketed-paste 输入；终端协议无法认证任意粘贴按键或内容中的结束标记。执行限制针对 howto 自身启动候选命令的行为。

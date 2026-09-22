@@ -114,6 +114,107 @@ const PACKAGE_ZERO_OPTIONS = new Set([
   "--verbose",
 ]);
 const SERVICE_ZERO_OPTIONS = new Set(["--user", "--system"]);
+const LINUX_PACKAGE_ACTIONS = new Map([
+  ["apk", new Set(["add", "del", "fix", "upgrade"])],
+  [
+    "zypper",
+    new Set([
+      "install",
+      "in",
+      "remove",
+      "rm",
+      "update",
+      "up",
+      "dist-upgrade",
+      "dup",
+      "patch",
+      "verify",
+      "ve",
+      "install-new-recommends",
+      "inr",
+    ]),
+  ],
+]);
+const LINUX_PACKAGE_QUERIES = new Map([
+  ["apk", new Set(["search", "info", "list", "policy", "version", "stats", "audit", "update"])],
+  [
+    "zypper",
+    new Set([
+      "search",
+      "se",
+      "info",
+      "if",
+      "list-updates",
+      "lu",
+      "list-patches",
+      "lp",
+      "packages",
+      "pa",
+      "repos",
+      "lr",
+      "refresh",
+      "ref",
+      "help",
+    ]),
+  ],
+]);
+const LINUX_PACKAGE_ZERO_OPTIONS = new Map([
+  ["apk", new Set(["-q", "--quiet", "-v", "--verbose", "--no-cache", "--no-progress"])],
+  [
+    "zypper",
+    new Set(["-q", "--quiet", "-v", "--verbose", "-n", "--non-interactive", "--no-refresh"]),
+  ],
+]);
+const PACMAN_LONG_OPTIONS = new Map([
+  ["--query", "Q"],
+  ["--files", "F"],
+  ["--deptest", "T"],
+  ["--remove", "R"],
+  ["--sync", "S"],
+  ["--upgrade", "U"],
+  ["--database", "D"],
+  ["--help", "h"],
+  ["--version", "V"],
+  ["--search", "s"],
+  ["--info", "i"],
+  ["--list", "l"],
+  ["--groups", "g"],
+  ["--quiet", "q"],
+  ["--sysupgrade", "u"],
+  ["--refresh", "y"],
+  // 不复用其他操作的查询短选项语义。
+  ["--recursive", "recursive"],
+  ["--nosave", "nosave"],
+  ["--clean", "clean"],
+  ["--print", "p"],
+  ["--noconfirm", ""],
+  ["--confirm", ""],
+]);
+const PACMAN_OPERATIONS = new Set("DFQRSTUVh");
+const PACMAN_SHORT_OPTIONS = new Set("DFQRSTUVhcdegiklmnopqstuvwyx");
+const RC_SERVICE_ZERO_OPTIONS = new Set([
+  "-c",
+  "--ifcrashed",
+  "-d",
+  "--debug",
+  "-D",
+  "--nodeps",
+  "-i",
+  "--ifexists",
+  "-I",
+  "--ifinactive",
+  "-N",
+  "--ifnotstarted",
+  "-s",
+  "--ifstarted",
+  "-S",
+  "--ifstopped",
+  "-q",
+  "--quiet",
+  "-v",
+  "--verbose",
+]);
+const RC_UPDATE_ZERO_OPTIONS = new Set(["-s", "--stack", "-a", "--all", "-v", "--verbose"]);
 const NPM_ACTION_ALIASES: ReadonlyMap<string, "install" | "uninstall"> = new Map([
   ["install", "install"],
   ["add", "install"],
@@ -201,6 +302,9 @@ function inspectSimpleCommand(
 ): DangerousCommandMatch | undefined {
   // BusyBox 根据首个参数再分派工具；未分析 applet 前不能将其判为普通安全命令。
   if (name === "busybox") return INDETERMINATE;
+  if (name === "apk" || name === "zypper") return inspectLinuxPackageCommand(name, args);
+  if (name === "pacman") return inspectPacmanCommand(args);
+  if (name === "rc-service" || name === "rc-update") return inspectOpenRcCommand(name, args);
   const values = args.map((word) => word.value);
   const dynamic = args.some((word) => word.hasExpansion);
   if (name === "rm" || name === "chmod" || name === "chown") {
@@ -294,6 +398,107 @@ function resolveNpmAction(action: string): string | null {
     if (knownAction.startsWith(action)) return null;
   }
   return action;
+}
+
+function inspectLinuxPackageCommand(
+  name: string,
+  args: readonly ShellWord[],
+): DangerousCommandMatch | undefined {
+  const zeroOptions = LINUX_PACKAGE_ZERO_OPTIONS.get(name) ?? new Set<string>();
+  const action = leadingAction(args, zeroOptions);
+  if (action === null) return INDETERMINATE;
+  if (action === undefined) return undefined;
+  if (LINUX_PACKAGE_ACTIONS.get(name)?.has(action)) return PACKAGE_OPERATION;
+  if (!LINUX_PACKAGE_QUERIES.get(name)?.has(action)) return INDETERMINATE;
+  // 查询也可能通过选项写文件（如 zypper repos --export），仅放行已知无参数选项。
+  return args.some(
+    (word) =>
+      word.hasExpansion ||
+      (word.value.startsWith("-") && word.value !== "--" && !zeroOptions.has(word.value)),
+  )
+    ? INDETERMINATE
+    : undefined;
+}
+
+function inspectPacmanCommand(args: readonly ShellWord[]): DangerousCommandMatch | undefined {
+  const flags: string[] = [];
+  let optionsEnded = false;
+  for (const word of args) {
+    if (word.hasExpansion) return INDETERMINATE;
+    const value = word.value;
+    if (optionsEnded) continue;
+    if (value === "--") {
+      optionsEnded = true;
+    } else if (value.startsWith("--")) {
+      const flag = PACMAN_LONG_OPTIONS.get(value);
+      // 不猜测未知选项的参数个数，防止把 --config 等选项的值误当查询开关。
+      if (flag === undefined) return INDETERMINATE;
+      if (flag !== "") flags.push(flag);
+    } else if (value.startsWith("-") && value !== "-") {
+      const shortFlags = [...value.slice(1)];
+      if (shortFlags.some((flag) => !PACMAN_SHORT_OPTIONS.has(flag))) return INDETERMINATE;
+      flags.push(...shortFlags);
+    }
+  }
+  const operations = flags.filter((flag) => PACMAN_OPERATIONS.has(flag));
+  if (operations.length !== 1) return INDETERMINATE;
+  const operation = operations[0];
+  const options = flags.filter((flag) => !PACMAN_OPERATIONS.has(flag));
+  if (operation === "R" || operation === "U" || operation === "D") return PACKAGE_OPERATION;
+  if (operation === "S") {
+    // 只明确放行纯查询组合；升级、安装、缓存清理和混合选项仍需确认。
+    return options.some((flag) => "silgp".includes(flag)) &&
+      options.every((flag) => "silgpq".includes(flag))
+      ? undefined
+      : PACKAGE_OPERATION;
+  }
+  const queryOptions = operation === "Q" ? "cdegiklmnopqstu" : operation === "F" ? "lqx" : "";
+  return options.every((flag) => queryOptions.includes(flag)) ? undefined : INDETERMINATE;
+}
+
+function inspectOpenRcCommand(
+  name: string,
+  args: readonly ShellWord[],
+): DangerousCommandMatch | undefined {
+  if (name === "rc-update") {
+    const action = leadingAction(args, RC_UPDATE_ZERO_OPTIONS);
+    if (action === null) return INDETERMINATE;
+    if (action === "add" || action === "del" || action === "delete") return SERVICE_OPERATION;
+    if (action !== undefined && action !== "show") return INDETERMINATE;
+    return args.some(
+      (word) =>
+        word.hasExpansion ||
+        (word.value.startsWith("-") &&
+          word.value !== "--" &&
+          !RC_UPDATE_ZERO_OPTIONS.has(word.value)),
+    )
+      ? INDETERMINATE
+      : undefined;
+  }
+  if (
+    args.length === 1 &&
+    !args[0].hasExpansion &&
+    ["-l", "--list", "-h", "--help"].includes(args[0].value)
+  )
+    return undefined;
+  if (
+    args.length === 2 &&
+    !args.some((word) => word.hasExpansion) &&
+    ["-e", "--exists", "-r", "--resolve"].includes(args[0].value) &&
+    !args[1].value.startsWith("-")
+  )
+    return undefined;
+  let index = 0;
+  while (args[index] && !args[index].hasExpansion && RC_SERVICE_ZERO_OPTIONS.has(args[index].value))
+    index++;
+  const action = serviceAction(args.slice(index));
+  if (action === null) return INDETERMINATE;
+  if (action !== undefined && (SERVICE_ACTIONS.has(action) || action === "zap"))
+    return SERVICE_OPERATION;
+  // OpenRC 会把剩余参数传给服务脚本；status 后仍有命令时不能按只读查询放行。
+  return args.length === index + 2 && (action === "status" || action === "describe")
+    ? undefined
+    : INDETERMINATE;
 }
 
 function serviceAction(args: readonly ShellWord[]): string | null | undefined {
