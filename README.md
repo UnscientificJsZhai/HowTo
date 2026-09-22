@@ -27,6 +27,8 @@ English | [简体中文](README.CN.md)
 
 ## Install
 
+Requires **Node.js 22 or newer**. The npm package declares this through `engines.node`, matching the minimum version required by its existing runtime dependencies.
+
 Only **macOS and Linux** are supported. Native Windows is unsupported, including CMD, PowerShell, and Git Bash/MSYS2 using Windows Node.js. WSL requires Node.js installed and running inside Linux; dedicated WSL acceptance testing has not been completed. Both npm installation and CLI startup check the operating system.
 
 Interactive execution only supports `sh`, `bash`, and `zsh`. `SHELL` may be one of these bare names or an absolute path with one of these filenames, such as `/bin/zsh` or `/opt/homebrew/bin/bash`; relative paths and additional arguments are rejected. A missing or whitespace-only `SHELL` defaults to `/bin/sh`, including the system-provided `/bin/sh` symlink. Other shells are rejected before initialization or AI requests, without silently switching interpreters; the check runs again immediately before execution. To select an execution shell explicitly, use `env SHELL=/bin/bash howto "list files"`.
@@ -200,6 +202,8 @@ Paste spanning a hidden terminal view is discarded as a whole. These rules apply
 ## Development
 
 This project is built with TypeScript, React, Ink, OpenAI SDK, Gemini GenAI SDK, and Node's built-in test runner.
+
+For development and the full test suite, use **Node.js 22.x (22.22.1 or later) or 24.x (24.3.0 or later)**. These versions satisfy the development dependencies and execute the TypeScript release-validation script directly without experimental warnings.
 
 ```bash
 npm install

@@ -27,6 +27,8 @@ _在终端中用 AI 快速找到可执行命令。_
 
 ## 安装
 
+需要 **Node.js 22 或更高版本**。npm 包通过 `engines.node` 声明此要求，与现有运行依赖的最低版本保持一致。
+
 仅支持 **macOS 和 Linux**。不支持原生 Windows，包括 CMD、PowerShell，以及使用 Windows 版 Node.js 的 Git Bash／MSYS2。WSL 必须在 Linux 环境内安装并运行 Node.js；目前尚未完成 WSL 专项验收。npm 安装和 CLI 启动均检查操作系统。
 
 交互执行只允许 `sh`、`bash`、`zsh`。`SHELL` 可以是这三个裸名称之一，或文件名为这三个名称之一的绝对路径（例如 `/bin/zsh`、`/opt/homebrew/bin/bash`）；不接受相对路径或附加参数。`SHELL` 缺失或仅含空白时使用 `/bin/sh`，包括系统提供的 `/bin/sh` 符号链接。其他 shell 会在初始化或请求 AI 之前被拒绝，不会静默切换解释器；实际执行前会再次检查。可用 `env SHELL=/bin/bash howto "列出文件"` 显式选择执行 shell。
@@ -200,6 +202,8 @@ Linux 还覆盖 apk、pacman、zypper 的系统包变更及 OpenRC 的服务和�
 ## 开发
 
 本项目使用 TypeScript、React、Ink、OpenAI SDK、Gemini GenAI SDK 和 Node 内置测试运行器构建。
+
+开发和运行完整测试使用 **Node.js 22.x（22.22.1 及以上）或 24.x（24.3.0 及以上）**。这些版本满足开发依赖的要求，并能直接执行 TypeScript 发布校验脚本且不输出实验性警告。
 
 ```bash
 npm install
