@@ -273,6 +273,8 @@ function candidate(title: string, command: string, description: string): Command
     title,
     command,
     description,
+    dangerous: false,
+    dangerReason: "",
     placeholders: [],
   };
 }

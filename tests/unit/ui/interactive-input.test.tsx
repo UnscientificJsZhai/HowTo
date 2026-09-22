@@ -272,6 +272,8 @@ void test("App renders placeholder line breaks safely while preserving the final
     title: "Remove\r\ntemporary path",
     command: "printf 'literal\r\npart' {{first}}; rm -rf /tmp/{{second}}",
     description: "Resolve\nvalues before execution",
+    dangerous: false,
+    dangerReason: "",
     placeholders: [
       { name: "first", description: "First\r\nvalue" },
       { name: "second", description: "Second\r\nvalue" },
@@ -353,6 +355,8 @@ void test("App keeps placeholder-like user values literal through confirmation",
     title: "Print two values",
     command: "printf '%s %s' {{first}} {{second}}",
     description: "Print resolved values",
+    dangerous: false,
+    dangerReason: "",
     placeholders: [
       { name: "first", description: "First value" },
       { name: "second", description: "Second value" },
@@ -2369,6 +2373,8 @@ function placeholderCandidate(): CommandCandidateContract {
     title: "Print value",
     command: "printf '%s' {{value}}",
     description: "Print a value",
+    dangerous: false,
+    dangerReason: "",
     placeholders: [{ name: "value", description: "Value" }],
   };
 }
@@ -2421,6 +2427,8 @@ function candidate(title: string, command: string, description: string): Command
     title,
     command,
     description,
+    dangerous: false,
+    dangerReason: "",
     placeholders: [],
   };
 }

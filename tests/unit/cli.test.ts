@@ -204,6 +204,8 @@ test("--print use rejects AI candidates that do not clearly use requested comman
                     title: "List files",
                     command: "ls",
                     description: "List files",
+                    dangerous: false,
+                    dangerReason: "",
                     placeholders: [],
                   },
                 ],
@@ -266,6 +268,8 @@ test("--print 允许未支持的 shell，并在真实请求中发送环境信息
                       title: "显示文本",
                       command: "printf howto",
                       description: "显示文本",
+                      dangerous: false,
+                      dangerReason: "",
                       placeholders: [],
                     },
                   ],
@@ -307,6 +311,77 @@ test("--print 允许未支持的 shell，并在真实请求中发送环境信息
   } finally {
     await closeServer(server);
     await rm(homeDirectory, { recursive: true, force: true });
+  }
+});
+
+test("--print 校验 AI 风险字段，只输出通过校验的命令且不泄露原因", async () => {
+  const candidate = {
+    title: "测试输出",
+    command: "printf HOWTO_AI_REVIEW_PRINT_ONLY",
+    description: "仅测试输出契约",
+    dangerous: true,
+    dangerReason: "PRIVATE_REASON_SENTINEL",
+    placeholders: [],
+  };
+  let commands: unknown[] = [];
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({ choices: [{ message: { content: JSON.stringify({ commands }) } }] }),
+    );
+  });
+  const localUrl = await listenOnLoopback(server);
+
+  try {
+    // 校验合法候选：正常输出命令，且不泄露 dangerReason
+    commands = [candidate];
+    const valid = await captureConsoleOutput(() =>
+      run([
+        "--print",
+        "--ai-provider",
+        "openai",
+        "--openai-api-url",
+        localUrl,
+        "--openai-api-key",
+        "FAKE-test-key",
+        "--openai-model",
+        "fake-model",
+        "测试风险标记",
+      ]),
+    );
+    assert.equal(valid.value.exitCode, 0);
+    assert.deepEqual(valid.logs, [candidate.command]);
+    assert.deepEqual(valid.errors, []);
+    assert.equal(
+      [...valid.logs, ...valid.errors].join("\n").includes(candidate.dangerReason),
+      false,
+    );
+
+    // 校验不合法候选（缺少 dangerous 字段）：报错退出且不泄露私有原因
+    commands = [{ ...candidate, dangerous: undefined }];
+    const invalid = await captureConsoleOutput(() =>
+      run([
+        "--print",
+        "--ai-provider",
+        "openai",
+        "--openai-api-url",
+        localUrl,
+        "--openai-api-key",
+        "FAKE-test-key",
+        "--openai-model",
+        "fake-model",
+        "测试风险标记",
+      ]),
+    );
+    assert.equal(invalid.value.exitCode, 2);
+    assert.deepEqual(invalid.logs, []);
+    assert.match(invalid.errors.join("\n"), /dangerous must be a boolean/);
+    assert.equal(
+      [...invalid.logs, ...invalid.errors].join("\n").includes(candidate.dangerReason),
+      false,
+    );
+  } finally {
+    await closeServer(server);
   }
 });
 

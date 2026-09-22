@@ -399,6 +399,8 @@ function candidate(): CommandCandidateContract {
     title: "Find file",
     command: "find . -name {{filename}}",
     description: "Find a file by name",
+    dangerous: false,
+    dangerReason: "",
     placeholders: [{ name: "filename", description: "File name" }],
   };
 }
@@ -408,6 +410,8 @@ function longCandidate(): CommandCandidateContract {
     title: "A title that must not displace the final command",
     command: "find . -name {{filename}}",
     description: "Description that must not displace the confirmation controls ".repeat(4),
+    dangerous: false,
+    dangerReason: "",
     placeholders: [{ name: "filename", description: "File name" }],
   };
 }

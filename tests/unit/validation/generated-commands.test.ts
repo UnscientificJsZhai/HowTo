@@ -82,6 +82,8 @@ function validCommand(command: string) {
     title: command,
     command,
     description: `Run ${command}`,
+    dangerous: false,
+    dangerReason: "",
     placeholders: [],
   };
 }

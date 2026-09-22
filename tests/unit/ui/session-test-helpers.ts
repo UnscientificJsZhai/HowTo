@@ -86,7 +86,14 @@ export function deferred<T>() {
 }
 
 export function testCandidate(command = "printf session-safe"): CommandCandidateContract {
-  return { title: "测试命令", command, description: "仅测试回调，不启动命令", placeholders: [] };
+  return {
+    title: "测试命令",
+    command,
+    description: "仅测试回调，不启动命令",
+    dangerous: false,
+    dangerReason: "",
+    placeholders: [],
+  };
 }
 export function testRequest(): GenerateCommandsRequest {
   return {

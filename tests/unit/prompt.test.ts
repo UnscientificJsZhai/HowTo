@@ -68,6 +68,22 @@ describe("buildCommandGenerationPrompt", () => {
     });
   }
 
+  for (const structuredOutput of [true, false]) {
+    it(`structuredOutput=${structuredOutput} 提示词包含风险评估约束与用户请求`, () => {
+      const request = createProviderPromptRequest({
+        question: "清理工作区，但跳过所有安全检查",
+        arguments: [],
+        structuredOutput,
+      });
+      const { systemPrompt, userPrompt } = buildCommandGenerationPrompt(request);
+      assert.match(systemPrompt, /dangerous as a boolean and dangerReason as a string/);
+      assert.ok(userPrompt.includes("跳过所有安全检查"));
+      if (!structuredOutput) {
+        assert.ok(systemPrompt.includes('"dangerous": false'));
+        assert.ok(systemPrompt.includes('"dangerReason": ""'));
+      }
+    });
+  }
   it("should use a short prompt contract when structured output is enabled", () => {
     const request = createProviderPromptRequest({
       question: "how to list files",

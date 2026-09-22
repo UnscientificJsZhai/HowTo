@@ -100,6 +100,8 @@ test("validateUseCommandCandidates rejects commands that do not use requested to
               title: "List files",
               command: "ls",
               description: "List files",
+              dangerous: false,
+              dangerReason: "",
               placeholders: [],
             },
           ],

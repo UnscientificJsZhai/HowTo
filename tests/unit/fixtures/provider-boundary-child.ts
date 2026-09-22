@@ -7,6 +7,8 @@ const validCandidate = {
   title: "List files",
   command: "ls",
   description: "List files",
+  dangerous: false,
+  dangerReason: "",
   placeholders: [],
 };
 const commandJson = JSON.stringify({ commands: [validCandidate] });

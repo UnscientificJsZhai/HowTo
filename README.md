@@ -175,7 +175,13 @@ howto --print "show current branch"
 - the response contains between one and three candidates;
 - all placeholders use `{{name}}` syntax and are declared consistently, with each name declared once per candidate and repeated references sharing one input value;
 - `use <command>` candidates clearly start with the requested tool after conservative prefix handling;
-- obvious dangerous patterns require typing `EXECUTE` before they can run; matching is case-insensitive.
+- commands flagged by local checks, inconclusive local analysis, or AI require typing `EXECUTE` before they can run; matching is case-insensitive.
+
+In the same request that generates candidates, AI must return a boolean `dangerous` and a string `dangerReason` for each candidate. A flagged command requires a brief, non-whitespace reason; an unflagged command requires exactly `""`. Missing fields, incorrect types, or inconsistent combinations reject the entire response with exit code `2`, including older responses without these fields. Both providers and output modes use the same contract.
+
+The prompt asks AI to assess complete commands for data loss, important data overwrites, destructive history changes, system or permission changes, service disruption, sensitive information disclosure, and untrusted code execution, supplementing operations local rules may miss. Ordinary queries, file creation, and routine builds are not automatically flagged merely because they have side effects.
+
+Final confirmation always checks the command after placeholder substitution and retains the original candidate's AI flag. An AI false flag cannot lower a local danger or inconclusive result. AI-only risks show `AI: <reason>`; when both checks flag a command, the local reason is preserved and the AI reason is appended. Filling placeholders does not trigger another AI request or send the entered values. `--print` validates these fields while continuing to output only commands.
 
 Dangerous-command detection currently covers high-risk patterns such as recursive destructive `rm`, disk and filesystem operations, broad recursive permission changes, downloaded scripts piped into a shell, high-impact package manager operations, and service changes.
 
@@ -197,7 +203,7 @@ If howto detects bracketed paste during an interactive run, including automatic 
 Paste spanning a hidden terminal view is discarded as a whole. These rules apply to recognized bracketed-paste input; the terminal protocol cannot authenticate arbitrary pasted keystrokes or embedded end markers. The execution restriction applies to howto's own command launch.
 
 > [!WARNING]
-> A command not flagged as dangerous is not guaranteed to be safe. The local checks add confirmation for known high-risk patterns and syntax they cannot analyze; they do not prove command safety.
+> A command that passes local checks and is not flagged by AI is not guaranteed to be safe. These checks add confirmation requirements; they do not provide a complete safety proof or guarantee AI assessment accuracy.
 
 ## Development
 

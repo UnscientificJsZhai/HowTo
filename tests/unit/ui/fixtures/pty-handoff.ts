@@ -23,7 +23,14 @@ try {
         Promise.resolve({
           rawText: JSON.stringify({
             commands: [
-              { title: "PTY 交接测试", description: "仅读取一行并打印", command, placeholders: [] },
+              {
+                title: "PTY 交接测试",
+                description: "仅读取一行并打印",
+                command,
+                dangerous: false,
+                dangerReason: "",
+                placeholders: [],
+              },
             ],
           }),
         }),

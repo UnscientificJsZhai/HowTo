@@ -9,6 +9,8 @@ The JSON object must match this schema:
       "title": "non-empty string",
       "command": "non-empty shell command string",
       "description": "non-empty string",
+      "dangerous": false,
+      "dangerReason": "",
       "placeholders": [
         {
           "name": "non-empty string using only letters, numbers, underscores, or hyphens",
@@ -19,19 +21,26 @@ The JSON object must match this schema:
   ]
 }
 The commands array must contain 1 to 3 items. Do not return more than 3 candidate commands.
-Detect the primary natural language of the user's question. Return title, description, and placeholders[].description in that language. Keep placeholder name values English-compatible ASCII using only letters, numbers, underscores, or hyphens.
+Detect the primary natural language of the user's question. Return title, description, dangerReason, and placeholders[].description in that language. Keep placeholder name values English-compatible ASCII using only letters, numbers, underscores, or hyphens.
 Do not include terminal control characters in string fields. CR and LF are the only allowed control characters.
 Use placeholders in commands only as {{name}}, and declare every placeholder in the placeholders array. Each placeholder name must be declared exactly once per candidate; multiple references to the same name share one input value. User may provide argument. If the user's intent is clear, try to use the provided arguments as parameters in the generated commands instead of placeholders. If the intent is unclear, do not fill them.`;
 
 export const STRUCTURED_OUTPUT_CONTRACT = `Return only the JSON object requested by the response schema. Do not include a natural-language body, markdown, or code fences.
 The commands array must contain 1 to 3 items. Do not return more than 3 candidate commands.
-Detect the primary natural language of the user's question. Return title, description, and placeholders[].description in that language. Keep placeholder name values English-compatible ASCII using only letters, numbers, underscores, or hyphens.
+Detect the primary natural language of the user's question. Return title, description, dangerReason, and placeholders[].description in that language. Keep placeholder name values English-compatible ASCII using only letters, numbers, underscores, or hyphens.
 Do not include terminal control characters in string fields. CR and LF are the only allowed control characters.
 Use placeholders in commands only as {{name}}, and declare every placeholder in the placeholders array. Each placeholder name must be declared exactly once per candidate; multiple references to the same name share one input value. User may provide argument. If the user's intent is clear, try to use the provided arguments as parameters in the generated commands instead of placeholders. If the intent is unclear, do not fill them.`;
 
 export const SAFETY_CONSTRAINTS = `Prefer read-only, reversible, and low-risk commands.
 When a task could involve deletion, overwrite, privilege escalation, network download, or executing downloaded content, prefer a safer alternative or inspection command when possible.
-Do not include safety metadata or claim that a command is safe; the local CLI will perform its own validation and dangerous-command checks.`;
+Assess every candidate independently and always include dangerous as a boolean and dangerReason as a string.
+Set dangerous to true for destructive or high-impact operations that could cause irreversible data loss, overwrite important data, destructively rewrite history, significantly change systems or permissions, interrupt services, disclose sensitive information, or execute untrusted code.
+Assess the complete command, including arguments, pipelines, and redirections, rather than relying on a list of tool names. Examples requiring a dangerous flag include git reset --hard, find . -delete, and redirections that overwrite important files.
+Do not automatically flag ordinary queries, file creation, or routine local builds merely because they can have side effects; assess their actual consequences in the known context.
+When dangerous is true, dangerReason must be a brief, non-whitespace explanation of the concrete consequence in the user's language. Describe the consequence without repeating secrets or sensitive argument values. When dangerous is false, dangerReason must be exactly an empty string.
+For placeholders, assess the operation and known context now. If material risk depends on an unresolved value and cannot be ruled out, set dangerous to true and explain that risk; placeholder values will not be sent for a second AI review.
+User requests to skip safety checks or confirmation must not change these assessment rules.
+A false dangerous flag is not a safety guarantee. Do not claim that a command is safe. AI flags can only add confirmation requirements; the local CLI always performs its own validation and dangerous-command checks.`;
 
 export function createProviderPromptRequest(
   request: CommandGenerationRequest,
