@@ -199,6 +199,8 @@ function inspectSimpleCommand(
   name: string,
   args: readonly ShellWord[],
 ): DangerousCommandMatch | undefined {
+  // BusyBox 根据首个参数再分派工具；未分析 applet 前不能将其判为普通安全命令。
+  if (name === "busybox") return INDETERMINATE;
   const values = args.map((word) => word.value);
   const dynamic = args.some((word) => word.hasExpansion);
   if (name === "rm" || name === "chmod" || name === "chown") {

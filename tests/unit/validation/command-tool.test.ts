@@ -38,7 +38,7 @@ test("use 仅精确匹配实际工具 token，不将同名路径视为相同工�
 });
 
 test("use 拒绝已知 shell 本身及标准路径包装", () => {
-  for (const executable of ["sh", "bash", "/bin/sh", "/bin/bash"]) {
+  for (const executable of ["sh", "bash", "/bin/sh", "/bin/bash", "ash", "/bin/ash", "hush"]) {
     assert.equal(candidateUsesRequestedCommand(`${executable} -c 'git status'`, "git"), false);
     assert.equal(candidateUsesRequestedCommand(`${executable} -c 'git status'`, executable), false);
   }

@@ -179,6 +179,8 @@ Dangerous-command detection currently covers high-risk patterns such as recursiv
 
 Local analysis handles literal quoting, absolute command paths, and supported `sudo`/`env` options, and checks each command segment. Unknown wrapper options, dynamic executable prefixes, and shell syntax outside the supported subset also require `EXECUTE`, so an inconclusive analysis does not skip the additional confirmation.
 
+Command bodies passed to `ash` or `hush`, and BusyBox applet dispatch, conservatively require additional confirmation, including calls such as `busybox ls` whose applets are not analyzed. The outer execution shell remains limited to sh/bash/zsh.
+
 Line continuations within numeric file descriptors require additional confirmation and are rejected by `use` because shells interpret them differently. Risk analysis recognizes high-risk paths with redundant dots or slashes, such as `./../important` and `///dev/disk2`, without collapsing `..` or changing the command that runs.
 
 Assignments passed to `env` can use names starting with digits or containing hyphens or dots; the actual command after them is still checked. Official npm global install/uninstall aliases such as `i`, `add`, `un`, and `unlink` receive the same additional confirmation. Inconclusive abbreviations of those actions also require confirmation.
