@@ -246,6 +246,70 @@ test("--print use rejects AI candidates that do not clearly use requested comman
   }
 });
 
+test("--print 允许未支持的 shell，并在真实请求中发送环境信息而不泄露配置", async () => {
+  let requestBody = "";
+  const server = createServer((request, response) => {
+    request.setEncoding("utf8");
+    request.on("data", (chunk: string) => {
+      requestBody += chunk;
+    });
+    request.on("end", () => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  commands: [
+                    {
+                      title: "显示文本",
+                      command: "printf howto",
+                      description: "显示文本",
+                      placeholders: [],
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        }),
+      );
+    });
+  });
+  const homeDirectory = await mkdtemp(join(tmpdir(), "howto-runtime-context-test-"));
+
+  try {
+    const localUrl = await listenOnLoopback(server);
+    const result = await runCliProcess(
+      ["--print", "--ai-provider", "openai", "--openai-api-url", localUrl, "显示文本"],
+      {
+        HOME: homeDirectory,
+        PATH: process.env.PATH,
+        SHELL: "/bin/fish-SHELL_SECRET_SENTINEL",
+        HOWTO_OPENAI_API_KEY: "ENV_SECRET_SENTINEL",
+      },
+    );
+
+    assert.equal(result.exitCode, 0, result.stderr.toString("utf8"));
+    assert.equal(result.stdout.toString("utf8"), "printf howto\n");
+    assert.equal(result.stderr.length, 0);
+    const payload = JSON.parse(requestBody) as { messages: { role: string; content: string }[] };
+    const systemPrompt = payload.messages.find((message) => message.role === "system")?.content;
+    assert.ok(systemPrompt);
+    assert.match(systemPrompt, /Runtime environment/);
+    assert.ok(
+      systemPrompt.includes(
+        `"operatingSystem":"${process.platform === "darwin" ? "macOS" : "Linux"}"`,
+      ),
+    );
+    assert.ok(systemPrompt.includes('"executionShell":null'));
+  } finally {
+    await closeServer(server);
+    await rm(homeDirectory, { recursive: true, force: true });
+  }
+});
+
 test("--print hides upstream provider error details from terminal output", async () => {
   const basicAuthPassword = "BASIC_AUTH_PASSWORD_SENTINEL";
   const queryToken = "QUERY_TOKEN_SENTINEL";
