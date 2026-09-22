@@ -45,6 +45,7 @@
     "ink": "^7.1.1",
     "openai": "^7.5.0",
     "react": "^19.2.8",
+    "signal-exit": "^3.0.7",
     "string-width": "^8.2.2"
   },
   "devDependencies": {
@@ -52,6 +53,7 @@
     "@types/node": "^26.2.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
+    "@types/signal-exit": "^3.0.4",
     "eslint": "^10.9.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.3.0",

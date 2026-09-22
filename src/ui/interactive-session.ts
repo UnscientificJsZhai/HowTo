@@ -1,6 +1,7 @@
 import { Readable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
 import { ReadStream } from "node:tty";
+import signalExit from "signal-exit";
 import { normalizePhysicalRows, toResizeSafeOutput } from "./resize-safe-output.js";
 import { PasteFramingFilter, PasteStartObserver } from "./paste-framing.js";
 
@@ -18,6 +19,7 @@ export class InteractiveSessionError extends Error {
 interface InputResources {
   restoreRaw?: boolean;
   releaseInput?: () => void;
+  registerExit?: (callback: () => void, options: { alwaysLast: boolean }) => () => void;
 }
 
 function inputIsUnavailable(input: NodeJS.ReadStream, expectedClose = false): boolean {
@@ -93,6 +95,7 @@ export class InteractiveSession {
   private view: object | undefined;
   private viewEnabled = false;
   private prefixTimer: ReturnType<typeof setTimeout> | undefined;
+  private removeExitHook: (() => void) | undefined;
 
   constructor(
     private readonly physicalInput: NodeJS.ReadStream,
@@ -104,6 +107,17 @@ export class InteractiveSession {
     this.originalRaw = resources.restoreRaw ?? physicalInput.isRaw === true;
     try {
       assertAvailableInput(physicalInput, physicalOutput);
+      // Ink 先卸载界面，再由资源持有者同步恢复物理终端。
+      this.removeExitHook = (resources.registerExit ?? signalExit)(
+        () => {
+          try {
+            this.dispose();
+          } catch {
+            // 退出时尽力清理，不能让清理异常改变原退出码或终止信号。
+          }
+        },
+        { alwaysLast: true },
+      );
       // 校验拒绝时不能读取仍由原消费者持有的缓冲。
       this.inputAcquired = true;
       physicalInput.on("readable", this.drain);
@@ -190,6 +204,16 @@ export class InteractiveSession {
   dispose(): void {
     if (this.closed || this.disposing) return;
     this.disposing = true;
+    try {
+      this.disposeResources();
+    } finally {
+      const removeExitHook = this.removeExitHook;
+      this.removeExitHook = undefined;
+      removeExitHook?.();
+    }
+  }
+
+  private disposeResources(): void {
     const previousFailure = this.failure;
     this.checkTerminalState();
     this.viewEnabled = false;
