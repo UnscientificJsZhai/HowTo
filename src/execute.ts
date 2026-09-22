@@ -1,16 +1,11 @@
 import { spawn, type ChildProcess } from "child_process";
 import { constants as osConstants } from "os";
+import { resolveExecutionShell } from "./shell/execution-environment.js";
 
 type SpawnCommand = (
   command: string,
-  args:
-    | string[]
-    | {
-        shell?: string | boolean;
-        stdio: "inherit";
-      },
-  options?: {
-    shell?: string | boolean;
+  args: string[],
+  options: {
     stdio: "inherit";
   },
 ) => ChildProcess;
@@ -27,11 +22,9 @@ export async function executeCommand(
 ): Promise<number> {
   const env = options.env ?? process.env;
   const platform = options.platform ?? process.platform;
-  const spawnCommand = options.spawnCommand ?? spawnCommandWithNodeSpawn;
-  const child =
-    platform === "win32"
-      ? spawnCommand(command, { shell: env.SHELL || true, stdio: "inherit" }, { stdio: "inherit" })
-      : spawnCommand(resolveShell(env), ["-c", command], { stdio: "inherit" });
+  const shell = resolveExecutionShell(env, platform);
+  const spawnCommand = options.spawnCommand ?? spawn;
+  const child = spawnCommand(shell, ["-c", command], { stdio: "inherit" });
 
   return new Promise((resolve, reject) => {
     child.once("error", reject);
@@ -52,15 +45,3 @@ export function resolveProcessExitCode(code: number | null, signal: NodeJS.Signa
 
   return 1;
 }
-
-function resolveShell(env: NodeJS.ProcessEnv): string {
-  return env.SHELL && env.SHELL.trim() !== "" ? env.SHELL : "/bin/sh";
-}
-
-const spawnCommandWithNodeSpawn: SpawnCommand = (command, args, options) => {
-  if (Array.isArray(args)) {
-    return options === undefined ? spawn(command, args) : spawn(command, args, options);
-  }
-
-  return spawn(command, args);
-};

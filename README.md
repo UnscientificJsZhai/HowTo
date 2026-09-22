@@ -27,6 +27,12 @@ English | [简体中文](README.CN.md)
 
 ## Install
 
+Only **macOS and Linux** are supported. Native Windows is unsupported, including CMD, PowerShell, and Git Bash/MSYS2 using Windows Node.js. WSL requires Node.js installed and running inside Linux; dedicated WSL acceptance testing has not been completed. Both npm installation and CLI startup check the operating system.
+
+Interactive execution only supports `sh`, `bash`, and `zsh`. `SHELL` may be one of these bare names or an absolute path with one of these filenames, such as `/bin/zsh` or `/opt/homebrew/bin/bash`; relative paths and additional arguments are rejected. A missing or whitespace-only `SHELL` defaults to `/bin/sh`, including the system-provided `/bin/sh` symlink. Other shells are rejected before initialization or AI requests, without silently switching interpreters; the check runs again immediately before execution. To select an execution shell explicitly, use `env SHELL=/bin/bash howto "list files"`.
+
+`--print`, `--init`, and `--version` do not execute candidate commands, so they check the operating system but do not restrict `SHELL`. Unsupported operating systems or execution shells return exit code `2`. This restriction applies to the outer interpreter launched by howto, not programs launched by candidate commands, and does not provide a sandbox.
+
 Install the CLI package globally:
 
 ```bash

@@ -27,6 +27,12 @@ _在终端中用 AI 快速找到可执行命令。_
 
 ## 安装
 
+仅支持 **macOS 和 Linux**。不支持原生 Windows，包括 CMD、PowerShell，以及使用 Windows 版 Node.js 的 Git Bash／MSYS2。WSL 必须在 Linux 环境内安装并运行 Node.js；目前尚未完成 WSL 专项验收。npm 安装和 CLI 启动均检查操作系统。
+
+交互执行只允许 `sh`、`bash`、`zsh`。`SHELL` 可以是这三个裸名称之一，或文件名为这三个名称之一的绝对路径（例如 `/bin/zsh`、`/opt/homebrew/bin/bash`）；不接受相对路径或附加参数。`SHELL` 缺失或仅含空白时使用 `/bin/sh`，包括系统提供的 `/bin/sh` 符号链接。其他 shell 会在初始化或请求 AI 之前被拒绝，不会静默切换解释器；实际执行前会再次检查。可用 `env SHELL=/bin/bash howto "列出文件"` 显式选择执行 shell。
+
+`--print`、`--init` 和 `--version` 不执行候选命令，因此只检查操作系统，不限制 `SHELL`。不支持的操作系统或执行 shell 返回退出码 `2`。此限制针对 howto 启动的外层解释器，不限制候选命令自行启动的程序，也不构成沙箱。
+
 全局安装 CLI 包：
 
 ```bash

@@ -58,39 +58,23 @@ test("executeCommand falls back to /bin/sh when SHELL is empty on Unix", async (
   assert.deepEqual(receivedArgs, ["-c", "echo hello"]);
 });
 
-test("executeCommand keeps spawn-shell fallback on Windows", async () => {
-  const child = new EventEmitter() as ChildProcess;
-  let receivedCommand: string | undefined;
-  let receivedOptions:
-    | {
-        shell?: string | boolean;
-        stdio: "inherit";
-      }
-    | undefined;
-
-  const execution = executeCommand("echo hello", {
-    env: { SHELL: "C:\\Windows\\System32\\cmd.exe" },
-    platform: "win32",
-    spawnCommand(command, args) {
-      receivedCommand = command;
-      receivedOptions = Array.isArray(args) ? undefined : args;
-      return child;
-    },
-  });
-
-  child.emit("close", 0, null);
-
-  assert.equal(await execution, 0);
-  assert.equal(receivedCommand, "echo hello");
-  assert.deepEqual(receivedOptions, {
-    shell: "C:\\Windows\\System32\\cmd.exe",
-    stdio: "inherit",
-  });
+test("executeCommand 拒绝在 Windows 上执行", async () => {
+  await assert.rejects(
+    executeCommand("echo hello", {
+      env: { SHELL: "C:\\Windows\\System32\\cmd.exe" },
+      platform: "win32",
+      spawnCommand() {
+        assert.fail("不支持的平台不得启动子进程");
+      },
+    }),
+    /only supports macOS and Linux/,
+  );
 });
 
 test("executeCommand returns the child process exit code", async () => {
   const child = new EventEmitter() as ChildProcess;
   const execution = executeCommand("exit 7", {
+    env: {},
     spawnCommand() {
       return child;
     },
@@ -104,6 +88,7 @@ test("executeCommand returns the child process exit code", async () => {
 test("executeCommand rejects when spawning fails", async () => {
   const child = new EventEmitter() as ChildProcess;
   const execution = executeCommand("missing-command", {
+    env: {},
     spawnCommand() {
       return child;
     },

@@ -16,6 +16,7 @@ import { runInteractiveCommand } from "./ui/run-interactive-command.js";
 import { initializeConfig } from "./init/index.js";
 import { renderTerminalSafeText } from "./terminal-text.js";
 import { readPackageVersion } from "./version.js";
+import { assertSupportedPlatform, resolveExecutionShell } from "./shell/execution-environment.js";
 
 interface CliResult {
   exitCode: number;
@@ -29,6 +30,7 @@ async function run(argv: string[]): Promise<CliResult> {
     return session;
   };
   try {
+    assertSupportedPlatform();
     const parsedCli = parseCliArgs(argv);
 
     if (parsedCli.options.version) {
@@ -44,6 +46,10 @@ async function run(argv: string[]): Promise<CliResult> {
         session: getSession(),
       });
       return { exitCode: 0 };
+    }
+
+    if (!parsedCli.options.print) {
+      resolveExecutionShell();
     }
 
     const fileConfig = await readUserConfigFile();

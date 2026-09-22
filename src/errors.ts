@@ -5,6 +5,7 @@ import { AiResponseValidationError } from "./validation/ai-response.js";
 import { InteractionCancelledError, InteractiveTtyError } from "./ui/tty.js";
 import { PlaceholderResolutionError } from "./ui/placeholder-logic.js";
 import { sanitizeUserVisibleErrorMessage } from "./user-visible-error.js";
+import { UnsupportedEnvironmentError } from "./shell/execution-environment.js";
 
 export { sanitizeUserVisibleErrorMessage };
 
@@ -53,7 +54,7 @@ export function toAppError(error: unknown): AppError {
     );
   }
 
-  if (error instanceof InteractiveTtyError) {
+  if (error instanceof InteractiveTtyError || error instanceof UnsupportedEnvironmentError) {
     return new AppError(`Error: ${sanitizeUserVisibleErrorMessage(error.message)}`, 2);
   }
 

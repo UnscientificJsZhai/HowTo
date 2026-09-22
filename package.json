@@ -2,6 +2,10 @@
   "name": "@unscientificjszhai/howto",
   "version": "1.0.1",
   "type": "module",
+  "os": [
+    "darwin",
+    "linux"
+  ],
   "description": "Use AI to quickly find commands within the terminal.",
   "license": "MIT",
   "main": "dist/index.js",
