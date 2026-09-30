@@ -3,7 +3,7 @@ import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const VERSION_MODULE = new URL("../../src/version.js", import.meta.url);
 
@@ -59,4 +59,30 @@ test("最近的包元数据无效时返回错误，不回退到父级包版本",
   } finally {
     await rm(packageDirectory, { recursive: true, force: true });
   }
+});
+
+test("--version 不加载交互渲染依赖", async (t) => {
+  const { spawnSync } = await import("node:child_process");
+  const home = await mkdtemp(join(tmpdir(), "howto-version-lazy-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const loader = `export async function resolve(specifier, context, next) { if (specifier === 'ink') throw new Error('version must not import Ink'); return next(specifier, context); }`;
+  const registration = `import {register} from 'node:module'; register(${JSON.stringify(`data:text/javascript,${encodeURIComponent(loader)}`)});`;
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      `data:text/javascript,${encodeURIComponent(registration)}`,
+      fileURLToPath(new URL("../../src/index.js", import.meta.url)),
+      "--version",
+    ],
+    {
+      env: { HOME: home, PATH: "/usr/bin:/bin", SHELL: "/bin/fish" },
+      encoding: "utf8",
+      timeout: 5000,
+    },
+  );
+  assert.ifError(child.error);
+  assert.equal(child.status, 0, child.stderr);
+  assert.match(child.stdout, /^\d+\.\d+\.\d+\r?\n$/);
+  assert.equal(child.stderr, "");
 });
