@@ -179,6 +179,22 @@ finally:
     assert.equal(result.code, 0, `${result.stderr}\n${result.stdout}`);
     console.log(result.stdout.trim());
   }
+  const closedOutput = await run("python3", [
+    "-c",
+    String.raw`
+import os, subprocess, sys
+reader, writer = os.pipe()
+os.close(reader)
+try:
+    child = subprocess.run([sys.argv[1], '--version'], stdout=writer, stderr=subprocess.PIPE, timeout=5)
+    assert child.returncode == 1
+    assert child.stderr == b'Error: failed to write standard output.\n', repr(child.stderr)
+finally:
+    os.close(writer)
+`,
+    entry,
+  ]);
+  assert.equal(closedOutput.code, 0, closedOutput.stderr);
   assert.equal(requests, 3);
   console.log(
     JSON.stringify({
@@ -187,7 +203,7 @@ finally:
       platform: process.platform,
       arch: process.arch,
       version: manifest.version,
-      checks: 6,
+      checks: 7,
       requests,
     }),
   );

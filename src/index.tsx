@@ -144,16 +144,24 @@ const isMain =
   fileURLToPath(import.meta.url) === resolveEntrypointPath(process.argv[1]);
 
 if (isMain) {
+  let outputFailed = false;
+  process.stdout.on("error", () => {
+    if (!outputFailed) {
+      outputFailed = true;
+      console.error("Error: failed to write standard output.");
+    }
+    process.exitCode = 1;
+  });
   run(process.argv.slice(2))
     .then((result) => {
-      process.exitCode = result.exitCode;
+      process.exitCode = outputFailed ? 1 : result.exitCode;
     })
     .catch((error: unknown) => {
       const appError = toAppError(error);
       if (appError.message !== "") {
         console.error(appError.message);
       }
-      process.exitCode = appError.exitCode;
+      process.exitCode = outputFailed ? 1 : appError.exitCode;
     });
 }
 
