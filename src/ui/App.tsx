@@ -55,7 +55,7 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
     onError(new InteractionCancelledError());
   }, [onError, session]);
 
-  useKeyboardInput((input: string, key: Key) => {
+  const inputReady = useKeyboardInput((input: string, key: Key) => {
     if (frameRows === 0) return;
     if (status !== "loading") return;
 
@@ -143,7 +143,7 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
   return (
     <Box
       flexDirection="column"
-      display={isFrameVisible ? "flex" : "none"}
+      display={isFrameVisible && inputReady ? "flex" : "none"}
       maxHeight={frameRows}
       overflowY="hidden"
     >

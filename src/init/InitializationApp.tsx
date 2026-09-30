@@ -76,7 +76,7 @@ export const InitializationApp: React.FC<Props> = ({ onSubmit, onComplete, onCan
     }
   };
 
-  usePasteAwareInput({
+  const inputReady = usePasteAwareInput({
     onInput: (input: string, key: Key) => {
       handleInput({ type: "keyboard", input, key });
     },
@@ -117,6 +117,8 @@ export const InitializationApp: React.FC<Props> = ({ onSubmit, onComplete, onCan
   } else {
     content = <InputStep state={state} frameRows={frameRows} />;
   }
+
+  if (!inputReady) return null;
 
   return (
     <Box

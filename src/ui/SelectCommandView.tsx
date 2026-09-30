@@ -36,7 +36,7 @@ export const SelectCommandView: React.FC<Props> = ({
     setActiveIndex(nextIndex);
   }
 
-  useKeyboardInput((input: string, key: Key) => {
+  const inputReady = useKeyboardInput((input: string, key: Key) => {
     if (finishedRef.current || !isInputActive || availableRows <= 0) return;
 
     if (key.escape || (key.ctrl && input === "c")) {
@@ -59,7 +59,7 @@ export const SelectCommandView: React.FC<Props> = ({
     }
   });
 
-  if (availableRows <= 0) {
+  if (!inputReady || availableRows <= 0) {
     return null;
   }
 

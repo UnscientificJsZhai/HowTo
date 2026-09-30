@@ -62,7 +62,7 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
     }
   };
 
-  usePasteAwareInput({
+  const inputReady = usePasteAwareInput({
     onInput: (input: string, key: Key) => {
       if (finishedRef.current || !isInputActive || availableRows <= 0) return;
 
@@ -87,7 +87,7 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
     isPasteActive: isInputActive && availableRows > 0,
   });
 
-  if (availableRows <= 0) {
+  if (!inputReady || availableRows <= 0) {
     return null;
   }
 

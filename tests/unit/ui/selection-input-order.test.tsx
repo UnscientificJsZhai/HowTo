@@ -228,3 +228,51 @@ async function bounded<T>(promise: Promise<T>): Promise<T> {
     clearTimeout(timer);
   }
 }
+
+void test("候选页首次写入终端时输入处理器已经就绪", async (t) => {
+  const { App, render, InteractiveSessionProvider } = await modules;
+  const h = sessionHarness();
+  let unmount = () => {};
+  t.after(() => {
+    unmount();
+    h.close();
+  });
+  let sent = false;
+  const write = h.output.write.bind(h.output);
+  h.output.write = ((chunk: string | Buffer, ...args: unknown[]) => {
+    const result = Reflect.apply(write, h.output, [chunk, ...args]) as boolean;
+    if (!sent && chunk.toString().includes("Select a command")) {
+      sent = true;
+      // 同步交付给 Ink，固定复现 render commit 与被动 effect 之间的输入窗口。
+      h.session.input.emit("readable");
+      h.session.input.push("\r");
+      h.session.input.emit("readable");
+    }
+    return result;
+  }) as typeof h.output.write;
+  const instance = render(
+    <InteractiveSessionProvider session={h.session}>
+      <App
+        provider={{
+          generateCommands: () =>
+            Promise.resolve({ rawText: JSON.stringify({ commands: [testCandidate()] }) }),
+        }}
+        request={testRequest()}
+        onSuccess={() => assert.fail("不得跳过确认")}
+        onError={(error) => assert.fail(error.message)}
+      />
+    </InteractiveSessionProvider>,
+    {
+      stdin: h.session.input,
+      stdout: h.session.output,
+      stderr: h.session.output,
+      interactive: true,
+      debug: true,
+      exitOnCtrlC: false,
+      patchConsole: false,
+    },
+  );
+  unmount = () => instance.unmount();
+  await waitFor(() => h.text().includes("Final command:"), "可见候选页首个 Enter 丢失");
+  assert.equal(sent, true);
+});
