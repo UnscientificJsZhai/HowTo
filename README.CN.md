@@ -44,7 +44,7 @@ npm install -g @unscientificjszhai/howto
 也可以从克隆的仓库中运行：
 
 ```bash
-npm install
+npm ci
 npm run build
 npm link
 ```
@@ -212,7 +212,7 @@ Linux 还覆盖 apk、pacman、zypper 的系统包变更及 OpenRC 的服务和�
 开发和运行完整测试使用 **Node.js 22.x（22.22.1 及以上）或 24.x（24.3.0 及以上）**。这些版本满足开发依赖的要求，并能直接执行 TypeScript 发布校验脚本且不输出实验性警告。
 
 ```bash
-npm install
+npm ci
 npm run build
 npm test
 npm run lint
@@ -230,7 +230,23 @@ npm run format:check
 - `src/ui/` - 基于 Ink 的终端 UI。
 - `tests/unit/` - CLI、配置、校验、执行、UI 和安全逻辑的单元测试。
 
+### Linux 验证范围
+
+1.0.2 本地验证使用 Cloud 容器中的 Debian 13.6 x86_64、Node 22.22.1 / 24.19.0，以及 dash（`/bin/sh`）、bash 5.2.37、zsh 5.9 和真实内核 PTY。两个 Node 版本均通过 719 项测试且无跳过，其中 42 项为 PTY 用例；稳定性轮次和新增边界证据见验收报告。已安装发行包另以 Node 22.0.0 和 npm 10.5.1 验证。证据、修复及覆盖边界记录在随本次任务单独交付的验收报告中。
+
+完整 POSIX 测试需要 `/usr/bin:/bin` 中可找到的 Python 3、sh/bash/zsh、可分配的 PTY，以及用于权限检查的非 root 用户。部分 Linux 进程组测试使用监督子进程，明确不适用于 macOS。测试使用隔离临时主目录和假 provider，不需要 API Key。单独验证已安装包可运行 `npm run test:package -- /absolute/path/to/bin/howto`；该命令将 `tests/package-smoke.ts` 编译后运行，使用本地 HTTP fixture，确认后只执行无害打印命令。CI 随候选包上传编译后的验收入口，最低 Node 版本的包验收无需安装开发依赖。
+
+CI 配置已增加 Ubuntu 24.04 的 Node 22.22.1 / 24.19.0、macOS 14 回归，以及 Node 22.0.0 / 24.19.0 已安装包检查。本地任务未运行这些远端 job。Alpine、原生 arm64、WSL、真实终端模拟器视觉体验仍未验收；PTY 或已配置的 job 不能替代这些平台的运行证据。独立新版环境已完成有限的 Gemini 原生及 OpenAI 兼容协议实网烟测；原生结构化 OFF、默认模型和完整 CLI 实网仍未验证。
+
 ## 故障排查
+
+### Linux 终端与输出失败
+
+Linux 交互交接需要可访问 `/proc/self/fd/0`，用于同步检查尚在内核队列中的粘贴；读取失败时会拒绝执行。macOS 的同类内核队列边界尚待专项验证。
+
+交互模式和 `--init` 要求 stdin、stdout 都是 TTY；任一流被重定向时请使用 `--print`。stdout 管道提前关闭时现在返回 1 和固定错误提示，不能将截断输出当作成功交付。PTY 测试找不到 Python 时可检查 `PATH=/usr/bin:/bin python3 --version`；CI 将缺失前置工具和 Linux 测试跳过视作失败。
+
+HowTo 以 `-c` 调用选中的 shell，不使用登录 shell；这不表示环境被隔离，启动文件和继承的变量仍可能影响命令。配置文件以 0600 权限原子写入；现有目录权限和目录符号链接保持原契约。特别在宽松 umask 下，应确保配置目录及父目录不允许其他用户改写。
 
 ### AI provider 未配置
 

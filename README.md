@@ -44,7 +44,7 @@ npm install -g @unscientificjszhai/howto
 Or run it from a cloned repository:
 
 ```bash
-npm install
+npm ci
 npm run build
 npm link
 ```
@@ -212,7 +212,7 @@ This project is built with TypeScript, React, Ink, OpenAI SDK, Gemini GenAI SDK,
 For development and the full test suite, use **Node.js 22.x (22.22.1 or later) or 24.x (24.3.0 or later)**. These versions satisfy the development dependencies and execute the TypeScript release-validation script directly without experimental warnings.
 
 ```bash
-npm install
+npm ci
 npm run build
 npm test
 npm run lint
@@ -230,7 +230,23 @@ Useful paths:
 - `src/ui/` - Ink-based terminal UI.
 - `tests/unit/` - unit tests for CLI, config, validation, execution, UI, and safety logic.
 
+### Linux validation
+
+The 1.0.2 local validation used Debian 13.6 x86_64 in a Cloud container, Node 22.22.1 / 24.19.0, and real kernel PTYs with dash (`/bin/sh`), bash 5.2.37 and zsh 5.9. Both Node versions passed 719 tests without skips, including 42 PTY cases; stability rounds and additional boundary evidence are recorded in the validation report. The installed package was checked separately on Node 22.0.0 with npm 10.5.1. Evidence, fixes and coverage limits are recorded in the validation report delivered separately with this task.
+
+The full POSIX suite requires Python 3 available on `/usr/bin:/bin`, sh/bash/zsh, an allocatable PTY, and a non-root user for permission checks. Some Linux process-group checks use a subprocess supervisor and are explicitly inapplicable to macOS. Tests use isolated temporary homes and fake providers; they do not require API keys. To verify a separately installed package, run `npm run test:package -- /absolute/path/to/bin/howto`; this compiles and runs `tests/package-smoke.ts`, uses a local HTTP fixture, and only executes a harmless print command after confirmation. CI uploads the compiled smoke entry alongside the candidate package so the minimum-Node package check requires no development dependencies.
+
+The CI configuration adds Ubuntu 24.04 with Node 22.22.1 / 24.19.0, macOS 14 regression, and installed-package checks on Node 22.0.0 / 24.19.0. These jobs were not run remotely in this local task. Alpine, native arm64, WSL, and real terminal-emulator visuals remain unverified; a PTY or a configured job is not evidence for those platforms. A separate environment passed bounded live Gemini native and OpenAI-compatible protocol smoke checks; native structured-output OFF, the default model, and the full live CLI remain unverified.
+
 ## Troubleshooting
+
+### Linux terminal and output failures
+
+Linux interactive handoff requires access to `/proc/self/fd/0` to check pasted bytes still queued in the kernel. A read failure prevents execution. The corresponding macOS kernel-queue boundary still requires dedicated validation.
+
+Both stdin and stdout must be TTYs for interactive mode and `--init`. Use `--print` when either stream is redirected. A closed stdout pipe now exits with status 1 and a fixed error message; do not treat truncated output as successful delivery. If PTY tests cannot find Python, check `PATH=/usr/bin:/bin python3 --version`; CI treats missing prerequisites and Linux test skips as failures.
+
+HowTo invokes the selected shell with `-c`, not as a login shell. This does not promise a clean environment: shell startup files and inherited variables can affect commands. Configuration files are written atomically with mode 0600; existing directory permissions and symlinks are preserved. Protect the configuration directory and its parent from other users, especially with a permissive umask.
 
 ### AI provider is not configured
 
