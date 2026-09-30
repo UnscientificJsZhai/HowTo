@@ -1,3 +1,4 @@
+import { closeSync, constants, openSync, readSync } from "node:fs";
 import { Readable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
 import { ReadStream } from "node:tty";
@@ -19,6 +20,7 @@ export class InteractiveSessionError extends Error {
 interface InputResources {
   restoreRaw?: boolean;
   releaseInput?: () => void;
+  readPendingInput?: () => Buffer;
   registerExit?: (callback: () => void, options: { alwaysLast: boolean }) => () => void;
 }
 
@@ -194,6 +196,7 @@ export class InteractiveSession {
     this.throwIfFailed();
     if (this.closed) throw new InteractiveSessionError();
     this.drain();
+    this.observePendingInput();
     this.throwIfFailed();
     this.dispose();
     this.throwIfFailed();
@@ -233,6 +236,7 @@ export class InteractiveSession {
       cleanup(() => {
         this.physicalOutput.write(DISABLE_PASTE);
       });
+    cleanup(() => this.observePendingInput());
     if (this.rawAcquired)
       cleanup(() => {
         this.physicalInput.setRawMode(this.originalRaw);
@@ -338,6 +342,15 @@ export class InteractiveSession {
     if (this.prefixTimer !== undefined) clearTimeout(this.prefixTimer);
     this.prefixTimer = undefined;
   }
+  private observePendingInput(): void {
+    if (!this.inputAcquired || this.failure || !this.resources.readPendingInput) return;
+    const bytes = this.resources.readPendingInput();
+    if (this.observer.observe(bytes) && this.policy !== "print") {
+      this.policy = "print";
+      for (const listener of this.policyListeners) listener();
+    }
+  }
+
   private drain = (): void => {
     if (this.closed || !this.inputAcquired) return;
     try {
@@ -426,16 +439,50 @@ export function createInteractiveSession(options: {
   }
   const restoreRaw = options.input.isRaw === true;
   let reader: ReadStream | undefined;
+  let pendingFd: number | undefined;
+  const readPendingInput = () => {
+    if (pendingFd === undefined) return Buffer.alloc(0);
+    const chunks: Buffer[] = [];
+    // 独立非阻塞描述符只在同步交接边界读取，不改变 fd 0 的 flags 或读取所有权。
+    // 限制单次排空大小，持续输入不能让同步退出无限循环；超限安全失败。
+    for (let count = 0; count < 64; count++) {
+      const chunk = Buffer.allocUnsafe(4096);
+      try {
+        const length = readSync(pendingFd, chunk, 0, chunk.length, null);
+        if (length === 0) throw new InteractiveSessionError();
+        chunks.push(chunk.subarray(0, length));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EAGAIN") return Buffer.concat(chunks);
+        throw error;
+      }
+    }
+    throw new InteractiveSessionError("交接期间输入过多，已取消执行。");
+  };
   let released = false;
   const releaseInput = () => {
     if (released) return;
     released = true;
     reader?.destroy();
+    if (pendingFd !== undefined) {
+      closeSync(pendingFd);
+      pendingFd = undefined;
+    }
   };
   try {
     // 标准 fd 0 保留给原 stdin 和子进程；该读者的生命周期只属于本会话。
+    if (process.platform === "linux") {
+      // Linux /proc/self/fd 指向当前实际 stdin；不使用可能属于其他终端的 /dev/tty。
+      pendingFd = openSync(
+        "/proc/self/fd/0",
+        constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOCTTY,
+      );
+    }
     reader = new ReadStream(0);
-    return new InteractiveSession(reader, options.output, { restoreRaw, releaseInput });
+    return new InteractiveSession(reader, options.output, {
+      restoreRaw,
+      releaseInput,
+      readPendingInput,
+    });
   } catch {
     releaseInput();
     throw new InteractiveSessionError();
