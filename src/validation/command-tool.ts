@@ -1,4 +1,4 @@
-import { accessSync, constants } from "fs";
+import { accessSync, constants, statSync } from "fs";
 import { delimiter, isAbsolute, join } from "path";
 
 import type { CommandGenerationContract } from "../ai/types.js";
@@ -100,10 +100,6 @@ function buildPathCandidates(command: string, env: NodeJS.ProcessEnv): string[] 
   const candidates: string[] = [];
 
   for (const directory of pathValue.split(delimiter)) {
-    if (directory === "") {
-      continue;
-    }
-
     for (const extension of extensions) {
       candidates.push(
         command.toLowerCase().endsWith(extension.toLowerCase())
@@ -119,7 +115,7 @@ function buildPathCandidates(command: string, env: NodeJS.ProcessEnv): string[] 
 function isExecutable(path: string): boolean {
   try {
     accessSync(path, constants.X_OK);
-    return true;
+    return statSync(path).isFile();
   } catch {
     return false;
   }
