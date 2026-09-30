@@ -38,6 +38,7 @@
     "lint:staged": "lint-staged",
     "prepare": "husky",
     "test": "npm run test:unit",
+    "test:package": "npm run clean:dist-test && tsc -p tsconfig.test.json && node dist-test/tests/package-smoke.js",
     "test:unit": "npm run clean:dist-test && tsc -p tsconfig.test.json && node --test dist-test/tests/unit/*.test.js dist-test/tests/unit/**/*.test.js"
   },
   "dependencies": {
