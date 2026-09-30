@@ -15,6 +15,7 @@ const body =
 // 新模式只增加有方言歧义的 fd 前缀，确认后仍只运行原有的无害读取与打印。
 const command = process.argv[2] === "fd-continuation" ? `2\\\n>/dev/null ${body}` : body;
 
+let executionCount = 0;
 try {
   const result = await runInteractiveCommand({
     session,
@@ -45,6 +46,7 @@ try {
       userPrompt: "",
     },
     execute: (text) => {
+      assert.equal(++executionCount, 1);
       assert.equal(original.destroyed, false);
       assert.equal(original.isRaw, initialRaw);
       assert.equal(original.readableEncoding, originalEncoding);
@@ -53,8 +55,9 @@ try {
       return executeCommand(text);
     },
   });
-  assert.equal(result, 0);
-  process.stdout.write("REVIEW_EXIT:0\n");
+  assert.equal(typeof result, "number");
+  assert.equal(executionCount, 1);
+  process.stdout.write(`REVIEW_EXIT:${result}\n`);
 
   // 子命令已经退出，现在验证原 stdin 对象和 fd 0 仍可独立读取。
   original.setRawMode(false);

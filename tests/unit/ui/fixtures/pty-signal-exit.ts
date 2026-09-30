@@ -9,11 +9,16 @@ import { testCandidate, testRequest } from "../session-test-helpers.js";
 
 const phase = process.argv[2];
 const original = process.stdin;
+const initialRaw = phase === "raw-confirm";
+if (initialRaw) original.setRawMode(true);
+process.stdout.on("resize", () =>
+  writeFileSync("size", `${process.stdout.rows}:${process.stdout.columns}`),
+);
 const originalEncoding = original.readableEncoding;
 const session = createInteractiveSession({ input: original, output: process.stdout });
 const checkOriginal = () => {
   assert.equal(original.destroyed, false);
-  assert.equal(original.isRaw, false);
+  assert.equal(original.isRaw, initialRaw);
   assert.equal(original.readableEncoding, originalEncoding);
 };
 
@@ -38,7 +43,18 @@ try {
               });
             });
           }
-          return Promise.resolve({ rawText: JSON.stringify({ commands: [testCandidate()] }) });
+          return Promise.resolve({
+            rawText: JSON.stringify({
+              commands: [
+                phase === "placeholder"
+                  ? {
+                      ...testCandidate("printf '%s' '{{value}}'"),
+                      placeholders: [{ name: "value", description: "PLACEHOLDER_SENTINEL" }],
+                    }
+                  : testCandidate(),
+              ],
+            }),
+          });
         },
       },
       request: testRequest(),

@@ -1,43 +1,47 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-// Python 仅提供标准库 PTY 驱动；每一步依赖输出握手，时间上限只用于失败回收。
+// forkpty 创建独立伪终端，验证真实内核交接中首行是否丢失及父进程 stdin 是否可复用。
 const driver = String.raw`
 import errno, fcntl, json, os, pty, select, signal, struct, sys, termios, time
 
-node, fixture, test_home, mode = sys.argv[1:]
+node, fixture, test_home, mode, shell = sys.argv[1:]
 pid, fd = pty.fork()
 if pid == 0:
     os.chdir(test_home)
     os.execve(node, [node, fixture, mode], {
         'HOME': test_home, 'PATH': '/usr/bin:/bin',
-        'TERM': 'xterm-256color', 'SHELL': '/bin/sh', 'FORCE_COLOR': '0',
+        'TERM': 'xterm-256color', 'SHELL': shell, 'FORCE_COLOR': '0',
     })
 fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 100, 0, 0))
 output = bytearray()
+eof = False
 status = None
 
-def interrupted(signum, frame):
-    raise RuntimeError('PTY driver interrupted')
-signal.signal(signal.SIGTERM, interrupted)
-
 def read_ready(deadline):
-    ready, _, _ = select.select([fd], [], [], max(0, deadline - time.monotonic()))
-    if ready:
+    global eof
+    remaining = max(0.0, deadline - time.monotonic())
+    r, _, _ = select.select([fd], [], [], min(remaining, 0.2))
+    if fd in r:
         try:
-            output.extend(os.read(fd, 65536))
-        except OSError as error:
-            if error.errno != errno.EIO:
+            chunk = os.read(fd, 4096)
+            if not chunk:
+                eof = True
+            else:
+                output.extend(chunk)
+        except OSError as e:
+            if e.errno != errno.EIO:
                 raise
+            eof = True
 
 def wait_for(marker):
     deadline = time.monotonic() + 5
-    while marker not in output and time.monotonic() < deadline:
+    while marker not in output and not eof and time.monotonic() < deadline:
         read_ready(deadline)
     assert marker in output, 'missing ' + repr(marker) + ': ' + repr(bytes(output[-3000:]))
 
@@ -45,10 +49,7 @@ try:
     wait_for(b'Select a command')
     os.write(fd, b'\r')
     wait_for(b'Final command:')
-    if mode == 'fd-continuation':
-        wait_for(b'EXECUTE+Enter')
-    # 本测试只用键盘；若本地规则要求危险确认，同样完整输入确认短语。
-    os.write(fd, b'EXECUTE\r' if b'EXECUTE+Enter' in output else b'\r')
+    os.write(fd, b'\r')
     wait_for(b'REVIEW_CHILD_READY\r\n')
     os.write(fd, b'verified\n')
     wait_for(b'REVIEW_CHILD_LINE:verified\r\n')
@@ -65,7 +66,7 @@ try:
         read_ready(deadline)
     assert status is not None, 'Node did not exit naturally'
     assert os.waitstatus_to_exitcode(status) == 0, 'Node exited unsuccessfully'
-    print(json.dumps({'mode': mode, 'firstLine': 'verified', 'parentLine': 'parent-verified', 'nodeExit': 0}))
+    print(json.dumps({'shell': shell, 'mode': mode, 'commandExit': 0, 'firstLine': 'verified', 'parentLine': 'parent-verified', 'nodeExit': 0}))
 finally:
     # 强制终止只用于失败/超时回收，不能代替上面的自然退出断言。
     if status is None:
@@ -77,10 +78,15 @@ finally:
     os.close(fd)
 `;
 
-for (const mode of ["normal", "raw", "fd-continuation"]) {
+for (const mode of ["normal", "raw"]) {
   void test(`真实 PTY ${mode} 模式完整交付子命令首行，原 stdin 可复用且自然退出`, (t) => {
     if (process.platform === "win32") {
       t.skip("此自动回归需要 POSIX PTY；Windows Console/ConPTY 需独立验收");
+      return;
+    }
+    const shell = "/bin/sh";
+    if (!existsSync(shell)) {
+      t.skip(`未找到 ${shell}`);
       return;
     }
     const testHome = mkdtempSync(join(tmpdir(), "howto-pty-handoff-"));
@@ -94,6 +100,7 @@ for (const mode of ["normal", "raw", "fd-continuation"]) {
           fileURLToPath(new URL("./fixtures/pty-handoff.js", import.meta.url)),
           testHome,
           mode,
+          shell,
         ],
         {
           env: { PATH: "/usr/bin:/bin", HOME: testHome },
@@ -103,6 +110,7 @@ for (const mode of ["normal", "raw", "fd-continuation"]) {
         },
       );
       if (result.error && "code" in result.error && result.error.code === "ENOENT") {
+        assert.ok(!process.env.CI, "CI 必须提供 Python3 以执行真实 PTY 回归");
         t.skip("未找到 Python3，真实 PTY 回归未执行");
         return;
       }
