@@ -107,6 +107,6 @@ jobs:
           name: npm-package
           path: candidate
       - name: Install tarball without development dependencies
-        run: npm install --global --ignore-scripts --omit=dev --prefix "${RUNNER_TEMP}/howto 空格" candidate/*.tgz
+        run: npm install --global --ignore-scripts --omit=dev --prefix "${RUNNER_TEMP}/howto 空格" ./candidate/*.tgz
       - name: Smoke installed npm bin with real PTY
         run: node candidate/dist-test/tests/package-smoke.js "${RUNNER_TEMP}/howto 空格/bin/howto"
