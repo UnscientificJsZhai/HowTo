@@ -209,7 +209,7 @@ Paste spanning a hidden terminal view is discarded as a whole. These rules apply
 
 This project is built with TypeScript, React, Ink, OpenAI SDK, Gemini GenAI SDK, and Node's built-in test runner.
 
-For development and the full test suite, use **Node.js 22.x (22.22.1 or later) or 24.x (24.3.0 or later)**. These versions satisfy the development dependencies and execute the TypeScript release-validation script directly without experimental warnings.
+For development and the full test suite, use **Node.js 22.x (22.22.1 or later) or 24.x (24.3.0 or later)**. These versions satisfy the development dependencies.
 
 ```bash
 npm ci

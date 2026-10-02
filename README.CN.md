@@ -209,7 +209,7 @@ Linux 还覆盖 apk、pacman、zypper 的系统包变更及 OpenRC 的服务和�
 
 本项目使用 TypeScript、React、Ink、OpenAI SDK、Gemini GenAI SDK 和 Node 内置测试运行器构建。
 
-开发和运行完整测试使用 **Node.js 22.x（22.22.1 及以上）或 24.x（24.3.0 及以上）**。这些版本满足开发依赖的要求，并能直接执行 TypeScript 发布校验脚本且不输出实验性警告。
+开发和运行完整测试使用 **Node.js 22.x（22.22.1 及以上）或 24.x（24.3.0 及以上）**。这些版本满足开发依赖的要求。
 
 ```bash
 npm ci
