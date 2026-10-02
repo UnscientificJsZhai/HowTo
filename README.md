@@ -149,7 +149,7 @@ For each setting, the first configured source in that order wins:
 
 - `--ai-provider` / `HOWTO_AI_PROVIDER` / `aiProvider` - `openai` or `gemini`; no default.
 - `--gemini-api-key` / `HOWTO_GEMINI_API_KEY` / `geminiApiKey` - Gemini API key; required for Gemini.
-- `--gemini-model` / `HOWTO_GEMINI_MODEL` / `geminiModel` - Gemini model; default `gemini-3.1-flash-lite`.
+- `--gemini-model` / `HOWTO_GEMINI_MODEL` / `geminiModel` - Gemini model; default `gemini-3.5-flash-lite`.
 - `--openai-api-url` / `HOWTO_OPENAI_API_URL` / `openaiApiUrl` - OpenAI-compatible base URL; defaults to `https://api.openai.com/v1`.
 - `--openai-api-key` / `HOWTO_OPENAI_API_KEY` / `openaiApiKey` - OpenAI API key; defaults to an empty string for local services.
 - `--openai-model` / `HOWTO_OPENAI_MODEL` / `openaiModel` - OpenAI model; default `gpt-5.4-mini`.

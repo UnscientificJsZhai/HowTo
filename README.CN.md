@@ -149,7 +149,7 @@ howto "explain this flag" -- --force
 
 - `--ai-provider` / `HOWTO_AI_PROVIDER` / `aiProvider` - `openai` 或 `gemini`；无默认值。
 - `--gemini-api-key` / `HOWTO_GEMINI_API_KEY` / `geminiApiKey` - Gemini API key；Gemini 必填。
-- `--gemini-model` / `HOWTO_GEMINI_MODEL` / `geminiModel` - Gemini 模型；默认 `gemini-3.1-flash-lite`。
+- `--gemini-model` / `HOWTO_GEMINI_MODEL` / `geminiModel` - Gemini 模型；默认 `gemini-3.5-flash-lite`。
 - `--openai-api-url` / `HOWTO_OPENAI_API_URL` / `openaiApiUrl` - OpenAI 兼容 base URL；默认 `https://api.openai.com/v1`。
 - `--openai-api-key` / `HOWTO_OPENAI_API_KEY` / `openaiApiKey` - OpenAI API key；默认为空字符串以支持本地服务。
 - `--openai-model` / `HOWTO_OPENAI_MODEL` / `openaiModel` - OpenAI 模型；默认 `gpt-5.4-mini`。

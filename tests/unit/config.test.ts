@@ -28,7 +28,7 @@ test("loadConfig uses model defaults after provider is configured", () => {
     aiProvider: "openai",
     gemini: {
       apiKey: undefined,
-      model: "gemini-3.1-flash-lite",
+      model: "gemini-3.5-flash-lite",
     },
     openai: {
       apiKey: "",
@@ -93,7 +93,7 @@ test("loadConfig applies priority CLI over env over config file over defaults", 
       aiProvider: "openai",
       gemini: {
         apiKey: undefined,
-        model: "gemini-3.1-flash-lite",
+        model: "gemini-3.5-flash-lite",
       },
       openai: {
         apiKey: "env-openai-key",
@@ -112,7 +112,7 @@ test("loadConfig lets config file override defaults", () => {
       aiProvider: "openai",
       gemini: {
         apiKey: undefined,
-        model: "gemini-3.1-flash-lite",
+        model: "gemini-3.5-flash-lite",
       },
       openai: {
         apiKey: "",

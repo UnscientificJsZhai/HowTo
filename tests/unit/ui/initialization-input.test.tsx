@@ -527,7 +527,7 @@ void test("initialization prioritizes validation, values, and defaults without c
   outputOffset = view.output().length;
   await send(view, "\r");
   updateOutput = stripVTControlCharacters(view.output().slice(outputOffset));
-  assert.ok(updateOutput.includes("Model: gemini-3.1-flash-lite"));
+  assert.ok(updateOutput.includes("Model: gemini-3.5-flash-lite"));
   assert.ok(updateOutput.includes("Ent next Esc back ^C"));
 
   await send(view, "\r");
@@ -536,7 +536,7 @@ void test("initialization prioritizes validation, values, and defaults without c
   assert.deepEqual(submittedValues, {
     provider: "gemini",
     apiKey: pastedKey,
-    model: "gemini-3.1-flash-lite",
+    model: "gemini-3.5-flash-lite",
   });
   assertNoFullscreenClear(view.output());
 });
@@ -979,7 +979,7 @@ function assertNoFullscreenClear(output: string): void {
 function testConfig(): AppConfig {
   return {
     aiProvider: "openai",
-    gemini: { model: "gemini-3.1-flash-lite" },
+    gemini: { model: "gemini-3.5-flash-lite" },
     openai: { apiKey: "", model: "gpt-5.4-mini" },
     structuredOutput: true,
   };

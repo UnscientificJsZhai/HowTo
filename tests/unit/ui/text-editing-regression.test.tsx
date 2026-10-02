@@ -600,7 +600,7 @@ async function bounded<T>(promise: Promise<T>): Promise<T> {
 function testConfig(): AppConfig {
   return {
     aiProvider: "openai",
-    gemini: { model: "gemini-3.1-flash-lite" },
+    gemini: { model: "gemini-3.5-flash-lite" },
     openai: { apiKey: "", model: "gpt-5.4-mini" },
     structuredOutput: true,
   };
