@@ -228,7 +228,8 @@ Useful paths:
 - `src/validation/` - AI response and command-tool validation.
 - `src/safety/` - dangerous command rules.
 - `src/ui/` - Ink-based terminal UI.
-- `tests/unit/` - unit tests for CLI, config, validation, execution, UI, and safety logic.
+- `tests/unit/` - unit tests for CLI argument parsing, configuration, validation, prompt building, and UI logic.
+- `tests/integration/` - integration tests for full CLI processes, loopback HTTP providers, and PTY sessions.
 
 ### Linux validation
 

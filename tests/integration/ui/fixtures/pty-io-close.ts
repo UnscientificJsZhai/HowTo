@@ -2,7 +2,7 @@ import { writeFileSync } from "node:fs";
 import { toAppError } from "../../../../src/errors.js";
 import { createInteractiveSession } from "../../../../src/ui/interactive-session.js";
 import { runInteractiveCommand } from "../../../../src/ui/run-interactive-command.js";
-import { testCandidate, testRequest } from "../session-test-helpers.js";
+import { testCandidate, testRequest } from "../../../unit/ui/session-test-helpers.js";
 
 const events: string[] = [];
 const session = createInteractiveSession({ input: process.stdin, output: process.stdout });

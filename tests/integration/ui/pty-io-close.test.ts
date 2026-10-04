@@ -52,6 +52,11 @@ finally:
         timeout: 15000,
       },
     );
+    if (result.error && "code" in result.error && result.error.code === "ENOENT") {
+      assert.ok(!process.env.CI, "CI 必须提供 Python3 以执行真实 PTY 回归");
+      t.skip("未找到 Python3，真实 PTY 回归未执行");
+      return;
+    }
     assert.ifError(result.error);
     assert.equal(result.status, 0, result.stderr);
     assert.equal(existsSync(join(home, "executed")), false);

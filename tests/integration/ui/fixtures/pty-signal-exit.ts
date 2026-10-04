@@ -5,7 +5,7 @@ import { toAppError } from "../../../../src/errors.js";
 import { initializeConfig } from "../../../../src/init/index.js";
 import { createInteractiveSession } from "../../../../src/ui/interactive-session.js";
 import { runInteractiveCommand } from "../../../../src/ui/run-interactive-command.js";
-import { testCandidate, testRequest } from "../session-test-helpers.js";
+import { testCandidate, testRequest } from "../../../unit/ui/session-test-helpers.js";
 
 const phase = process.argv[2];
 const original = process.stdin;

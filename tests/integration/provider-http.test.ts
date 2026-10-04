@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { once } from "node:events";
 import test from "node:test";
 import { OpenAiCommandProvider } from "../../src/ai/openai.js";
-import { testRequest } from "./ui/session-test-helpers.js";
+import { testRequest } from "../unit/ui/session-test-helpers.js";
 
 test("真实 loopback HTTP: AbortSignal 中断请求", { timeout: 10000 }, async (t) => {
   let startedResolve!: () => void;
@@ -56,7 +56,7 @@ test("真实 loopback HTTP: 连接意外中断时安全失败", { timeout: 10000
   await assert.rejects(provider.generateCommands(testRequest()));
 });
 
-test("真实 loopback HTTP: 429/500 错误脱敏，不泄漏原始响应信息", { timeout: 10000 }, async () => {
+test("真实 loopback HTTP: 429/500 错误脱敏，不泄露原始响应信息", { timeout: 10000 }, async () => {
   for (const status of [429, 500]) {
     const server = createServer((req, res) => {
       req.resume();
