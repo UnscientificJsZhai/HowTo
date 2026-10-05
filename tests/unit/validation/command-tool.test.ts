@@ -142,3 +142,22 @@ test("PATH 空段按 POSIX 语义搜索当前目录", (t) => {
     assert.equal(checkCommandInPath(name, { PATH }).found, true, JSON.stringify(PATH));
   }
 });
+
+test("未设置 PATH 时不搜索当前目录，但仍检查显式路径", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "howto-path-unset-"));
+  const previousCwd = process.cwd();
+  t.after(() => {
+    process.chdir(previousCwd);
+    rmSync(root, { recursive: true, force: true });
+  });
+  process.chdir(root);
+  const name = "local-tool";
+  const absolutePath = join(root, name);
+  writeFileSync(absolutePath, "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+
+  for (const env of [{}, { PATH: undefined }]) {
+    assert.deepEqual(checkCommandInPath(name, env), { command: name, found: false });
+    assert.equal(checkCommandInPath(`./${name}`, env).found, true);
+    assert.equal(checkCommandInPath(absolutePath, env).resolvedPath, absolutePath);
+  }
+});

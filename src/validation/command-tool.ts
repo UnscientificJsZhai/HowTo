@@ -94,7 +94,11 @@ function buildPathCandidates(command: string, env: NodeJS.ProcessEnv): string[] 
     return [command];
   }
 
-  const pathValue = env.PATH ?? "";
+  const pathValue = env.PATH;
+  // 未设置 PATH 时 shell 会选择默认路径，不能将其当作当前目录。
+  if (pathValue === undefined) {
+    return [];
+  }
   const pathExt = process.platform === "win32" ? (env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM") : "";
   const extensions = process.platform === "win32" ? pathExt.split(";").filter(Boolean) : [""];
   const candidates: string[] = [];
