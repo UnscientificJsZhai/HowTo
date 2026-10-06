@@ -11,11 +11,10 @@ import { checkCommandInPath, type CommandPathCheck } from "./validation/command-
 import { generateValidatedCommandCandidates } from "./validation/generated-commands.js";
 import { ensureInteractiveTty } from "./ui/tty.js";
 import { toAppError } from "./errors.js";
-import { createInteractiveSession, type InteractiveSession } from "./ui/interactive-session.js";
-import { runInteractiveCommand } from "./ui/run-interactive-command.js";
-import { initializeConfig } from "./init/index.js";
+import type { InteractiveSession } from "./ui/interactive-session.js";
 import { renderTerminalSafeText } from "./terminal-text.js";
 import { readPackageVersion } from "./version.js";
+import { assertSupportedPlatform, resolveExecutionShell } from "./shell/execution-environment.js";
 
 interface CliResult {
   exitCode: number;
@@ -23,12 +22,14 @@ interface CliResult {
 
 async function run(argv: string[]): Promise<CliResult> {
   let session: InteractiveSession | undefined;
-  const getSession = () => {
+  const getSession = async () => {
     ensureInteractiveTty(process.stdin, process.stdout);
+    const { createInteractiveSession } = await import("./ui/interactive-session.js");
     session ??= createInteractiveSession({ input: process.stdin, output: process.stdout });
     return session;
   };
   try {
+    assertSupportedPlatform();
     const parsedCli = parseCliArgs(argv);
 
     if (parsedCli.options.version) {
@@ -38,12 +39,17 @@ async function run(argv: string[]): Promise<CliResult> {
 
     if (parsedCli.options.init) {
       ensureInteractiveTty(process.stdin, process.stdout);
+      const { initializeConfig } = await import("./init/index.js");
       await initializeConfig({
         cliOptions: parsedCli.options,
         env: process.env,
-        session: getSession(),
+        session: await getSession(),
       });
       return { exitCode: 0 };
+    }
+
+    if (!parsedCli.options.print) {
+      resolveExecutionShell();
     }
 
     const fileConfig = await readUserConfigFile();
@@ -64,10 +70,12 @@ async function run(argv: string[]): Promise<CliResult> {
 
     const config = hasExplicitAiProvider(parsedCli.options, process.env, fileConfig)
       ? loadConfig(parsedCli.options, process.env, fileConfig)
-      : await initializeConfig({
+      : await (
+          await import("./init/index.js")
+        ).initializeConfig({
           cliOptions: parsedCli.options,
           env: process.env,
-          session: getSession(),
+          session: await getSession(),
         });
     const useCommandPathCheck: CommandPathCheck | undefined =
       parsedCli.useCommand === undefined
@@ -105,8 +113,9 @@ async function run(argv: string[]): Promise<CliResult> {
       );
     }
 
+    const { runInteractiveCommand } = await import("./ui/run-interactive-command.js");
     const exitCode = await runInteractiveCommand({
-      session: getSession(),
+      session: await getSession(),
       provider,
       request: { ...promptRequest, systemPrompt, userPrompt },
     });
@@ -135,16 +144,24 @@ const isMain =
   fileURLToPath(import.meta.url) === resolveEntrypointPath(process.argv[1]);
 
 if (isMain) {
+  let outputFailed = false;
+  process.stdout.on("error", () => {
+    if (!outputFailed) {
+      outputFailed = true;
+      console.error("Error: failed to write standard output.");
+    }
+    process.exitCode = 1;
+  });
   run(process.argv.slice(2))
     .then((result) => {
-      process.exitCode = result.exitCode;
+      process.exitCode = outputFailed ? 1 : result.exitCode;
     })
     .catch((error: unknown) => {
       const appError = toAppError(error);
       if (appError.message !== "") {
         console.error(appError.message);
       }
-      process.exitCode = appError.exitCode;
+      process.exitCode = outputFailed ? 1 : appError.exitCode;
     });
 }
 

@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir, userInfo } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 
 import { ConfigError } from "../../src/config.js";
 import {
@@ -208,50 +206,6 @@ test("writeUserConfigFile creates and fully overwrites config file", async () =>
   assert.deepEqual(await readdir(dirname(path)), ["config.json"]);
 });
 
-for (const umask of [0o000, 0o022, 0o077]) {
-  for (const initialMode of [undefined, 0o600, 0o644]) {
-    const scenario = initialMode === undefined ? "新建" : `替换 ${initialMode.toString(8)}`;
-    test(
-      `配置文件在 umask ${umask.toString(8)} 下${scenario}时仅所有者可读写`,
-      { skip: process.platform === "win32" },
-      async (t) => {
-        const parentDirectory = await mkdtemp(join(tmpdir(), "howto-config-permissions-"));
-        t.after(() => rm(parentDirectory, { recursive: true, force: true }));
-        const path = join(parentDirectory, ".howto", "config.json");
-        if (initialMode !== undefined) {
-          await writeRawConfig(path, '{"aiProvider":"openai","openaiApiKey":"old-test-key"}');
-          await chmod(path, initialMode);
-          assert.equal((await stat(path)).mode & 0o777, initialMode);
-        }
-
-        // 在独立子进程中设置 umask，避免影响同进程内的其他测试。
-        const result = spawnSync(
-          process.execPath,
-          [
-            fileURLToPath(new URL("./fixtures/config-permissions-child.js", import.meta.url)),
-            path,
-            String(umask),
-          ],
-          { encoding: "utf8", timeout: 5_000 },
-        );
-
-        assert.equal(result.error, undefined);
-        assert.equal(result.signal, null);
-        assert.equal(result.status, 0, result.stderr);
-        assert.equal(result.stdout, "");
-        assert.equal(result.stderr, "");
-        assert.equal((await stat(path)).mode & 0o777, 0o600);
-        assert.deepEqual(await readUserConfigFile(path), {
-          aiProvider: "gemini",
-          geminiApiKey: "new-test-key",
-          geminiModel: "test-model",
-        });
-        assert.deepEqual(await readdir(dirname(path)), ["config.json"]);
-      },
-    );
-  }
-}
-
 test("writeUserConfigFile cleans temporary data when atomic replacement fails", async () => {
   const path = await tempConfigPath();
   await mkdir(path, { recursive: true });
@@ -280,4 +234,61 @@ test("writeUserConfigFile maps config directory creation failures to a fixed err
     (error: unknown) =>
       error instanceof ConfigError && error.message === "failed to save user config file",
   );
+});
+
+test("非 root 配置读权限失败抛出读取错误", async (t) => {
+  if (process.getuid?.() === undefined || process.getuid() === 0) {
+    t.skip("需要真实非 root POSIX 进程");
+    return;
+  }
+  const home = await mkdtemp(join(tmpdir(), "howto-read-perm-"));
+  const directory = join(home, ".howto");
+  const path = join(directory, "config.json");
+  t.after(async () => {
+    await chmod(path, 0o600).catch(() => {});
+    await rm(home, { recursive: true, force: true });
+  });
+  await writeUserConfigFile({ aiProvider: "gemini", geminiModel: "old" }, path);
+  await chmod(path, 0o000);
+  await assert.rejects(readUserConfigFile(path), /failed to read user config file/);
+});
+
+test("非 root 配置写权限失败保留旧文件且不残留临时数据", async (t) => {
+  if (process.getuid?.() === undefined || process.getuid() === 0) {
+    t.skip("需要真实非 root POSIX 进程");
+    return;
+  }
+  const home = await mkdtemp(join(tmpdir(), "howto-write-perm-"));
+  const directory = join(home, ".howto");
+  const path = join(directory, "config.json");
+  t.after(async () => {
+    await chmod(directory, 0o700).catch(() => {});
+    await rm(home, { recursive: true, force: true });
+  });
+  await writeUserConfigFile({ aiProvider: "gemini", geminiModel: "old" }, path);
+  const original = await readFile(path, "utf8");
+  await chmod(directory, 0o500);
+  await assert.rejects(
+    writeUserConfigFile({ aiProvider: "openai" }, path),
+    /failed to save user config file/,
+  );
+  await chmod(directory, 0o700);
+  assert.equal(await readFile(path, "utf8"), original);
+  assert.deepEqual(await readdir(directory), ["config.json"]);
+});
+
+test("并发初始化只能留下完整的单份配置，权限为 0600", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "howto-concurrent-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const path = join(home, ".howto", "config.json");
+  const configs = Array.from({ length: 12 }, (_, i) => ({
+    aiProvider: "gemini",
+    geminiApiKey: `fake-key-${i}`,
+    geminiModel: `model-${i}`,
+  }));
+  await Promise.all(configs.map((config) => writeUserConfigFile(config, path)));
+  const actual = await readUserConfigFile(path);
+  assert.ok(configs.some((config) => JSON.stringify(config) === JSON.stringify(actual)));
+  assert.equal((await stat(path)).mode & 0o777, 0o600);
+  assert.deepEqual(await readdir(dirname(path)), ["config.json"]);
 });

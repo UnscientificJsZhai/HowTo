@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ConfigError, hasExplicitAiProvider, loadConfig } from "../../src/config.js";
+import {
+  ConfigError,
+  DEFAULT_GEMINI_MODEL,
+  DEFAULT_OPENAI_MODEL,
+  hasExplicitAiProvider,
+  loadConfig,
+} from "../../src/config.js";
 
 test("hasExplicitAiProvider detects missing provider", () => {
   assert.equal(hasExplicitAiProvider({ print: false }, {}), false);
@@ -28,11 +34,11 @@ test("loadConfig uses model defaults after provider is configured", () => {
     aiProvider: "openai",
     gemini: {
       apiKey: undefined,
-      model: "gemini-3.1-flash-lite",
+      model: DEFAULT_GEMINI_MODEL,
     },
     openai: {
       apiKey: "",
-      model: "gpt-5.4-mini",
+      model: DEFAULT_OPENAI_MODEL,
       baseUrl: undefined,
     },
     structuredOutput: true,
@@ -62,7 +68,7 @@ test("loadConfig lets CLI options override environment values", () => {
       },
       openai: {
         apiKey: "",
-        model: "gpt-5.4-mini",
+        model: DEFAULT_OPENAI_MODEL,
         baseUrl: undefined,
       },
       structuredOutput: true,
@@ -93,7 +99,7 @@ test("loadConfig applies priority CLI over env over config file over defaults", 
       aiProvider: "openai",
       gemini: {
         apiKey: undefined,
-        model: "gemini-3.1-flash-lite",
+        model: DEFAULT_GEMINI_MODEL,
       },
       openai: {
         apiKey: "env-openai-key",
@@ -112,7 +118,7 @@ test("loadConfig lets config file override defaults", () => {
       aiProvider: "openai",
       gemini: {
         apiKey: undefined,
-        model: "gemini-3.1-flash-lite",
+        model: DEFAULT_GEMINI_MODEL,
       },
       openai: {
         apiKey: "",

@@ -13,8 +13,14 @@ export function usePasteAwareInput({
   onPaste,
   isInputActive = true,
   isPasteActive = true,
-}: Options): void {
+}: Options): boolean {
   // 原始会话按顺序交付完整粘贴；此 hook 不承担恢复或授予执行权限的职责。
-  useKeyboardInput(onInput, { isActive: isInputActive });
-  usePaste(onPaste, { isActive: isPasteActive });
+  const ready = useKeyboardInput(onInput, { isActive: isInputActive });
+  usePaste(
+    (input) => {
+      if (ready) onPaste(input);
+    },
+    { isActive: isPasteActive },
+  );
+  return ready;
 }

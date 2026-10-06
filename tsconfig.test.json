@@ -5,5 +5,5 @@
     "outDir": "dist-test",
     "noEmitOnError": true
   },
-  "include": ["src", "scripts", "tests/unit"]
+  "include": ["src", "tests"]
 }

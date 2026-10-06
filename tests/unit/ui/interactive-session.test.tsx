@@ -1101,3 +1101,29 @@ async function bounded<T>(promise: Promise<T>): Promise<T> {
     clearTimeout(timer);
   }
 }
+
+void test("同步交接排空失败仍恢复资源且禁止 execute/print", () => {
+  const input = new SessionFakeTty();
+  const output = new SessionFakeTty();
+  let released = 0;
+  const session = new InteractiveSession(
+    input as unknown as NodeJS.ReadStream,
+    output as unknown as NodeJS.WriteStream,
+    {
+      readPendingInput: () => {
+        throw new Error("unavailable kernel input");
+      },
+      releaseInput: () => {
+        released++;
+      },
+    },
+  );
+  let actions = 0;
+  assert.throws(() => session.handoff({ execute: () => ++actions, print: () => ++actions }));
+  assert.throws(() => session.dispose(), InteractiveSessionError);
+  assert.equal(actions, 0);
+  assert.equal(released, 1);
+  assert.equal(input.isRaw, false);
+  input.destroy();
+  output.destroy();
+});

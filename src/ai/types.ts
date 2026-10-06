@@ -7,6 +7,8 @@ export interface CommandCandidateContract {
   title: string;
   command: string;
   description: string;
+  dangerous: boolean;
+  dangerReason: string;
   placeholders: CommandPlaceholderContract[];
 }
 

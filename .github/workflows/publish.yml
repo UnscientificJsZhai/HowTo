@@ -36,7 +36,37 @@ jobs:
       - name: Validate release version
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: node scripts/validate-release-version.ts
+        shell: bash
+        run: |
+          node --input-type=commonjs <<'NODE'
+          const { readFileSync } = require("node:fs");
+
+          let packageJson;
+          try {
+            packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+          } catch {
+            process.stderr.write("failed to read package version for release validation\n");
+            process.exit(1);
+          }
+
+          const packageVersion =
+            typeof packageJson === "object" && packageJson !== null && !Array.isArray(packageJson)
+              ? packageJson.version
+              : undefined;
+          const releaseTag = process.env.RELEASE_TAG;
+
+          if (
+            typeof packageVersion !== "string" ||
+            packageVersion.length === 0 ||
+            typeof releaseTag !== "string" ||
+            (releaseTag !== packageVersion && releaseTag !== `v${packageVersion}`)
+          ) {
+            process.stderr.write("release tag must match package version\n");
+            process.exit(1);
+          }
+
+          process.stdout.write("Release tag matches package version.\n");
+          NODE
 
       - name: Resolve release commit
         id: release-commit

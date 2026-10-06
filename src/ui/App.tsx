@@ -12,7 +12,8 @@ import type {
   GenerateCommandsRequest,
 } from "../ai/types.js";
 import { generateValidatedCommandCandidates } from "../validation/generated-commands.js";
-import { detectDangerousCommand, type DangerousCommandMatch } from "../safety/dangerous-command.js";
+import type { DangerousCommandMatch } from "../safety/dangerous-command.js";
+import { resolveCommandDanger } from "../safety/command-risk.js";
 import { resolveCandidatePlaceholders, type ResolvedCommand } from "./placeholder-logic.js";
 import { InteractionCancelledError } from "./tty.js";
 import { usePhysicalStdoutRows } from "./resize-safe-output.js";
@@ -54,7 +55,7 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
     onError(new InteractionCancelledError());
   }, [onError, session]);
 
-  useKeyboardInput((input: string, key: Key) => {
+  const inputReady = useKeyboardInput((input: string, key: Key) => {
     if (frameRows === 0) return;
     if (status !== "loading") return;
 
@@ -105,7 +106,7 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
         const resolved = resolveCandidatePlaceholders(candidate, new Map());
         setFinalCommand(resolved.command);
         setResolvedValues(resolved.values);
-        setDanger(detectDangerousCommand(resolved.command));
+        setDanger(resolveCommandDanger(resolved.command, candidate));
         setStatus("confirming");
       } catch (error: unknown) {
         const appError = normalizeError(error);
@@ -120,7 +121,7 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
     if (!selectedCandidate) return;
     setResolvedValues(resolved.values);
     setFinalCommand(resolved.command);
-    setDanger(detectDangerousCommand(resolved.command));
+    setDanger(resolveCommandDanger(resolved.command, selectedCandidate));
     setStatus("confirming");
   };
 
@@ -142,7 +143,7 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
   return (
     <Box
       flexDirection="column"
-      display={isFrameVisible ? "flex" : "none"}
+      display={isFrameVisible && inputReady ? "flex" : "none"}
       maxHeight={frameRows}
       overflowY="hidden"
     >

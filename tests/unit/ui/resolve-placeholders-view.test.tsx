@@ -95,6 +95,8 @@ void test("ResolvePlaceholdersView renders field line breaks as visible markers"
     title: "Print\r\nvalues",
     command: "printf 'literal\r\npart' {{first}} && rm -rf /tmp/{{second}}",
     description: "Describe\ncandidate",
+    dangerous: false,
+    dangerReason: "",
     placeholders: [
       { name: "first", description: "First\r\nvalue" },
       { name: "second", description: "Second\nvalue" },
@@ -104,6 +106,8 @@ void test("ResolvePlaceholdersView renders field line breaks as visible markers"
     title: "Print␍␊values",
     command: "printf 'literal␍␊part' {{first}} && rm -rf /tmp/{{second}}",
     description: "Describe␊candidate",
+    dangerous: false,
+    dangerReason: "",
     placeholders: [
       { name: "first", description: "First␍␊value" },
       { name: "second", description: "Second␊value" },
@@ -143,6 +147,8 @@ void test("SelectedCommandDisplay renders current buffer line breaks as visible 
     title: "Print value",
     command: "printf 'literal' {{first}}",
     description: "Print the provided value",
+    dangerous: false,
+    dangerReason: "",
     placeholders: [{ name: "first", description: "First value" }],
   };
   const renderBuffer = (value: string) =>
@@ -170,6 +176,8 @@ function candidate(): CommandCandidateContract {
     title: "Find file",
     command: 'find {{root}} -name "{{filename}}"',
     description: "Find a file by name",
+    dangerous: false,
+    dangerReason: "",
     placeholders: [
       { name: "root", description: "Search root" },
       { name: "filename", description: "File name" },

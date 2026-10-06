@@ -5,7 +5,14 @@ globalThis.fetch = (input, init) => {
   const request = new Request(input, init);
   if (new URL(request.url).protocol === "data:") return originalFetch(input, init);
   requests += 1;
-  const command = { title: "测试", command: "ls", description: "测试", placeholders: [] };
+  const command = {
+    title: "测试",
+    command: "ls",
+    description: "测试",
+    dangerous: false,
+    dangerReason: "",
+    placeholders: [],
+  };
   return Promise.resolve(
     Response.json({ choices: [{ message: { content: JSON.stringify({ commands: [command] }) } }] }),
   );

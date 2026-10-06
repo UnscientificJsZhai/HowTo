@@ -279,7 +279,7 @@ for (const [command, reason] of [
 }
 
 test("明确识别现有 shell 包装集合及绝对路径", () => {
-  for (const shell of ["sh", "bash", "zsh", "fish", "csh", "tcsh", "ksh", "dash"]) {
+  for (const shell of ["sh", "bash", "zsh", "fish", "csh", "tcsh", "ksh", "dash", "ash", "hush"]) {
     assert.equal(isShellExecutable(shell), true);
     assert.equal(isShellExecutable(`/bin/${shell}`), true);
   }

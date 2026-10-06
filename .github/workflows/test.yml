@@ -6,36 +6,107 @@ on:
       - master
       - "develop/*"
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-
+  quality:
+    name: Lint and formatting
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: "24.19.0"
           cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
 
-      - name: Install dependencies
-        run: npm ci
+  test:
+    name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            node: "22.22.1"
+          - os: ubuntu-24.04
+            node: "24.19.0"
+          - os: macos-14
+            node: "24.19.0"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Install Linux shell prerequisite
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zsh
+      - name: Verify runtime and real PTY prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -p 'JSON.stringify({node:process.version,uv:process.versions.uv,arch:process.arch})'
+          npm --version
+          test "$(id -u)" -ne 0
+          test -x /bin/sh && test -x /bin/bash && test -x /bin/zsh
+          PATH=/usr/bin:/bin python3 --version
+          PATH=/usr/bin:/bin python3 -c 'import os,pty; master,slave=pty.openpty(); os.close(slave); os.close(master)'
+      - run: npm ci
+      - run: npm run build
+      - name: Test with diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test 2>&1 | tee test.log
+          if [ "${{ runner.os }}" = Linux ] && grep -Eq 'skipped [1-9][0-9]*' test.log; then
+            echo 'Linux acceptance cannot pass with skipped tests'
+            exit 1
+          fi
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-failure-${{ matrix.os }}-${{ matrix.node }}
+          path: test.log
+          retention-days: 7
+      - name: Pack candidate
+        if: matrix.os == 'ubuntu-24.04' && matrix.node == '24.19.0'
+        run: npm pack --dry-run && npm pack
+      - name: Upload candidate package
+        if: matrix.os == 'ubuntu-24.04' && matrix.node == '24.19.0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: |
+            *.tgz
+            dist-test/tests/package-smoke.js
+          retention-days: 7
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Check formatting
-        run: npm run format:check
-
-      - name: Build
-        run: npm run build
-
-      - name: Test
-        run: npm test
+  package-smoke:
+    name: Installed package (Node ${{ matrix.node }})
+    needs: test
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22.0.0", "24.19.0"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: candidate
+      - name: Install tarball without development dependencies
+        run: npm install --global --ignore-scripts --omit=dev --prefix "${RUNNER_TEMP}/howto 空格" ./candidate/*.tgz
+      - name: Smoke installed npm bin with real PTY
+        run: node candidate/dist-test/tests/package-smoke.js "${RUNNER_TEMP}/howto 空格/bin/howto"

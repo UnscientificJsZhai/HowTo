@@ -8,6 +8,7 @@ import {
   replaceCommandPlaceholders,
   resolveCandidatePlaceholders,
 } from "../../../src/ui/placeholder-logic.js";
+import { resolveCommandDanger } from "../../../src/safety/command-risk.js";
 
 void test("createPlaceholderResolution initializes first placeholder state", () => {
   const state = createPlaceholderResolution(twoPlaceholderCandidate());
@@ -25,6 +26,8 @@ void test("createPlaceholderResolution rejects candidates without placeholders",
         title: "List files",
         command: "ls",
         description: "List current directory",
+        dangerous: false,
+        dangerReason: "",
         placeholders: [],
       }),
     PlaceholderResolutionError,
@@ -92,6 +95,8 @@ void test("resolveCandidatePlaceholders replaces repeated placeholder references
     title: "Echo twice",
     command: "printf '%s %s' {{name}} {{name}}",
     description: "Print a value twice",
+    dangerous: false,
+    dangerReason: "",
     placeholders: [{ name: "name", description: "Value to print" }],
   };
 
@@ -146,6 +151,8 @@ void test("resolveCandidatePlaceholders throws when placeholders remain unresolv
     title: "Echo missing",
     command: "echo {{known}} {{missing}}",
     description: "Print values",
+    dangerous: false,
+    dangerReason: "",
     placeholders: [{ name: "known", description: "Known value" }],
   };
 
@@ -157,11 +164,23 @@ void test("resolveCandidatePlaceholders throws when placeholders remain unresolv
   );
 });
 
+void test("占位符替换后重新判断最终命令风险，不执行危险字符串", () => {
+  const candidate = { dangerous: false, dangerReason: "" };
+  const command = replaceCommandPlaceholders(
+    "printf {{value}}",
+    new Map([["value", "ok; rm -rf /"]]),
+  );
+  assert.ok(resolveCommandDanger(command, candidate));
+  assert.equal(resolveCommandDanger("printf ok", candidate), undefined);
+});
+
 function twoPlaceholderCandidate(): CommandCandidateContract {
   return {
     title: "Find file",
     command: 'find {{root}} -name "{{filename}}"',
     description: "Find a file by name",
+    dangerous: false,
+    dangerReason: "",
     placeholders: [
       { name: "root", description: "Search root" },
       { name: "filename", description: "File name" },

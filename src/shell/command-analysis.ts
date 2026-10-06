@@ -33,7 +33,7 @@ type Token =
 type LexResult = { kind: "parsed"; tokens: Token[] } | UnsupportedShellCommand;
 
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
-const SHELLS = new Set(["sh", "bash", "zsh", "fish", "csh", "tcsh", "ksh", "dash"]);
+const SHELLS = new Set(["sh", "bash", "zsh", "fish", "csh", "tcsh", "ksh", "dash", "ash", "hush"]);
 const REINTERPRETING_PREFIXES = new Set([
   "command",
   "exec",

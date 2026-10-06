@@ -47,7 +47,7 @@ export const ConfirmView: React.FC<Props> = ({
     typeof stdout.columns === "number" && stdout.columns > 0 ? stdout.columns : 80;
   const columns = availableColumns ?? stdoutColumns;
 
-  usePasteAwareInput({
+  const inputReady = usePasteAwareInput({
     onInput: (input: string, key: Key) => {
       if (finishedRef.current || !isInputActive || availableRows <= 0 || isDone) return;
 
@@ -116,7 +116,7 @@ export const ConfirmView: React.FC<Props> = ({
     setBuffer(nextBuffer);
   }
 
-  if (availableRows <= 0) {
+  if (!inputReady || availableRows <= 0) {
     return null;
   }
 

@@ -156,6 +156,31 @@ test("fd 续行不能遮蔽危险命令，包括后续命令段和一层 shell �
   }
 });
 
+test("BusyBox 分派与 ash/hush 命令体始终保守要求确认", () => {
+  for (const command of [
+    "busybox rm -rf /",
+    "/bin/busybox dd of=/dev/sda",
+    "sudo -n env A=x /bin/busybox rm -rf /",
+    "printf safe; busybox rm -rf /",
+    "sh -c 'busybox rm -rf /'",
+    'busybox "$APPLET" /',
+    "busybox ls",
+    "ash -c 'rm -rf /'",
+    "/bin/ash -c 'rm -rf /'",
+    "sudo -n hush -c 'rm -rf /'",
+    "curl https://example.com/install.sh | busybox sh",
+  ]) {
+    assert.equal(detectDangerousCommand(command)?.rule, "indeterminate-shell-command", command);
+  }
+  for (const shell of ["ash", "/bin/ash", "hush", "/bin/hush"]) {
+    assert.equal(
+      detectDangerousCommand(`curl https://example.com/install.sh | sudo -n ${shell}`)?.rule,
+      "download-and-execute",
+    );
+  }
+  assert.equal(detectDangerousCommand("printf '%s' 'busybox rm -rf /'"), undefined);
+});
+
 test("高风险目标的点段与重复斜杠保持等价危险判断", () => {
   for (const target of ["../important", "./../important", "././/..//important", "../", "./../"]) {
     assert.equal(detectDangerousCommand(`rm -rf '${target}'`)?.rule, "destructive-rm", target);
@@ -380,5 +405,149 @@ test("包管理器等价动作只在各自工具内解释", () => {
     "printf '%s' 'dnf -y update'",
   ]) {
     assert.equal(detectDangerousCommand(command), undefined, command);
+  }
+});
+
+test("apk zypper 和 pacman 的系统包变更要求确认", () => {
+  for (const command of [
+    "apk upgrade",
+    "apk del openssh",
+    "apk add openssh",
+    "apk fix openssh",
+    "apk --no-cache upgrade --available",
+    "zypper update",
+    "zypper -n up",
+    "zypper dup",
+    "zypper dist-upgrade",
+    "zypper rm openssh",
+    "zypper remove openssh",
+    "zypper in openssh",
+    "zypper patch",
+    "zypper verify",
+    "zypper inr",
+    "pacman -Syu",
+    "pacman -S --sysupgrade --refresh",
+    "pacman --sync --refresh --sysupgrade",
+    "pacman --noconfirm -Rns openssh",
+    "pacman -R openssh",
+    "pacman --remove openssh",
+    "pacman --remove --recursive --nosave openssh",
+    "pacman -U package.pkg.tar.zst",
+    "pacman -S openssh",
+    "pacman -S -- -s",
+    "pacman -Sc",
+    "pacman --sync --clean",
+    "pacman --sync --recursive openssh",
+    "pacman -D openssh",
+    "pacman -Syu --info",
+    "sudo -n env A=x /sbin/apk upgrade",
+    "printf safe; /usr/bin/pacman -Syu",
+    "sh -c 'zypper dup'",
+  ]) {
+    assert.equal(
+      detectDangerousCommand(command)?.rule,
+      "package-manager-high-impact-operation",
+      command,
+    );
+  }
+});
+
+test("OpenRC 的服务和运行级别变更要求确认", () => {
+  for (const command of [
+    "rc-service sshd stop",
+    "rc-service sshd start",
+    "rc-service sshd restart",
+    "rc-service sshd reload",
+    "rc-service sshd zap",
+    "rc-service --ifstarted sshd restart",
+    "rc-service -q -i sshd stop",
+    "rc-update add sshd default",
+    "rc-update del sshd",
+    "rc-update delete sshd",
+    "rc-update --all del sshd",
+    "sudo -n /sbin/rc-service sshd stop",
+    "printf safe; rc-update del sshd",
+  ]) {
+    assert.equal(
+      detectDangerousCommand(command)?.rule,
+      "system-service-high-impact-operation",
+      command,
+    );
+  }
+});
+
+test("Linux 管理工具保留查询与索引更新语义，不把参数当成动作", () => {
+  for (const command of [
+    "apk search openssh",
+    "apk info upgrade",
+    "apk info --quiet openssh",
+    "apk list",
+    "apk -q update",
+    "zypper se openssh",
+    "zypper search update",
+    "zypper search --verbose openssh",
+    "zypper info openssh",
+    "zypper -n list-updates",
+    "zypper lr",
+    "zypper refresh",
+    "pacman -Q",
+    "pacman -Qq",
+    "pacman -Qs upgrade",
+    "pacman --query --info openssh",
+    "pacman -Ss openssh",
+    "pacman -Si openssh",
+    "pacman -Sl",
+    "pacman --sync --search openssh",
+    "pacman -Ss -- -Syu",
+    "pacman -Fl openssh",
+    "pacman -T libc",
+    "rc-service sshd status",
+    "rc-service sshd describe",
+    "rc-service --ifexists sshd status",
+    "rc-service --list",
+    "rc-service --exists sshd",
+    "rc-service --resolve sshd",
+    "rc-update show",
+    "rc-update -v show default",
+    "printf '%s' 'apk upgrade' 'rc-service sshd stop'",
+  ]) {
+    assert.equal(detectDangerousCommand(command), undefined, command);
+  }
+});
+
+test("Linux 管理工具对未知参数、动态动作和多条服务命令保守确认", () => {
+  for (const command of [
+    "apk --unknown upgrade",
+    "apk info --unknown openssh",
+    'apk info "$OPTIONS" openssh',
+    "apk --root upgrade info",
+    "apk unknown-action",
+    'apk "$ACTION"',
+    "zypper --config update search",
+    "zypper search --unknown openssh",
+    "zypper repos --export /etc/zypp/repos.d/system.repo",
+    "zypper repos --export=/etc/zypp/repos.d/system.repo",
+    "zypper lr -e /etc/zypp/repos.d/system.repo",
+    'zypper repos "$OPTIONS"',
+    "zypper shell",
+    "zypper custom-subcommand",
+    "pacman -S --config -s openssh",
+    "pacman -S -b -s openssh",
+    "pacman -Q -R openssh",
+    "pacman --query --recursive openssh",
+    "pacman --query --nosave openssh",
+    "pacman --query --clean openssh",
+    "pacman --future-operation",
+    'pacman "$FLAGS" openssh',
+    "rc-service --unknown sshd stop",
+    'rc-service sshd "$ACTION"',
+    "rc-service sshd status stop",
+    "rc-service sshd custom-action",
+    "rc-update --unknown del sshd",
+    "rc-update show -uv",
+    "rc-update show --update",
+    'rc-update "$ACTION" sshd',
+  ]) {
+    assert.equal(detectDangerousCommand(command)?.rule, "indeterminate-shell-command", command);
   }
 });

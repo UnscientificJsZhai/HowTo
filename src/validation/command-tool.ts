@@ -1,4 +1,4 @@
-import { accessSync, constants } from "fs";
+import { accessSync, constants, statSync } from "fs";
 import { delimiter, isAbsolute, join } from "path";
 
 import type { CommandGenerationContract } from "../ai/types.js";
@@ -94,16 +94,16 @@ function buildPathCandidates(command: string, env: NodeJS.ProcessEnv): string[] 
     return [command];
   }
 
-  const pathValue = env.PATH ?? "";
+  const pathValue = env.PATH;
+  // 未设置 PATH 时 shell 会选择默认路径，不能将其当作当前目录。
+  if (pathValue === undefined) {
+    return [];
+  }
   const pathExt = process.platform === "win32" ? (env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM") : "";
   const extensions = process.platform === "win32" ? pathExt.split(";").filter(Boolean) : [""];
   const candidates: string[] = [];
 
   for (const directory of pathValue.split(delimiter)) {
-    if (directory === "") {
-      continue;
-    }
-
     for (const extension of extensions) {
       candidates.push(
         command.toLowerCase().endsWith(extension.toLowerCase())
@@ -119,7 +119,7 @@ function buildPathCandidates(command: string, env: NodeJS.ProcessEnv): string[] 
 function isExecutable(path: string): boolean {
   try {
     accessSync(path, constants.X_OK);
-    return true;
+    return statSync(path).isFile();
   } catch {
     return false;
   }

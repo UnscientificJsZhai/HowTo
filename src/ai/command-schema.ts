@@ -10,7 +10,7 @@ export const COMMAND_GENERATION_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["title", "command", "description", "placeholders"],
+        required: ["title", "command", "description", "dangerous", "dangerReason", "placeholders"],
         properties: {
           title: {
             type: "string",
@@ -19,6 +19,12 @@ export const COMMAND_GENERATION_SCHEMA = {
             type: "string",
           },
           description: {
+            type: "string",
+          },
+          dangerous: {
+            type: "boolean",
+          },
+          dangerReason: {
             type: "string",
           },
           placeholders: {

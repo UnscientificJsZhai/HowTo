@@ -53,6 +53,8 @@ function validateCommandCandidate(value: unknown, index: number): CommandCandida
   const title = readNonEmptyString(candidate.title, `${path}.title`);
   const command = readNonEmptyString(candidate.command, `${path}.command`);
   const description = readNonEmptyString(candidate.description, `${path}.description`);
+  const dangerous = readBoolean(candidate.dangerous, `${path}.dangerous`);
+  const dangerReason = readDangerReason(candidate.dangerReason, dangerous, `${path}.dangerReason`);
   const placeholders = readPlaceholders(candidate.placeholders, path);
 
   validatePlaceholderReferences(command, placeholders, path);
@@ -61,6 +63,8 @@ function validateCommandCandidate(value: unknown, index: number): CommandCandida
     title,
     command,
     description,
+    dangerous,
+    dangerReason,
     placeholders,
   };
 }
@@ -130,7 +134,33 @@ function validatePlaceholderReferences(
   }
 }
 
+function readBoolean(value: unknown, path: string): boolean {
+  if (typeof value !== "boolean") {
+    throw new AiResponseValidationError(`${path} must be a boolean`);
+  }
+
+  return value;
+}
+
+function readDangerReason(value: unknown, dangerous: boolean, path: string): string {
+  const reason = dangerous ? readNonEmptyString(value, path) : readString(value, path);
+  if (!dangerous && reason !== "") {
+    throw new AiResponseValidationError(`${path} must be empty when dangerous is false`);
+  }
+
+  return reason;
+}
+
 function readNonEmptyString(value: unknown, path: string): string {
+  const text = readString(value, path);
+  if (text.trim() === "") {
+    throw new AiResponseValidationError(`${path} must be a non-empty string`);
+  }
+
+  return text;
+}
+
+function readString(value: unknown, path: string): string {
   if (typeof value !== "string") {
     throw new AiResponseValidationError(`${path} must be a string`);
   }
@@ -139,10 +169,6 @@ function readNonEmptyString(value: unknown, path: string): string {
     throw new AiResponseValidationError(
       `${path} must not contain terminal control characters other than CR or LF`,
     );
-  }
-
-  if (value.trim() === "") {
-    throw new AiResponseValidationError(`${path} must be a non-empty string`);
   }
 
   return value;
