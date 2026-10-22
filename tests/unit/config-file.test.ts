@@ -189,6 +189,16 @@ test("readUserConfigFile rejects invalid known field types", async () => {
   await assert.rejects(() => readUserConfigFile(invalidFieldPath), ConfigError);
 });
 
+test("配置文件支持读写 ChatGPT 选择字段", async () => {
+  const path = await tempConfigPath();
+  const config = {
+    chatgptAccount: "personal",
+    chatgptModel: "available-model",
+  };
+  await writeUserConfigFile(config, path);
+  assert.deepEqual(await readUserConfigFile(path), config);
+});
+
 test("writeUserConfigFile creates and fully overwrites config file", async () => {
   const path = await tempConfigPath();
 

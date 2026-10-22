@@ -9,8 +9,54 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { run } from "../../src/index.js";
+import { createChatGptStore } from "../../src/auth/chatgpt/storage.js";
 
 const CLI_ENTRYPOINT = fileURLToPath(new URL("../../src/index.js", import.meta.url));
+
+for (const configContent of ["{invalid JSON", '{"openaiModel":12}']) {
+  test("独立 ChatGPT 状态及显式账号管理不被损坏的普通配置阻断", async () => {
+    const homeDirectory = await mkdtemp(join(tmpdir(), "howto-account-command-"));
+    try {
+      const store = createChatGptStore(homeDirectory);
+      await store.withLock((transaction) =>
+        transaction.save({
+          version: 1,
+          accounts: [
+            {
+              id: "account-test",
+              label: "Test account",
+              clientId: "oaiapp_test",
+              issuer: "https://auth.openai.com",
+              generation: 0,
+            },
+          ],
+        }),
+      );
+      const path = join(homeDirectory, ".howto", "config.json");
+      await writeFile(path, configContent, "utf8");
+      const env = { HOME: homeDirectory, PATH: process.env.PATH, SHELL: "/unsupported-shell" };
+      const status = await runCliProcess(["--chatgpt-status"], env, homeDirectory);
+      assert.equal(status.exitCode, 0);
+      assert.match(status.stdout.toString(), /account-test/);
+      const models = await runCliProcess(
+        ["--chatgpt-models", "--chatgpt-account", "account-test"],
+        env,
+        homeDirectory,
+      );
+      assert.equal(models.exitCode, 2);
+      assert.match(models.stderr.toString(), /ChatGPT sign-in is required/);
+      const logout = await runCliProcess(
+        ["--chatgpt-logout", "--chatgpt-account", "account-test"],
+        env,
+        homeDirectory,
+      );
+      assert.equal(logout.exitCode, 0);
+      assert.equal(await readFile(path, "utf8"), configContent);
+    } finally {
+      await rm(homeDirectory, { recursive: true, force: true });
+    }
+  });
+}
 
 for (const corruptConfig of [false, true]) {
   test(`--version 在非 TTY、${corruptConfig ? "配置损坏" : "未初始化"}时从任意工作目录输出包版本`, async () => {

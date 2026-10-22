@@ -22,7 +22,7 @@ _在终端中用 AI 快速找到可执行命令。_
 - **指定工具模式** - 使用 `howto use <command>` 要求候选项围绕某个 CLI 工具生成。
 - **交互式确认流程** - 选择候选项、填写占位符，并在执行前确认最终命令。
 - **非交互打印模式** - 使用 `--print` 输出候选命令，不进入 TTY 交互，也不执行命令。
-- **支持 OpenAI 和 Gemini** - 可通过 CLI 参数、环境变量或 `~/.howto/config.json` 配置 provider。
+- **支持 ChatGPT、OpenAI 和 Gemini** - 可使用 ChatGPT 登录与符合条件的账户额度，也可继续使用 API key 和 OpenAI 兼容服务。
 - **本地优先校验** - 本地校验 AI JSON 输出、占位符引用、`use <command>` 候选项以及明显危险命令。
 
 ## 安装
@@ -60,6 +60,22 @@ howto --init
 ```
 
 初始化程序会把用户级配置写入 `~/.howto/config.json`。
+
+选择 **Continue with ChatGPT** 后，在系统浏览器完成登录和额度授权，再选择账号及该账号实时可用的模型。使用官方开源 Sign in with ChatGPT 流程，本机回调仅监听 `127.0.0.1`，无需 client secret 或安装 Codex。重新初始化会保留其他 provider 的 API key 和既有 `structuredOutput` 设置。
+
+也可单独管理账号：
+
+```bash
+howto --chatgpt-login
+howto --chatgpt-status
+howto --chatgpt-models --chatgpt-account <账号ID>
+howto --chatgpt-login --chatgpt-account <账号ID>
+howto --chatgpt-logout --chatgpt-account <账号ID>
+```
+
+不带账号 ID 的登录会新增注册；指定 ID 则复用该注册重新登录。单独登录不改变 provider、默认账号或模型，使用 `howto --init` 保存选择。普通生成和 `--print` 不会自动打开登录页。模型来自该账号目录中的可见 slug，不自动换模型，也不回退到 API key 计费。
+
+凭证独立保存在 `~/.howto/chatgpt/`，目录仅本人可访问、文件仅本人可读写，刷新和注销跨进程互斥；`config.json` 只保存账号与模型选择。刷新响应丢失时需要重新登录，避免重放可能已经消费的旋转 token。注销会保留注册映射，并在远程撤销未确认时明确提示。额度及授权在 [ChatGPT 设置](https://chatgpt.com/settings/usage) 中管理；可用性取决于账号资格和当前模型目录，参见[官方开源流程](https://developers.openai.com/siwc/token-sharing-open-source)。
 
 初始化和占位符输入支持按完整字符退格，包括 emoji 和组合字符；Alt/Meta 快捷键不会作为文本写入配置字段。
 按键释放事件不会触发确认、取消、导航或再次删除；一次 Enter 的按下和释放不能跳过最终确认。
@@ -112,7 +128,8 @@ howto --ai-provider openai --print 列出监听的端口
 - `--init` - 启动交互式 provider 配置，并保存 `~/.howto/config.json`。
 - `--version` - 单独使用，输出当前包版本号并成功退出；无需配置或 TTY，不调用 AI。
 - `--print` - 打印已校验的命令候选项并退出，不执行命令。
-- `--ai-provider <openai|gemini>` - 选择 AI provider。
+- `--ai-provider <openai|gemini|chatgpt>` - 选择 AI provider。
+- `--chatgpt-account <id>` / `--chatgpt-model <slug>` - 选择已保存的 ChatGPT 注册和当前可用模型。
 - `--gemini-api-key <key>` - 提供 Gemini API key。
 - `--gemini-model <model>` - 覆盖 Gemini 模型。
 - `--openai-api-url <url>` - 使用自定义 OpenAI 兼容 base URL。
@@ -147,7 +164,9 @@ howto "explain this flag" -- --force
 
 对每个配置项，优先级中第一个已配置的来源生效：
 
-- `--ai-provider` / `HOWTO_AI_PROVIDER` / `aiProvider` - `openai` 或 `gemini`；无默认值。
+- `--ai-provider` / `HOWTO_AI_PROVIDER` / `aiProvider` - `openai`、`gemini` 或 `chatgpt`；无默认值。
+- `--chatgpt-account` / `HOWTO_CHATGPT_ACCOUNT` / `chatgptAccount` - 本机 ChatGPT 注册 ID；保存了多个账号时必须明确指定。
+- `--chatgpt-model` / `HOWTO_CHATGPT_MODEL` / `chatgptModel` - `--chatgpt-models` 返回的可见模型 slug；没有固定默认值。
 - `--gemini-api-key` / `HOWTO_GEMINI_API_KEY` / `geminiApiKey` - Gemini API key；Gemini 必填。
 - `--gemini-model` / `HOWTO_GEMINI_MODEL` / `geminiModel` - Gemini 模型；默认 `gemini-3.5-flash-lite`。
 - `--openai-api-url` / `HOWTO_OPENAI_API_URL` / `openaiApiUrl` - OpenAI 兼容 base URL；默认 `https://api.openai.com/v1`。

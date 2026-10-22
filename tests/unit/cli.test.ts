@@ -126,6 +126,67 @@ test("parseCliArgs 将 -- 后的 --version 保留为位置参数", () => {
   });
 });
 
+test("ChatGPT 独立动作无需问题，并支持显式账号", () => {
+  for (const action of ["login", "logout", "status", "models"] as const) {
+    assert.deepEqual(parseCliArgs([`--chatgpt-${action}`]), {
+      options: { print: false, chatgptAction: action },
+      arguments: [],
+    });
+    assert.deepEqual(parseCliArgs(["--chatgpt-account=work", `--chatgpt-${action}`]), {
+      options: { print: false, chatgptAction: action, chatgptAccount: "work" },
+      arguments: [],
+    });
+  }
+});
+
+test("ChatGPT 独立动作拒绝互斥动作、问题及生成参数", () => {
+  const invalidArguments = [
+    ["--chatgpt-login", "--chatgpt-logout"],
+    ["--chatgpt-status", "--chatgpt-status"],
+    ["--chatgpt-login=true"],
+    ["--chatgpt-models="],
+    ["--chatgpt-login", "--print"],
+    ["--chatgpt-login", "--init"],
+    ["--chatgpt-login", "--version"],
+    ["--chatgpt-login", "--ai-provider=chatgpt"],
+    ["--chatgpt-models", "--chatgpt-model=model"],
+    ["--chatgpt-status", "question"],
+    ["--chatgpt-status", "use", "git", "question"],
+    ["--chatgpt-logout", "--", "question"],
+  ];
+  for (const args of invalidArguments) assert.throws(() => parseCliArgs(args), CliParseError);
+});
+
+test("ChatGPT 生成参数保留选项终止符与自然语言问题语义", () => {
+  assert.deepEqual(
+    parseCliArgs([
+      "--ai-provider=chatgpt",
+      "--chatgpt-account",
+      "work",
+      "--chatgpt-model=available-model",
+      "--print",
+      "login",
+      "--",
+      "--chatgpt-login",
+    ]),
+    {
+      options: {
+        print: true,
+        aiProvider: "chatgpt",
+        chatgptAccount: "work",
+        chatgptModel: "available-model",
+      },
+      question: "login",
+      arguments: ["--chatgpt-login"],
+    },
+  );
+  assert.equal(parseCliArgs(["--", "--chatgpt-login"]).question, "--chatgpt-login");
+  for (const option of ["--chatgpt-account", "--chatgpt-model"]) {
+    assert.throws(() => parseCliArgs([option]), CliParseError);
+    assert.throws(() => parseCliArgs([option, "--print", "question"]), CliParseError);
+  }
+});
+
 test("--version 用法错误仅输出错误与 Usage，退出码为 2", async () => {
   for (const args of [["--version=true"], ["--version", "--init"], ["question", "--version"]]) {
     const { value, logs, errors } = await captureConsoleOutput(() => run(args));

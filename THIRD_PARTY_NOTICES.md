@@ -9,6 +9,7 @@ Each dependency is distributed under its own license.
 | --------------- | -------- | ---------- |
 | `@google/genai` | `2.18.0` | Apache-2.0 |
 | `ink`           | `7.1.1`  | MIT        |
+| `jose`          | `6.2.13` | MIT        |
 | `openai`        | `7.5.0`  | Apache-2.0 |
 | `react`         | `19.2.8` | MIT        |
 | `signal-exit`   | `3.0.7`  | ISC        |

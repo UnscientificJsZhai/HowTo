@@ -214,7 +214,7 @@ test("initialization validation failure preserves the existing config byte for b
     () =>
       validateAndPersistInitializationConfig(
         { provider: "openai", apiKey: "new-secret", model: "openai-model" },
-        { print: false, aiProvider: "gemini" },
+        { print: false, structuredOutput: "invalid" },
         { HOME: homeDirectory },
       ),
     ConfigError,
@@ -254,6 +254,7 @@ test("initialization returns merged overrides but persists only submitted provid
       model: "submitted-openai-model",
       baseUrl: "https://submitted.example/v1",
     },
+    chatgpt: { account: undefined, model: undefined },
     structuredOutput: false,
   });
   assert.deepEqual(
@@ -289,6 +290,106 @@ test("input step escape returns to provider selection", () => {
   const update = applyInitializationInput(state, keypress("", { escape: true }));
 
   assert.deepEqual(update.state, createInitialInitializationState());
+});
+
+test("第三个 provider 使用 ChatGPT 异步初始化，不进入 API key 字段", () => {
+  const initial = createInitialInitializationState();
+  const selected = applyInitializationInput(initial, keypress("3"));
+  assert.deepEqual(selected, { state: { step: "chatgpt" } });
+  const arrowSelected = applyInitializationInput(initial, keypress("", { upArrow: true }));
+  assert.deepEqual(
+    applyInitializationInput(arrowSelected.state, keypress("", { return: true })),
+    selected,
+  );
+  assert.deepEqual(
+    applyInitializationInput(selected.state, keypress("", { escape: true })).state,
+    initial,
+  );
+});
+
+test("ChatGPT 初始化保存选择并保留两个 API provider 与输出设置，覆盖不落盘", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "howto-chatgpt-init-"));
+  const configPath = join(homeDirectory, ".howto", "config.json");
+  const previous = {
+    aiProvider: "openai",
+    openaiApiKey: "saved-openai-key",
+    openaiModel: "saved-openai-model",
+    openaiApiUrl: "https://saved.example/v1",
+    geminiApiKey: "saved-gemini-key",
+    geminiModel: "saved-gemini-model",
+    chatgptAccount: "previous-account",
+    chatgptModel: "previous-model",
+    structuredOutput: false,
+  };
+  await mkdir(dirname(configPath), { recursive: true });
+  await writeFile(configPath, JSON.stringify(previous));
+  const config = await validateAndPersistInitializationConfig(
+    { provider: "chatgpt", account: "selected-account", model: "selected-model" },
+    {
+      print: false,
+      chatgptAccount: "cli-account",
+      chatgptModel: "cli-model",
+      openaiApiKey: "cli-key",
+      structuredOutput: "true",
+    },
+    { HOME: homeDirectory, HOWTO_GEMINI_API_KEY: "env-key" },
+  );
+  assert.deepEqual(config.chatgpt, { account: "cli-account", model: "cli-model" });
+  assert.equal(config.openai.apiKey, "cli-key");
+  assert.equal(config.gemini.apiKey, "env-key");
+  assert.equal(config.structuredOutput, true);
+  assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
+    ...previous,
+    aiProvider: "chatgpt",
+    chatgptAccount: "selected-account",
+    chatgptModel: "selected-model",
+  });
+});
+
+test("重新初始化 API provider 保留 ChatGPT 选择并删除显式清空的旧 URL", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "howto-api-init-"));
+  const configPath = join(homeDirectory, ".howto", "config.json");
+  await mkdir(dirname(configPath), { recursive: true });
+  await writeFile(
+    configPath,
+    JSON.stringify({
+      aiProvider: "chatgpt",
+      openaiApiUrl: "https://old.example/v1",
+      chatgptAccount: "saved-account",
+      chatgptModel: "saved-model",
+      structuredOutput: false,
+    }),
+  );
+  await validateAndPersistInitializationConfig(
+    { provider: "openai", apiKey: "", model: "api-model", openaiBaseUrl: "" },
+    { print: false },
+    { HOME: homeDirectory },
+  );
+  assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
+    aiProvider: "openai",
+    openaiApiKey: "",
+    openaiModel: "api-model",
+    chatgptAccount: "saved-account",
+    chatgptModel: "saved-model",
+    structuredOutput: false,
+  });
+});
+
+test("初始化不覆盖损坏的现有配置", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "howto-broken-init-"));
+  const configPath = join(homeDirectory, ".howto", "config.json");
+  await mkdir(dirname(configPath), { recursive: true });
+  const previous = "{broken-config";
+  await writeFile(configPath, previous);
+  await assert.rejects(
+    validateAndPersistInitializationConfig(
+      { provider: "chatgpt", account: "selected-account", model: "selected-model" },
+      { print: false },
+      { HOME: homeDirectory },
+    ),
+    ConfigError,
+  );
+  assert.equal(await readFile(configPath, "utf8"), previous);
 });
 
 test("Ctrl+C cancels initialization", () => {

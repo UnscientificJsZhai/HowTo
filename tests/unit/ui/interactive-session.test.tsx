@@ -965,6 +965,7 @@ void test("保存中和初始化卸载空隙首次收到粘贴时同样撤销后
     let completed = false;
     const config = {
       aiProvider: "openai" as const,
+      chatgpt: {},
       openai: { apiKey: "FAKE-key", model: "test-model" },
       gemini: { model: "test-model" },
       structuredOutput: true,

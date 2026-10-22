@@ -37,6 +37,12 @@ async function run(argv: string[]): Promise<CliResult> {
       return { exitCode: 0 };
     }
 
+    if (parsedCli.options.chatgptAction !== undefined) {
+      const { runChatGptAction } = await import("./auth/chatgpt/commands.js");
+      await runChatGptAction(parsedCli.options);
+      return { exitCode: 0 };
+    }
+
     if (parsedCli.options.init) {
       ensureInteractiveTty(process.stdin, process.stdout);
       const { initializeConfig } = await import("./init/index.js");
@@ -44,6 +50,7 @@ async function run(argv: string[]): Promise<CliResult> {
         cliOptions: parsedCli.options,
         env: process.env,
         session: await getSession(),
+        chatgptService: (await import("./auth/chatgpt/commands.js")).chatGptInitializationService,
       });
       return { exitCode: 0 };
     }
@@ -76,6 +83,7 @@ async function run(argv: string[]): Promise<CliResult> {
           cliOptions: parsedCli.options,
           env: process.env,
           session: await getSession(),
+          chatgptService: (await import("./auth/chatgpt/commands.js")).chatGptInitializationService,
         });
     const useCommandPathCheck: CommandPathCheck | undefined =
       parsedCli.useCommand === undefined

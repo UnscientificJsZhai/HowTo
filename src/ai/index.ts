@@ -1,10 +1,13 @@
 import type { AppConfig } from "../config.js";
+import { ChatGptCommandProvider } from "./chatgpt.js";
 import { GeminiCommandProvider } from "./gemini.js";
 import { OpenAiCommandProvider } from "./openai.js";
 import type { CommandProvider } from "./types.js";
 
 export function createCommandProvider(config: AppConfig): CommandProvider {
   switch (config.aiProvider) {
+    case "chatgpt":
+      return new ChatGptCommandProvider(config.chatgpt);
     case "openai":
       return new OpenAiCommandProvider(config.openai);
     case "gemini":

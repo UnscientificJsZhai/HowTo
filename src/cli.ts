@@ -1,4 +1,5 @@
 export type AiProviderOption = string;
+export type ChatGptAction = "login" | "logout" | "status" | "models";
 
 export interface GlobalOptions {
   print: boolean;
@@ -10,6 +11,9 @@ export interface GlobalOptions {
   openaiApiUrl?: string;
   openaiApiKey?: string;
   openaiModel?: string;
+  chatgptAction?: ChatGptAction;
+  chatgptAccount?: string;
+  chatgptModel?: string;
   structuredOutput?: string;
 }
 
@@ -34,7 +38,16 @@ const VALUE_OPTIONS = new Set([
   "--openai-api-url",
   "--openai-api-key",
   "--openai-model",
+  "--chatgpt-account",
+  "--chatgpt-model",
   "--structured-output",
+]);
+
+const CHATGPT_ACTION_OPTIONS = new Map<string, ChatGptAction>([
+  ["--chatgpt-login", "login"],
+  ["--chatgpt-logout", "logout"],
+  ["--chatgpt-status", "status"],
+  ["--chatgpt-models", "models"],
 ]);
 
 const BOOLEAN_OPTIONS = new Set(["--print", "--init", "--version"]);
@@ -42,17 +55,24 @@ const BOOLEAN_OPTIONS = new Set(["--print", "--init", "--version"]);
 export const USAGE = `Usage: howto [options] [use <command>] <question> [<argument>...]
        howto --init
        howto --version
+       howto --chatgpt-login|--chatgpt-logout|--chatgpt-status|--chatgpt-models [--chatgpt-account <account>]
 
 Options:
   --init
   --version
   --print
-  --ai-provider <openai|gemini>
+  --ai-provider <openai|gemini|chatgpt>
   --gemini-api-key <key>
   --gemini-model <model>
   --openai-api-url <url>
   --openai-api-key <key>
   --openai-model <model>
+  --chatgpt-login
+  --chatgpt-logout
+  --chatgpt-status
+  --chatgpt-models
+  --chatgpt-account <account>
+  --chatgpt-model <model>
   --structured-output <true|false>
 
 Try: howto "list files changed today"`;
@@ -74,6 +94,18 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       const equalIndex = token.indexOf("=");
       const optionName = equalIndex === -1 ? token : token.slice(0, equalIndex);
       const inlineValue = equalIndex === -1 ? undefined : token.slice(equalIndex + 1);
+
+      const chatgptAction = CHATGPT_ACTION_OPTIONS.get(optionName);
+      if (chatgptAction !== undefined) {
+        if (inlineValue !== undefined) {
+          throw new CliParseError(`${optionName} does not accept a value`);
+        }
+        if (options.chatgptAction !== undefined) {
+          throw new CliParseError("only one ChatGPT action may be specified");
+        }
+        options.chatgptAction = chatgptAction;
+        continue;
+      }
 
       if (BOOLEAN_OPTIONS.has(optionName)) {
         if (inlineValue !== undefined) {
@@ -109,6 +141,16 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     return { options, arguments: [] };
   }
 
+  if (options.chatgptAction !== undefined) {
+    const unsupportedOption = Object.keys(options).find(
+      (key) => key !== "print" && key !== "chatgptAction" && key !== "chatgptAccount",
+    );
+    if (positionals.length > 0 || options.print || unsupportedOption !== undefined) {
+      throw new CliParseError("ChatGPT actions accept only --chatgpt-account and no question");
+    }
+    return { options, arguments: [] };
+  }
+
   return parsePositionals(options, positionals);
 }
 
@@ -141,6 +183,12 @@ function assignOptionValue(options: GlobalOptions, optionName: string, value: st
       return;
     case "--openai-model":
       options.openaiModel = value;
+      return;
+    case "--chatgpt-account":
+      options.chatgptAccount = value;
+      return;
+    case "--chatgpt-model":
+      options.chatgptModel = value;
       return;
     case "--structured-output":
       options.structuredOutput = value;

@@ -22,7 +22,7 @@ English | [简体中文](README.CN.md)
 - **Tool-constrained mode** - use `howto use <command>` to require candidates around a specific CLI tool.
 - **Interactive review flow** - select a candidate, resolve placeholders, and confirm the final command before execution.
 - **Non-interactive print mode** - use `--print` to output candidates without TTY interaction or command execution.
-- **OpenAI and Gemini support** - configure either provider from CLI flags, environment variables, or `~/.howto/config.json`.
+- **ChatGPT, OpenAI, and Gemini support** - sign in with ChatGPT to use an eligible plan, or keep using API keys and OpenAI-compatible services.
 - **Local validation first** - AI JSON output, placeholder references, `use <command>` candidates, and obvious dangerous commands are checked locally.
 
 ## Install
@@ -60,6 +60,22 @@ howto --init
 ```
 
 The initializer writes a user-level config file at `~/.howto/config.json`.
+
+Choose **Continue with ChatGPT** to sign in through the system browser, select a saved account or add one, and choose a model from that account's live catalog. The official open-source Sign in with ChatGPT flow uses a local callback on `127.0.0.1`. It requires neither a client secret nor a Codex installation. Existing API key settings are preserved when switching providers.
+
+For account management outside initialization:
+
+```bash
+howto --chatgpt-login
+howto --chatgpt-status
+howto --chatgpt-models --chatgpt-account <account-id>
+howto --chatgpt-login --chatgpt-account <account-id>
+howto --chatgpt-logout --chatgpt-account <account-id>
+```
+
+Login without `--chatgpt-account` adds a registration; with an account ID it renews that registration. Login alone does not change the selected provider or model. Run `howto --init` to save those choices. Ordinary generation and `--print` never start browser authorization. ChatGPT uses the account's current visible model slugs; it never silently switches models or falls back to API key billing.
+
+ChatGPT credentials are stored separately in `~/.howto/chatgpt/` (private directory, owner-only files), with serialized refresh and logout across processes. Tokens are never put in `config.json`. If a refresh response is lost, sign in again rather than replaying a potentially consumed refresh token. Logout retains the registration for later sign-in and reports when remote revocation was not confirmed. Review app usage and permissions in [ChatGPT Settings](https://chatgpt.com/settings/usage). Eligibility and available models depend on the account; see the [official open-source flow](https://developers.openai.com/siwc/token-sharing-open-source).
 
 Initialization and placeholder input delete complete characters on Backspace, including emoji and combining sequences. Alt/Meta shortcuts are not inserted into configuration fields as text.
 Key release events never confirm, cancel, navigate, or delete; pressing and releasing Enter once cannot skip the final confirmation.
@@ -112,7 +128,8 @@ Options:
 - `--init` - start interactive provider setup and save `~/.howto/config.json`.
 - `--version` - use alone to print the current package version and exit successfully; requires no configuration or TTY and makes no AI request.
 - `--print` - print validated command candidates and exit without executing.
-- `--ai-provider <openai|gemini>` - select the AI provider.
+- `--ai-provider <openai|gemini|chatgpt>` - select the AI provider.
+- `--chatgpt-account <id>` / `--chatgpt-model <slug>` - choose a local registration and an available ChatGPT model.
 - `--gemini-api-key <key>` - provide a Gemini API key.
 - `--gemini-model <model>` - override the Gemini model.
 - `--openai-api-url <url>` - use a custom OpenAI-compatible base URL.
@@ -147,7 +164,9 @@ The config path uses `HOME` when it is an absolute path. If `HOME` is missing or
 
 For each setting, the first configured source in that order wins:
 
-- `--ai-provider` / `HOWTO_AI_PROVIDER` / `aiProvider` - `openai` or `gemini`; no default.
+- `--ai-provider` / `HOWTO_AI_PROVIDER` / `aiProvider` - `openai`, `gemini`, or `chatgpt`; no default.
+- `--chatgpt-account` / `HOWTO_CHATGPT_ACCOUNT` / `chatgptAccount` - local ChatGPT registration ID; required when more than one account is saved.
+- `--chatgpt-model` / `HOWTO_CHATGPT_MODEL` / `chatgptModel` - visible model slug from `--chatgpt-models`; no static default.
 - `--gemini-api-key` / `HOWTO_GEMINI_API_KEY` / `geminiApiKey` - Gemini API key; required for Gemini.
 - `--gemini-model` / `HOWTO_GEMINI_MODEL` / `geminiModel` - Gemini model; default `gemini-3.5-flash-lite`.
 - `--openai-api-url` / `HOWTO_OPENAI_API_URL` / `openaiApiUrl` - OpenAI-compatible base URL; defaults to `https://api.openai.com/v1`.
