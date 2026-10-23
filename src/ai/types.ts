@@ -37,8 +37,10 @@ export interface GenerateCommandsResult {
 }
 
 export interface CommandProvider {
+  createUsageSession?(request: GenerateCommandsRequest): UsageGenerationSession;
   generateCommands(
     request: GenerateCommandsRequest,
     signal?: AbortSignal,
   ): Promise<GenerateCommandsResult>;
 }
+import type { UsageGenerationSession } from "../usage/types.js";

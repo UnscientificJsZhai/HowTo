@@ -48,3 +48,12 @@ export const COMMAND_GENERATION_SCHEMA = {
     },
   },
 } as const;
+
+export const USAGE_COMMAND_GENERATION_SCHEMA = {
+  ...COMMAND_GENERATION_SCHEMA,
+  required: ["commands", "failureReason"],
+  properties: {
+    commands: { ...COMMAND_GENERATION_SCHEMA.properties.commands, minItems: 0 },
+    failureReason: { type: "string" },
+  },
+} as const;

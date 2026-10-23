@@ -6,12 +6,15 @@ import { hasUnsafeTerminalControlCharacters } from "../terminal-text.js";
 const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 // eslint-disable-next-line no-control-regex -- 显式识别传统终端协议的按键控制字节。
-const LEGACY_CONTROL_PATTERN = /([\r\n\t\u0003\u0008\u001b\u007f])/;
+const LEGACY_CONTROL_PATTERN = /([\r\n\t\u0001\u0003\u0005\u0008\u0015\u001b\u007f])/;
 const LEGACY_CONTROL_KEYS: ReadonlyMap<string, { input: string; key: Partial<Key> }> = new Map([
   ["\r", { input: "", key: { return: true } }],
   ["\n", { input: "", key: { return: true } }],
   ["\t", { input: "", key: { tab: true } }],
   ["\u0003", { input: "c", key: { ctrl: true } }],
+  ["\u0001", { input: "a", key: { ctrl: true } }],
+  ["\u0005", { input: "e", key: { ctrl: true } }],
+  ["\u0015", { input: "u", key: { ctrl: true } }],
   ["\u0008", { input: "", key: { backspace: true } }],
   ["\u007f", { input: "", key: { backspace: true } }],
   ["\u001b", { input: "", key: { escape: true } }],

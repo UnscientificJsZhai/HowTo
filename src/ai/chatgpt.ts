@@ -1,9 +1,13 @@
-import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses";
+import type {
+  ResponseCreateParamsStreaming,
+  ResponseInputItem,
+} from "openai/resources/responses/responses";
 
 import { getChatGptAccessToken } from "../auth/chatgpt/index.js";
 import { classifyChatGptHttpError } from "../auth/chatgpt/errors.js";
 import { type AppConfig, ConfigError } from "../config.js";
-import { COMMAND_GENERATION_SCHEMA } from "./command-schema.js";
+import type { UsageGenerationSession, UsageToolCall } from "../usage/types.js";
+import { COMMAND_GENERATION_SCHEMA, USAGE_COMMAND_GENERATION_SCHEMA } from "./command-schema.js";
 import {
   type ChatGptDependencies,
   chatGptHttpError,
@@ -12,8 +16,16 @@ import {
   requestChatGptModels,
   runChatGptRequest,
 } from "./chatgpt-models.js";
-import { AiProviderError } from "./errors.js";
+import { AiProviderError, UsageToolsUnsupportedError } from "./errors.js";
 import type { CommandProvider, GenerateCommandsRequest, GenerateCommandsResult } from "./types.js";
+import {
+  isExplicitUsageToolsUnsupported,
+  parseUsageToolArguments,
+  USAGE_TOOL_DESCRIPTION,
+  USAGE_TOOL_NAME,
+  USAGE_TOOL_PARAMETERS,
+  UsageReplyTracker,
+} from "./usage-session.js";
 
 const RESPONSES_URL = "https://api.openai.com/v1/responses";
 const MAX_STREAM_BYTES = 2 * 1024 * 1024;
@@ -32,6 +44,131 @@ export class ChatGptCommandProvider implements CommandProvider {
       );
     }
     this.model = config.model;
+  }
+
+  createUsageSession(request: GenerateCommandsRequest): UsageGenerationSession {
+    const initial = buildChatGptResponseRequest(this.model, request);
+    const input = initial.input as ResponseInputItem[];
+    const tracker = new UsageReplyTracker("chatgpt", this.model);
+    const knownCredentials = new Set<string>();
+    let modelVerified = false;
+    return {
+      getKnownCredentials: () => [...knownCredentials],
+      next: (replies, options, signal) =>
+        runChatGptRequest(this.model, signal, this.dependencies, async (requestSignal) => {
+          for (const reply of tracker.accept(replies)) {
+            input.push({
+              type: "function_call_output",
+              call_id: reply.callId,
+              output: JSON.stringify(reply.result),
+            });
+          }
+          const credentials = await (this.dependencies.getAccessToken ?? getChatGptAccessToken)({
+            accountId: this.config.account,
+            signal: requestSignal,
+          });
+          knownCredentials.add(credentials.accessToken);
+          const fetch = this.dependencies.fetch ?? globalThis.fetch;
+          if (!modelVerified) {
+            const models = await requestChatGptModels(
+              credentials.accessToken,
+              requestSignal,
+              fetch,
+            );
+            if (!models.some((model) => model.slug === this.model)) {
+              throw new ConfigError(
+                "The selected ChatGPT model is unavailable for this account. Run howto --chatgpt-models or howto --init to select an available model.",
+              );
+            }
+            modelVerified = true;
+          }
+          requestSignal.throwIfAborted();
+          const parameters: ResponseCreateParamsStreaming = {
+            ...initial,
+            input: [...input],
+            include: ["reasoning.encrypted_content"],
+            text: {
+              format: request.structuredOutput
+                ? {
+                    type: "json_schema",
+                    name: "command_usage_generation",
+                    schema: USAGE_COMMAND_GENERATION_SCHEMA,
+                    strict: true,
+                  }
+                : { type: "json_object" },
+            },
+            ...(options.toolsEnabled
+              ? {
+                  tools: [
+                    {
+                      type: "function",
+                      name: USAGE_TOOL_NAME,
+                      description: USAGE_TOOL_DESCRIPTION,
+                      parameters: USAGE_TOOL_PARAMETERS,
+                      strict: true,
+                    },
+                  ],
+                  tool_choice: "auto",
+                  parallel_tool_calls: false,
+                }
+              : {}),
+          };
+          const response = await fetch(RESPONSES_URL, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${credentials.accessToken}`,
+              Accept: "text/event-stream",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(parameters),
+            redirect: "error",
+            signal: requestSignal,
+          });
+          if (!response.ok) {
+            throw await usageChatGptHttpError(
+              response,
+              requestSignal,
+              this.model,
+              options.toolsEnabled,
+            );
+          }
+          const contentType = response.headers.get("content-type");
+          if (
+            contentType !== null &&
+            contentType.split(";", 1)[0].trim().toLowerCase() !== "text/event-stream"
+          ) {
+            void response.body?.cancel().catch(() => undefined);
+            throw new AiProviderError("chatgpt", this.model);
+          }
+          const output = await collectChatGptUsageOutput(
+            response,
+            requestSignal,
+            this.model,
+            options.toolsEnabled,
+          );
+          const calls: UsageToolCall[] = [];
+          for (const item of output) {
+            if (item.type === "function_call") {
+              calls.push({
+                id: item.call_id as string,
+                name: item.name as string,
+                arguments: parseUsageToolArguments(item.arguments as string),
+              });
+            }
+          }
+          if (calls.length > 0) {
+            tracker.register(calls);
+            // store:false 会话必须回传完整 reasoning（含加密内容）、消息和调用项。
+            input.push(...(output as unknown as ResponseInputItem[]));
+            return { kind: "tool_calls", calls };
+          }
+          const rawText = output.map((item) => readCompletedItemText(item, this.model)).join("");
+          if (rawText.trim() === "" || Buffer.byteLength(rawText, "utf8") > MAX_OUTPUT_BYTES) {
+            throw new AiProviderError("chatgpt", this.model);
+          }
+          return { kind: "final", rawText };
+        }),
+    };
   }
 
   async generateCommands(
@@ -107,6 +244,147 @@ export function buildChatGptResponseRequest(
         : { type: "json_object" },
     },
   };
+}
+
+async function usageChatGptHttpError(
+  response: Response,
+  signal: AbortSignal,
+  model: string,
+  toolsEnabled: boolean,
+): Promise<Error> {
+  if (!toolsEnabled) return chatGptHttpError(response, signal);
+  let body: unknown;
+  try {
+    const chunks: Uint8Array<ArrayBufferLike>[] = [];
+    for await (const bytes of readChatGptBody(response, signal, 64 * 1024)) chunks.push(bytes);
+    body = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)),
+    ) as unknown;
+  } catch {
+    // 非 JSON、过大或解码失败只按 HTTP 状态分类，不回显服务正文。
+  }
+  if (isExplicitUsageToolsUnsupported(body, response.status)) {
+    return new UsageToolsUnsupportedError("chatgpt", model);
+  }
+  const detail = isRecord(body) && isRecord(body.error) ? body.error : undefined;
+  return classifyChatGptHttpError(
+    response.status,
+    typeof detail?.code === "string" ? detail.code : undefined,
+  );
+}
+
+async function collectChatGptUsageOutput(
+  response: Response,
+  signal: AbortSignal,
+  model: string,
+  toolsEnabled: boolean,
+): Promise<Record<string, unknown>[]> {
+  const fail = () => new AiProviderError("chatgpt", model);
+  const completed = new Map<number, Record<string, unknown>>();
+  let completedBytes = 0;
+  for await (const frame of decodeChatGptEvents(response, signal)) {
+    if (
+      frame.event !== "" &&
+      frame.event !== "message" &&
+      frame.event !== "error" &&
+      !frame.event.startsWith("response.")
+    )
+      continue;
+    if (frame.data === "[DONE]") break;
+    const event: unknown = JSON.parse(frame.data);
+    if (!isRecord(event) || typeof event.type !== "string") throw fail();
+    if (frame.event !== "" && frame.event !== "message" && frame.event !== event.type) throw fail();
+    if (event.type === "error" || event.type === "response.failed") {
+      const error =
+        isRecord(event.response) && isRecord(event.response.error)
+          ? event.response.error
+          : isRecord(event.error)
+            ? event.error
+            : event;
+      const code = typeof error.code === "string" ? error.code : undefined;
+      const status =
+        typeof error.status === "number"
+          ? error.status
+          : /^(?:invalid_request_error|unsupported_\w+|(?:tools?|function_calling)_not_supported)$/.test(
+                code ?? "",
+              )
+            ? 400
+            : undefined;
+      if (toolsEnabled && isExplicitUsageToolsUnsupported(error, status)) {
+        throw new UsageToolsUnsupportedError("chatgpt", model);
+      }
+      throw classifyChatGptHttpError(500, code);
+    }
+    if (
+      event.type === "response.incomplete" ||
+      event.type === "response.refusal.delta" ||
+      event.type === "response.refusal.done" ||
+      ((event.type === "response.content_part.added" ||
+        event.type === "response.content_part.done") &&
+        isRecord(event.part) &&
+        event.part.type === "refusal")
+    )
+      throw fail();
+    if (event.type === "response.output_item.done") {
+      const index = event.output_index;
+      if (
+        typeof index !== "number" ||
+        !Number.isSafeInteger(index) ||
+        index < 0 ||
+        completed.has(index)
+      )
+        throw fail();
+      const item = readCompletedUsageItem(event.item, model);
+      completedBytes += Buffer.byteLength(JSON.stringify(item), "utf8");
+      if (completedBytes > MAX_OUTPUT_BYTES) throw fail();
+      completed.set(index, item);
+    }
+    if (event.type === "response.completed") {
+      signal.throwIfAborted();
+      const final = event.response;
+      if (
+        !isRecord(final) ||
+        final.status !== "completed" ||
+        final.error != null ||
+        final.incomplete_details != null ||
+        !Array.isArray(final.output)
+      )
+        throw fail();
+      const items =
+        final.output.length === 0
+          ? [...completed].sort(([left], [right]) => left - right).map(([, item]) => item)
+          : final.output.map((value: unknown, index: number) => {
+              const item = readCompletedUsageItem(value, model);
+              const done = completed.get(index);
+              // 流中的完整 reasoning（尤其 encrypted_content）以 output_item.done 为准。
+              return item.type === "reasoning" && done?.type === "reasoning" && done.id === item.id
+                ? done
+                : item;
+            });
+      if (items.length === 0 || Buffer.byteLength(JSON.stringify(items), "utf8") > MAX_OUTPUT_BYTES)
+        throw fail();
+      return items;
+    }
+  }
+  throw fail();
+}
+
+function readCompletedUsageItem(item: unknown, model: string): Record<string, unknown> {
+  if (!isRecord(item)) throw new AiProviderError("chatgpt", model);
+  if (item.type === "function_call") {
+    if (
+      typeof item.call_id !== "string" ||
+      item.call_id === "" ||
+      typeof item.name !== "string" ||
+      item.name === "" ||
+      typeof item.arguments !== "string" ||
+      (item.status !== undefined && item.status !== "completed")
+    )
+      throw new AiProviderError("chatgpt", model);
+  } else {
+    readCompletedItemText(item, model);
+  }
+  return item;
 }
 
 async function collectChatGptResponse(

@@ -147,6 +147,20 @@ export function parseShellCommand(command: string): ShellParseResult {
   return commands.length > 0 ? { kind: "parsed", commands } : unsupported("missing-executable");
 }
 
+/** 仅解析 argv 字面量；保留 lexer 的重定向信息，不能复用命令解析的过滤结果。 */
+export function parseLiteralArguments(text: string): string[] {
+  const lexed = lexShellCommand(text, true);
+  if (lexed.kind === "unsupported") {
+    throw new Error("Usage lookup arguments must contain only literal arguments");
+  }
+  return lexed.tokens.map((token) => {
+    if (token.kind !== "word" || token.word.hasExpansion) {
+      throw new Error("Usage lookup arguments must contain only literal arguments");
+    }
+    return token.word.value;
+  });
+}
+
 export function resolveCommandPrefix(words: readonly ShellWord[]): ShellPrefixResult {
   let index = 0;
   while (words[index]?.assignmentOperator === "=") index += 1;
@@ -241,7 +255,7 @@ function skipWrapperOptions(
   return index;
 }
 
-function lexShellCommand(command: string): LexResult {
+function lexShellCommand(command: string, literalsOnly = false): LexResult {
   const tokens: Token[] = [];
   let index = 0;
   while (index < command.length) {
@@ -251,10 +265,12 @@ function lexShellCommand(command: string): LexResult {
       continue;
     }
     if (char === "\\" && command[index + 1] === "\n") {
+      if (literalsOnly) return unsupported("syntax");
       index += 2;
       continue;
     }
     if (char === "#") {
+      if (literalsOnly) return unsupported("syntax");
       while (index < command.length && command[index] !== "\n") index += 1;
       continue;
     }
@@ -284,7 +300,7 @@ function lexShellCommand(command: string): LexResult {
       continue;
     }
 
-    const word = readWord(command, index);
+    const word = readWord(command, index, literalsOnly);
     if (word.kind === "unsupported") return word;
     const rawWord = command.slice(index, word.word.end);
     if (
@@ -305,6 +321,7 @@ function lexShellCommand(command: string): LexResult {
 function readWord(
   command: string,
   start: number,
+  literalsOnly = false,
 ): { kind: "parsed"; word: ShellWord } | UnsupportedShellCommand {
   let index = start;
   let value = "";
@@ -324,6 +341,7 @@ function readWord(
       const next = command[index + 1];
       if (next === undefined) return unsupported("syntax");
       if (next === "\n") {
+        if (literalsOnly) return unsupported("syntax");
         index += 2;
         continue;
       }
@@ -369,7 +387,8 @@ function readWord(
       if ("(){}".includes(char)) return unsupported("syntax");
       if (
         "*?[".includes(char) ||
-        (char === "~" && value === "") ||
+        (char === "~" &&
+          (value === "" || (literalsOnly && (value.endsWith("=") || value.endsWith(":"))))) ||
         (char === "=" && value === "" && assignmentEligible)
       )
         hasExpansion = true;

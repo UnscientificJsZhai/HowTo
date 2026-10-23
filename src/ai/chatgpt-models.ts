@@ -3,7 +3,7 @@ import { ChatGptError, classifyChatGptHttpError } from "../auth/chatgpt/errors.j
 import { ConfigError } from "../config.js";
 import { hasUnsafeTerminalControlCharacters } from "../terminal-text.js";
 import { InteractionCancelledError } from "../ui/tty.js";
-import { AiProviderError } from "./errors.js";
+import { AiProviderError, UsageToolsUnsupportedError } from "./errors.js";
 
 export interface ChatGptModel {
   slug: string;
@@ -124,7 +124,12 @@ export async function runChatGptRequest<T>(
     if (signal?.aborted || error instanceof InteractionCancelledError) {
       throw new InteractionCancelledError();
     }
-    if (error instanceof ChatGptError || error instanceof ConfigError) throw error;
+    if (
+      error instanceof ChatGptError ||
+      error instanceof ConfigError ||
+      error instanceof UsageToolsUnsupportedError
+    )
+      throw error;
     throw new AiProviderError("chatgpt", model);
   } finally {
     clearTimeout(timeout);

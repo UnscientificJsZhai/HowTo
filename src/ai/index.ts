@@ -19,4 +19,4 @@ export function createCommandProvider(config: AppConfig): CommandProvider {
   }
 }
 
-export { AiProviderError } from "./errors.js";
+export { AiProviderError, UsageToolsUnsupportedError } from "./errors.js";

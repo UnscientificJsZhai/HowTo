@@ -125,6 +125,9 @@ async function run(argv: string[]): Promise<CliResult> {
       session: await getSession(),
       provider,
       request: { ...promptRequest, systemPrompt, userPrompt },
+      knownCredentials: [config.openai.apiKey, config.gemini.apiKey].filter(
+        (value): value is string => typeof value === "string" && value !== "",
+      ),
     });
     return { exitCode };
   } catch (error: unknown) {

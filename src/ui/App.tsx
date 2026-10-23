@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Box, Text, usePaste, useWindowSize, type Key } from "ink";
+import { Box, Text, usePaste, useStderr, useWindowSize, type Key } from "ink";
 import { useKeyboardInput } from "./use-keyboard-input.js";
 import { useInteractiveSession } from "./InteractiveSessionProvider.js";
 import { LoadingView } from "./LoadingView.js";
@@ -18,20 +18,44 @@ import { resolveCandidatePlaceholders, type ResolvedCommand } from "./placeholde
 import { InteractionCancelledError } from "./tty.js";
 import { usePhysicalStdoutRows } from "./resize-safe-output.js";
 import { getUserVisibleErrorMessage } from "../errors.js";
+import { generateWithUsageLookup } from "../usage/generate.js";
+import type { UsageApprovalDecision, UsageApprovalRequest } from "../usage/types.js";
+import { formatUsageCommand } from "../usage/arguments.js";
+import { sanitizeUsageText } from "../usage/output.js";
+import { UsageApprovalView } from "./UsageApprovalView.js";
+import { toSingleLinePreview } from "./single-line-preview.js";
 
-type Status = "loading" | "selecting" | "resolving" | "confirming" | "error" | "done";
+type Status =
+  | "loading"
+  | "usage-approval"
+  | "usage-running"
+  | "selecting"
+  | "resolving"
+  | "confirming"
+  | "error"
+  | "done";
 
 interface Props {
   provider: CommandProvider;
   request: GenerateCommandsRequest;
   onSuccess: (command: string) => void;
   onError: (error: Error) => void;
+  knownCredentials?: readonly string[];
 }
 
-export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) => {
+export const App: React.FC<Props> = ({
+  provider,
+  request,
+  onSuccess,
+  onError,
+  knownCredentials = [],
+}) => {
   const session = useInteractiveSession();
   const rows = usePhysicalStdoutRows();
   const { columns } = useWindowSize();
+  const { write: writeStderr } = useStderr();
+  const writeStderrRef = useRef(writeStderr);
+  writeStderrRef.current = writeStderr;
   const [status, setStatus] = useState<Status>("loading");
   const [candidates, setCandidates] = useState<CommandCandidateContract[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState<CommandCandidateContract | null>(null);
@@ -39,12 +63,25 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
   const [finalCommand, setFinalCommand] = useState("");
   const [danger, setDanger] = useState<DangerousCommandMatch | undefined>(undefined);
   const [errorMessage, setErrorMessage] = useState("");
+  const [usageApproval, setUsageApproval] = useState<UsageApprovalRequest | null>(null);
+  const [runningQuery, setRunningQuery] = useState("");
+  const approvalSequence = useRef(0);
+  const pendingApproval = useRef<((decision: UsageApprovalDecision) => void) | null>(null);
+  const onErrorRef = useRef(onError);
+  const credentialsRef = useRef(knownCredentials);
+  onErrorRef.current = onError;
+  credentialsRef.current = knownCredentials;
   const activeRequestControllerRef = useRef<AbortController | null>(null);
   const cancellationReportedRef = useRef(false);
   const frameRows = Math.max(0, rows - 1);
   const isFrameVisible = frameRows > 0;
 
   usePaste(() => {}, { isActive: isFrameVisible });
+
+  useEffect(() => {
+    if (status !== "done" && status !== "error" && status !== "usage-approval")
+      return session.beginView();
+  }, [session, status]);
 
   const handleCancel = useCallback(() => {
     session.suspendViewInput();
@@ -57,7 +94,7 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
 
   const inputReady = useKeyboardInput((input: string, key: Key) => {
     if (frameRows === 0) return;
-    if (status !== "loading") return;
+    if (status !== "loading" && status !== "usage-running") return;
 
     if (key.ctrl && input === "c") {
       handleCancel();
@@ -65,13 +102,70 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
   });
 
   useEffect(() => {
-    if (status !== "loading") return;
-
     const controller = new AbortController();
     let isCurrent = true;
     activeRequestControllerRef.current = controller;
 
-    void generateValidatedCommandCandidates(provider, request, controller.signal)
+    const approve = (approval: UsageApprovalRequest, signal: AbortSignal) => {
+      if (signal.aborted || session.checkExecutionPolicy() !== "execute") {
+        return Promise.resolve<UsageApprovalDecision>({ kind: "reject" });
+      }
+      return new Promise<UsageApprovalDecision>((resolve) => {
+        let settled = false;
+        const finish = (decision: UsageApprovalDecision) => {
+          if (settled) return;
+          settled = true;
+          signal.removeEventListener("abort", reject);
+          unsubscribe();
+          pendingApproval.current = null;
+          session.suspendViewInput();
+          if (isCurrent && !controller.signal.aborted) {
+            setUsageApproval(null);
+            setStatus("loading");
+          }
+          resolve(decision);
+        };
+        const reject = () => finish({ kind: "reject" });
+        const unsubscribe = session.subscribeExecutionPolicy(() => {
+          if (session.getExecutionPolicy() !== "execute") reject();
+        });
+        signal.addEventListener("abort", reject, { once: true });
+        pendingApproval.current = finish;
+        session.suspendViewInput();
+        if (settled) return;
+        approvalSequence.current++;
+        setUsageApproval(approval);
+        setStatus("usage-approval");
+      });
+    };
+    const generation =
+      request.useCommand !== undefined && provider.createUsageSession !== undefined
+        ? generateWithUsageLookup(
+            provider,
+            request,
+            {
+              approve,
+              getExecutionPolicy: session.checkExecutionPolicy,
+              subscribeExecutionPolicy: session.subscribeExecutionPolicy,
+              knownCredentials: credentialsRef.current,
+              onQueryRunning: (command) => {
+                if (!isCurrent || controller.signal.aborted) return;
+                session.suspendViewInput();
+                setRunningQuery(
+                  command === null ? "" : formatUsageCommand(command.executable, command.args),
+                );
+                setStatus(command === null ? "loading" : "usage-running");
+              },
+              onCapabilityFallback: (message) => {
+                // Ink 的输出入口先清理当前帧再恢复，完整提示在紧凑终端中仍进入可查看的滚动历史。
+                if (isCurrent && !controller.signal.aborted) writeStderrRef.current(`${message}\n`);
+              },
+            },
+            controller.signal,
+          )
+        : generateValidatedCommandCandidates(provider, request, controller.signal);
+
+    void generation
       .then((generatedCandidates) => {
         if (!isCurrent || controller.signal.aborted) return;
 
@@ -84,7 +178,7 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
         const appError = normalizeError(error);
         setErrorMessage(getUserVisibleErrorMessage(appError));
         setStatus("error");
-        onError(appError);
+        onErrorRef.current(appError);
       });
 
     return () => {
@@ -94,7 +188,7 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
         activeRequestControllerRef.current = null;
       }
     };
-  }, [status, provider, request, onError]);
+  }, [provider, request, session]);
 
   const handleSelect = (candidate: CommandCandidateContract) => {
     setSelectedCandidate(candidate);
@@ -148,6 +242,24 @@ export const App: React.FC<Props> = ({ provider, request, onSuccess, onError }) 
       overflowY="hidden"
     >
       {status === "loading" && <LoadingView />}
+      {status === "usage-approval" && usageApproval && (
+        <UsageApprovalView
+          key={approvalSequence.current}
+          request={usageApproval}
+          knownCredentials={knownCredentials}
+          availableRows={frameRows}
+          availableColumns={columns}
+          onApprove={(args) => pendingApproval.current?.({ kind: "approve", args })}
+          onReject={() => pendingApproval.current?.({ kind: "reject" })}
+          onCancel={handleCancel}
+        />
+      )}
+      {status === "usage-running" && (
+        <Text wrap="truncate-middle">
+          查询运行中（Ctrl+C取消）:{" "}
+          {toSingleLinePreview(sanitizeUsageText(runningQuery, knownCredentials).text)}
+        </Text>
+      )}
       {status === "selecting" && (
         <SelectCommandView
           candidates={candidates}

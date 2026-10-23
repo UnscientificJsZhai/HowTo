@@ -153,6 +153,15 @@ export class InteractiveSession {
   }
 
   getExecutionPolicy = (): InteractiveExecutionPolicy => this.policy;
+  checkExecutionPolicy = (): InteractiveExecutionPolicy => {
+    this.throwIfFailed();
+    if (this.closed) throw new InteractiveSessionError();
+    // 查询仍需保留终端租约；在启动进程前同步读取尚未交付的粘贴起始标记。
+    this.drain();
+    this.observePendingInput();
+    this.throwIfFailed();
+    return this.policy;
+  };
   subscribeExecutionPolicy = (listener: () => void): (() => void) => {
     this.policyListeners.add(listener);
     return () => {

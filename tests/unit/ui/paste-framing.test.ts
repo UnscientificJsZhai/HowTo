@@ -72,3 +72,25 @@ void test("键盘前缀刷新保留开始标记匹配，不能把后续 payload 
     assert.equal(filter.push("fresh"), "fresh");
   }
 });
+
+void test("Esc 拒绝后跨页保留首个新按键，迟到的粘贴尾部仍整块丢弃", () => {
+  for (const nextInput of ["\r", "new", "\u001b[B"]) {
+    const filter = new PasteFramingFilter();
+    filter.setActive(true);
+    filter.push("\u001b");
+    assert.equal(filter.flushKeyboardPrefix(), "\u001b");
+    filter.setActive(false);
+    filter.setActive(true);
+    assert.equal(filter.push(nextInput), nextInput);
+  }
+  for (let split = 1; split < PASTE_START.length; split++) {
+    const filter = new PasteFramingFilter();
+    filter.setActive(true);
+    filter.push(PASTE_START.slice(0, split));
+    filter.flushKeyboardPrefix();
+    filter.setActive(false);
+    filter.setActive(true);
+    assert.equal(filter.push(PASTE_START.slice(split) + "EXECUTE" + PASTE_END), "");
+    assert.equal(filter.push("\r"), "\r");
+  }
+});

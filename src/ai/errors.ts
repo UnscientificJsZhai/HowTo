@@ -13,6 +13,13 @@ export class AiProviderError extends Error {
   }
 }
 
+export class UsageToolsUnsupportedError extends AiProviderError {
+  constructor(provider: AiProvider, model: string) {
+    super(provider, model);
+    this.name = "UsageToolsUnsupportedError";
+  }
+}
+
 function formatProviderError(provider: AiProvider, model: string): string {
   return `AI provider request failed (provider: ${provider}, model: ${sanitizeUserVisibleErrorMessage(model)})`;
 }

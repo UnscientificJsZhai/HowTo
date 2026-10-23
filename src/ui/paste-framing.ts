@@ -67,8 +67,12 @@ export class PasteFramingFilter {
         !PASTE_START.startsWith(this.pending) &&
         !PASTE_END.startsWith(this.pending)
       ) {
-        if (this.flushedPrefix > 0) this.flushedPrefix--;
-        else if (this.active && !this.invalidPrefix) output += this.pending[0];
+        if (this.flushedPrefix > 0) {
+          this.flushedPrefix--;
+          // 已交付的 Esc 等键盘前缀可以跨过视图边界保留，用于识别迟到的粘贴尾部。
+          // 当新输入已证明它不是粘贴标记时，旧前缀不能吞掉新页面的第一个按键。
+          if (this.flushedPrefix === 0) this.invalidPrefix = !this.active;
+        } else if (this.active && !this.invalidPrefix) output += this.pending[0];
         this.pending = this.pending.slice(1);
         if (this.pending === "") this.invalidPrefix = !this.active;
       }
