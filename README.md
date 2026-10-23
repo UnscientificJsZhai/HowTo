@@ -87,13 +87,13 @@ Keyboard text and Enter are processed in order even when the terminal delivers t
 Ask for a command:
 
 ```bash
-howto "find files modified in the last 7 days" .
+howto find files modified in the last 7 days under .
 ```
 
 Limit candidates to a specific tool:
 
 ```bash
-howto use git "show commits from last week"
+howto use git show commits from last week
 ```
 
 `use` checks the first actual tool exactly after environment assignments and supported `sudo`/`env` options. For example, `sudo -u root git status` satisfies `use git`, while `sudo -u git id` does not. Unknown wrapper options, missing option values, dynamic executable prefixes, and complex shell structures are rejected. This constraint applies to the first command segment, not subsequent segments.
@@ -103,13 +103,13 @@ Declared placeholders may appear after the first tool, as in `git log -n {{count
 Print command candidates without entering the interactive UI:
 
 ```bash
-howto --print "list the largest files" /var/log
+howto --print list the largest files under /var/log
 ```
 
 ## Usage
 
 ```text
-howto [options] [use <command>] <question> [<argument>...]
+howto [options] [use <command>] <question...>
 howto --init
 howto --version
 ```
@@ -117,10 +117,10 @@ howto --version
 Examples:
 
 ```bash
-howto "find package.json under the current directory"
-howto use find "find a filename" package.json
-howto "explain this option" -- --force
-howto --ai-provider openai --print "show listening ports"
+howto find package.json under the current directory
+howto use find find report.txt under /tmp
+howto explain this option -- --force
+howto --ai-provider openai --print show listening ports
 ```
 
 Options:
@@ -139,17 +139,25 @@ Options:
 
 ### Argument Parsing
 
-`question` is one shell argument. Quote it when it contains spaces:
+All question fragments are joined with one ASCII space. In `use` mode, the first positional token is `use`, the next is the tool name, and all remaining fragments form the question. Global options may appear anywhere before `--`; unknown long options are rejected. Everything after `--` is positional text.
 
-```bash
-howto "find recently changed files" /tmp
-```
+| Input                                       | Final question               |
+| ------------------------------------------- | ---------------------------- |
+| `howto list files changed today`            | `list files changed today`   |
+| `howto "list files" /tmp`                   | `list files /tmp`            |
+| `howto use find find report.txt under /tmp` | `find report.txt under /tmp` |
+| `howto list files --print`                  | `list files` (print mode)    |
+| `howto explain -- --force`                  | `explain --force`            |
+| `howto find files "/tmp/my files"`          | `find files /tmp/my files`   |
+| `howto "" "   "`                            | Usage error                  |
 
-Everything after the question is passed to the AI as `argument[]`. Use `--` when an argument starts with `--`:
+Whitespace and line breaks inside each fragment are preserved. Missing or entirely whitespace questions exit with code `2` and Usage before configuration loading or AI requests. The question itself is never trimmed, and quotes or fragment boundaries are not reconstructed or sent separately.
 
-```bash
-howto "explain this flag" -- --force
-```
+The model infers paths, filenames, counts, and options from the complete question. Clear values become command parameters; required values that are missing or ambiguous become placeholders for the existing fill-and-confirm flow.
+
+Quoted questions remain valid. Older “question + extra parameters” invocations now form one question, with no separate parameter grouping. Original shell argument boundaries cannot be recovered after joining, so paths containing spaces are interpreted from the question's meaning; describe their purpose clearly.
+
+Unquoted input is convenient for ordinary question text. Your shell still processes variables, wildcards, redirections, and other special syntax before howto receives it; quote or escape these when you need literal text. Existing management actions and repeated-option rules are unchanged; no configuration migration is needed.
 
 ## Configuration
 

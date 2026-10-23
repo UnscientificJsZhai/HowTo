@@ -55,15 +55,15 @@ async function run(argv: string[]): Promise<CliResult> {
       return { exitCode: 0 };
     }
 
+    if (parsedCli.question === undefined) {
+      throw new CliParseError("missing question");
+    }
+
     if (!parsedCli.options.print) {
       resolveExecutionShell();
     }
 
     const fileConfig = await readUserConfigFile();
-
-    if (parsedCli.question === undefined) {
-      throw new CliParseError("missing question");
-    }
 
     if (!hasExplicitAiProvider(parsedCli.options, process.env, fileConfig)) {
       if (parsedCli.options.print) {
@@ -96,7 +96,6 @@ async function run(argv: string[]): Promise<CliResult> {
 
     const promptRequest = createProviderPromptRequest({
       question: parsedCli.question,
-      arguments: parsedCli.arguments,
       useCommand: parsedCli.useCommand,
       structuredOutput: config.structuredOutput,
     });

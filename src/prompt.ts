@@ -1,6 +1,11 @@
 import type { CommandGenerationRequest, ProviderPromptRequest } from "./ai/types.js";
 import { detectRuntimeEnvironment, type RuntimeEnvironment } from "./shell/runtime-environment.js";
 
+const QUESTION_PARAMETER_GUIDANCE = `Infer command parameters such as paths, filenames, counts, and options from the complete question. Use explicit values in candidate commands when their purpose is clear. Use placeholders for required values that are missing or ambiguous; do not guess them or classify text as parameters based only on its position.
+Every candidate must implement the requested task and preserve all explicit parameter values and constraints, including time ranges. Do not offer looser approximations as alternatives; return fewer candidates when necessary.
+Calendar-relative dates such as today start at local midnight, not a rolling 24-hour window. Unless the question or requested tool specifies version control, file modification queries refer to filesystem modification times rather than repository status or commit history.
+The question is a single string with no original shell argument boundaries or quoting metadata. Interpret paths containing spaces from the meaning of the question and quote them appropriately in generated commands.`;
+
 export const OUTPUT_CONTRACT = `Return exactly one JSON object and no natural-language body, markdown, or code fences.
 The JSON object must match this schema:
 {
@@ -23,13 +28,15 @@ The JSON object must match this schema:
 The commands array must contain 1 to 3 items. Do not return more than 3 candidate commands.
 Detect the primary natural language of the user's question. Return title, description, dangerReason, and placeholders[].description in that language. Keep placeholder name values English-compatible ASCII using only letters, numbers, underscores, or hyphens.
 Do not include terminal control characters in string fields. CR and LF are the only allowed control characters.
-Use placeholders in commands only as {{name}}, and declare every placeholder in the placeholders array. Each placeholder name must be declared exactly once per candidate; multiple references to the same name share one input value. User may provide argument. If the user's intent is clear, try to use the provided arguments as parameters in the generated commands instead of placeholders. If the intent is unclear, do not fill them.`;
+Use placeholders in commands only as {{name}}, and declare every placeholder in the placeholders array. Each placeholder name must be declared exactly once per candidate; multiple references to the same name share one input value.
+${QUESTION_PARAMETER_GUIDANCE}`;
 
 export const STRUCTURED_OUTPUT_CONTRACT = `Return only the JSON object requested by the response schema. Do not include a natural-language body, markdown, or code fences.
 The commands array must contain 1 to 3 items. Do not return more than 3 candidate commands.
 Detect the primary natural language of the user's question. Return title, description, dangerReason, and placeholders[].description in that language. Keep placeholder name values English-compatible ASCII using only letters, numbers, underscores, or hyphens.
 Do not include terminal control characters in string fields. CR and LF are the only allowed control characters.
-Use placeholders in commands only as {{name}}, and declare every placeholder in the placeholders array. Each placeholder name must be declared exactly once per candidate; multiple references to the same name share one input value. User may provide argument. If the user's intent is clear, try to use the provided arguments as parameters in the generated commands instead of placeholders. If the intent is unclear, do not fill them.`;
+Use placeholders in commands only as {{name}}, and declare every placeholder in the placeholders array. Each placeholder name must be declared exactly once per candidate; multiple references to the same name share one input value.
+${QUESTION_PARAMETER_GUIDANCE}`;
 
 export const SAFETY_CONSTRAINTS = `Prefer read-only, reversible, and low-risk commands.
 When a task could involve deletion, overwrite, privilege escalation, network download, or executing downloaded content, prefer a safer alternative or inspection command when possible.
@@ -47,7 +54,6 @@ export function createProviderPromptRequest(
 ): ProviderPromptRequest {
   return {
     question: request.question,
-    arguments: request.arguments,
     useCommand: request.useCommand,
     structuredOutput: request.structuredOutput,
     outputContract: request.structuredOutput ? STRUCTURED_OUTPUT_CONTRACT : OUTPUT_CONTRACT,
@@ -89,10 +95,6 @@ export function buildCommandGenerationPrompt(
         request.useCommand,
       )} as the requested tool.`,
     );
-  }
-
-  if (request.arguments && request.arguments.length > 0) {
-    userLines.push(`argument: ${JSON.stringify(request.arguments)}`);
   }
 
   return {

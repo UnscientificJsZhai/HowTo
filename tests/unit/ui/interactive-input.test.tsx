@@ -7,7 +7,9 @@ import React from "react";
 import type { InteractiveSession } from "../../../src/ui/interactive-session.js";
 import type { CommandCandidateContract } from "../../../src/ai/types.js";
 import { AiProviderError } from "../../../src/ai/errors.js";
+import { parseCliArgs } from "../../../src/cli.js";
 import { toAppError } from "../../../src/errors.js";
+import { buildCommandGenerationPrompt, createProviderPromptRequest } from "../../../src/prompt.js";
 import { InteractionCancelledError } from "../../../src/ui/tty.js";
 import { importWithoutColor } from "./import-without-color.js";
 
@@ -349,8 +351,16 @@ void test("App renders placeholder line breaks safely while preserving the final
   assertTerminalCleanup(view);
 });
 
-void test("App keeps placeholder-like user values literal through confirmation", async (t) => {
+void test("App resolves placeholders from a complete CLI question and keeps values literal through confirmation", async (t) => {
   const { App } = await uiModules;
+  const parsed = parseCliArgs(["use", "printf", "print", "two", "values"]);
+  assert.ok(parsed.question);
+  const promptRequest = createProviderPromptRequest({
+    question: parsed.question,
+    useCommand: parsed.useCommand,
+    structuredOutput: true,
+  });
+  const request = { ...promptRequest, ...buildCommandGenerationPrompt(promptRequest) };
   const generatedCandidate: CommandCandidateContract = {
     title: "Print two values",
     command: "printf '%s %s' {{first}} {{second}}",
@@ -363,17 +373,26 @@ void test("App keeps placeholder-like user values literal through confirmation",
     ],
   };
   let finalCommand: string | undefined;
+  let providerCalls = 0;
+  let appError: Error | undefined;
   const view = await renderView(
     <App
       provider={{
-        generateCommands: () =>
-          Promise.resolve({ rawText: JSON.stringify({ commands: [generatedCandidate] }) }),
+        generateCommands: (received) => {
+          providerCalls++;
+          assert.equal(received.question, "print two values");
+          assert.equal(received.useCommand, "printf");
+          assert.equal("arguments" in received, false);
+          return Promise.resolve({ rawText: JSON.stringify({ commands: [generatedCandidate] }) });
+        },
       }}
-      request={appRequest()}
+      request={request}
       onSuccess={(command) => {
         finalCommand = command;
       }}
-      onError={() => {}}
+      onError={(error) => {
+        appError = error;
+      }}
     />,
   );
   t.after(() => close(view));
@@ -387,10 +406,13 @@ void test("App keeps placeholder-like user values literal through confirmation",
   await send(view, "done");
   await send(view, "\r");
   await waitForOutput(view, "printf '%s %s' {{second}} done");
+  assert.equal(finalCommand, undefined);
   await send(view, "\r");
   await waitFor(() => finalCommand !== undefined, "App did not confirm the literal value");
 
   assert.equal(finalCommand, "printf '%s %s' {{second}} done");
+  assert.equal(providerCalls, 1);
+  assert.equal(appError, undefined);
 });
 
 void test("ConfirmView accepts a typed uppercase EXECUTE confirmation", async (t) => {
@@ -1817,7 +1839,6 @@ void test("App exposes final command and confirmation in a four-row terminal", a
       }}
       request={{
         question: "print a value",
-        arguments: [],
         structuredOutput: true,
         outputContract: "",
         safetyConstraints: "",
@@ -1952,7 +1973,6 @@ void test("App cleanup does not emit full-terminal clear sequences", async (t) =
       }}
       request={{
         question: "print a value",
-        arguments: [],
         structuredOutput: true,
         outputContract: "",
         safetyConstraints: "",
@@ -2005,7 +2025,6 @@ void test("App resize from 24 to 5 rows does not emit full-terminal clear sequen
       }}
       request={{
         question: "print a value",
-        arguments: [],
         structuredOutput: true,
         outputContract: "",
         safetyConstraints: "",
@@ -2056,7 +2075,6 @@ void test("App resize from 24 to 0 rows commits an empty frame without full-term
       }}
       request={{
         question: "print a value",
-        arguments: [],
         structuredOutput: true,
         outputContract: "",
         safetyConstraints: "",
@@ -2364,7 +2382,6 @@ function danger() {
 function appRequest() {
   return {
     question: "print a value",
-    arguments: [],
     structuredOutput: true,
     outputContract: "",
     safetyConstraints: "",

@@ -15,7 +15,6 @@ import type { GenerateCommandsRequest } from "../../src/ai/types.js";
 function createRequest(structuredOutput: boolean): GenerateCommandsRequest {
   return {
     question: "list files",
-    arguments: [],
     structuredOutput,
     outputContract: "contract",
     safetyConstraints: "safety",

@@ -38,7 +38,6 @@ try {
     },
     request: {
       question: "测试交接",
-      arguments: [],
       structuredOutput: true,
       outputContract: "",
       safetyConstraints: "",

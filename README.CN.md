@@ -87,7 +87,7 @@ howto --chatgpt-logout --chatgpt-account <账号ID>
 询问一个命令：
 
 ```bash
-howto 找到最近7天修改的文件 .
+howto 找到当前目录中最近7天修改的文件
 ```
 
 限制候选项必须使用某个工具：
@@ -103,13 +103,13 @@ howto use git 看看上周的提交
 不进入交互 UI，只打印候选命令：
 
 ```bash
-howto --print 列出最大的文件 /var/log
+howto --print 列出 /var/log 中最大的文件
 ```
 
 ## 使用
 
 ```text
-howto [options] [use <command>] <question> [<argument>...]
+howto [options] [use <command>] <question...>
 howto --init
 howto --version
 ```
@@ -118,8 +118,8 @@ howto --version
 
 ```bash
 howto 找到当前目录的package.json
-howto use find 寻找特定文件名的文件 package.json
-howto 解释这个命令 -- --force
+howto use find 在 /tmp 中查找 report.txt
+howto 解释这个选项 -- --force
 howto --ai-provider openai --print 列出监听的端口
 ```
 
@@ -139,17 +139,25 @@ howto --ai-provider openai --print 列出监听的端口
 
 ### 参数解析
 
-`question` 是一个 shell 参数。包含空格时需要加引号：
+全部问题片段以一个 ASCII 空格连接为 `question`。首个位置参数是 `use` 时，其后一个参数作为工具名，其余片段组成问题。全局选项在 `--` 之前仍可穿插使用，未知长选项报错；`--` 之后全部作为位置文本。
 
-```bash
-howto "find recently changed files" /tmp
-```
+| 输入                                        | 最终 question                |
+| ------------------------------------------- | ---------------------------- |
+| `howto list files changed today`            | `list files changed today`   |
+| `howto "list files" /tmp`                   | `list files /tmp`            |
+| `howto use find find report.txt under /tmp` | `find report.txt under /tmp` |
+| `howto list files --print`                  | `list files`，同时启用打印   |
+| `howto explain -- --force`                  | `explain --force`            |
+| `howto find files "/tmp/my files"`          | `find files /tmp/my files`   |
+| `howto "" "   "`                            | 用法错误                     |
 
-`question` 后面的内容会作为 `argument[]` 传给 AI。如果参数以 `--` 开头，请使用 `--` 结束 option 解析：
+片段内部的原始空格、换行及其他内容均保留。缺失或全空白问题在配置加载和 AI 请求之前返回退出码 `2` 与 Usage；仅用 `trim()` 判断是否全为空白，不修剪实际问题，不重建引号，也不额外传递分段信息。
 
-```bash
-howto "explain this flag" -- --force
-```
+模型根据完整问题识别路径、文件名、数量和选项。用途明确的值填入候选命令，缺失或含糊的必要值生成占位符，沿用现有填写和确认流程。
+
+原有带引号的问题仍可使用；原来的“问题 + 附加参数”写法会整体进入 `question`，不再保留参数分组语义。拼接后无法恢复 shell 参数边界，含空格路径由模型结合问题语义理解，建议明确描述路径的用途。
+
+免引号适用于普通提问文本。变量、通配符、重定向等特殊语法仍先由 shell 处理，需要传递字面内容时继续引用或转义。管理动作和重复选项规则保持不变，无需配置迁移。
 
 ## 配置
 

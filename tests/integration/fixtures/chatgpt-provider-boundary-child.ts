@@ -95,7 +95,6 @@ try {
   );
   const commands = await generateValidatedCommandCandidates(provider, {
     question: "list files",
-    arguments: [],
     structuredOutput: true,
     outputContract: "contract",
     safetyConstraints: "safety",

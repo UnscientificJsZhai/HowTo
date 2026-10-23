@@ -98,7 +98,6 @@ export function testCandidate(command = "printf session-safe"): CommandCandidate
 export function testRequest(): GenerateCommandsRequest {
   return {
     question: "打印测试",
-    arguments: [],
     structuredOutput: true,
     outputContract: "",
     safetyConstraints: "",

@@ -80,7 +80,6 @@ test("Gemini 拒绝异常 envelope 结构", () => {
 test("Gemini 异常 envelope、空结果和 SDK 异常统一为固定 Provider 错误", async () => {
   const request: GenerateCommandsRequest = {
     question: "list files",
-    arguments: [],
     structuredOutput: true,
     outputContract: "contract",
     safetyConstraints: "safety",

@@ -18,7 +18,6 @@ export interface CommandGenerationContract {
 
 export interface CommandGenerationRequest {
   question: string;
-  arguments: string[];
   useCommand?: string;
   structuredOutput: boolean;
 }

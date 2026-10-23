@@ -21,7 +21,6 @@ export interface ParsedCli {
   options: GlobalOptions;
   useCommand?: string;
   question?: string;
-  arguments: string[];
 }
 
 export class CliParseError extends Error {
@@ -52,7 +51,7 @@ const CHATGPT_ACTION_OPTIONS = new Map<string, ChatGptAction>([
 
 const BOOLEAN_OPTIONS = new Set(["--print", "--init", "--version"]);
 
-export const USAGE = `Usage: howto [options] [use <command>] <question> [<argument>...]
+export const USAGE = `Usage: howto [options] [use <command>] <question...>
        howto --init
        howto --version
        howto --chatgpt-login|--chatgpt-logout|--chatgpt-status|--chatgpt-models [--chatgpt-account <account>]
@@ -75,7 +74,7 @@ Options:
   --chatgpt-model <model>
   --structured-output <true|false>
 
-Try: howto "list files changed today"`;
+Try: howto list files changed today`;
 
 export function parseCliArgs(argv: string[]): ParsedCli {
   const options: GlobalOptions = { print: false };
@@ -138,7 +137,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       throw new CliParseError("--version must be used alone");
     }
 
-    return { options, arguments: [] };
+    return { options };
   }
 
   if (options.chatgptAction !== undefined) {
@@ -148,7 +147,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     if (positionals.length > 0 || options.print || unsupportedOption !== undefined) {
       throw new CliParseError("ChatGPT actions accept only --chatgpt-account and no question");
     }
-    return { options, arguments: [] };
+    return { options };
   }
 
   return parsePositionals(options, positionals);
@@ -224,14 +223,15 @@ function parsePositionals(options: GlobalOptions, positionals: string[]): Parsed
       throw new CliParseError("--init cannot be combined with a question or use mode");
     }
 
-    return { options, arguments: [] };
+    return { options };
   }
 
   if (positionals.length === 0) {
     throw new CliParseError("missing question");
   }
 
-  if (positionals[0] === "use") {
+  const isUseMode = positionals[0] === "use";
+  if (isUseMode) {
     if (positionals.length === 1) {
       throw new CliParseError("use mode requires <command> and <question>");
     }
@@ -239,18 +239,16 @@ function parsePositionals(options: GlobalOptions, positionals: string[]): Parsed
     if (positionals.length === 2) {
       throw new CliParseError("use mode requires <question>");
     }
+  }
 
-    return {
-      options,
-      useCommand: positionals[1],
-      question: positionals[2],
-      arguments: positionals.slice(3),
-    };
+  const question = (isUseMode ? positionals.slice(2) : positionals).join(" ");
+  if (question.trim() === "") {
+    throw new CliParseError("question must not be blank");
   }
 
   return {
     options,
-    question: positionals[0],
-    arguments: positionals.slice(1),
+    ...(isUseMode ? { useCommand: positionals[1] } : {}),
+    question,
   };
 }

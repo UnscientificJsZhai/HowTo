@@ -6,7 +6,6 @@ import type { ProviderPromptRequest } from "../../src/ai/types.js";
 describe("buildCommandGenerationPrompt", () => {
   const baseRequest: ProviderPromptRequest = {
     question: "how to list files",
-    arguments: [],
     useCommand: undefined,
     structuredOutput: false,
     outputContract: "CONTRACT",
@@ -28,11 +27,20 @@ describe("buildCommandGenerationPrompt", () => {
     assert.equal(userPrompt.includes("useCommand:"), false);
   });
 
-  it("should include arguments in userPrompt when provided", () => {
-    const request = { ...baseRequest, arguments: ["-la"] };
-    const { userPrompt } = buildCommandGenerationPrompt(request);
-    assert.ok(userPrompt.includes('argument: ["-la"]'));
-  });
+  for (const structuredOutput of [false, true]) {
+    it(`preserves and JSON-encodes the complete question in ${structuredOutput ? "structured" : "compatibility"} mode`, () => {
+      const question = '  find "report.txt"\nunder /tmp/my files \\ using -la  ';
+      const request = createProviderPromptRequest({ question, structuredOutput });
+      const { systemPrompt, userPrompt } = buildCommandGenerationPrompt(request);
+
+      assert.equal(request.question, question);
+      assert.equal("arguments" in request, false);
+      assert.equal(userPrompt, `User request:\nquestion: ${JSON.stringify(question)}`);
+      assert.equal(userPrompt.includes("argument:"), false);
+      assert.match(systemPrompt, /parameters.*complete question/);
+      assert.match(systemPrompt, /placeholders for required values that are missing or ambiguous/);
+    });
+  }
 
   it("should include useCommand in userPrompt when provided", () => {
     const request = { ...baseRequest, useCommand: "ls" };
@@ -58,7 +66,6 @@ describe("buildCommandGenerationPrompt", () => {
   it("should use a short prompt contract when structured output is enabled", () => {
     const request = createProviderPromptRequest({
       question: "how to list files",
-      arguments: [],
       structuredOutput: true,
     });
 
@@ -69,7 +76,6 @@ describe("buildCommandGenerationPrompt", () => {
   it("should use the full prompt contract when structured output is disabled", () => {
     const request = createProviderPromptRequest({
       question: "how to list files",
-      arguments: [],
       structuredOutput: false,
     });
 
