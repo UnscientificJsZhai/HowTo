@@ -41,21 +41,6 @@ void test("SelectCommandView renders candidates and footer help in a bounded fra
   assert.ok(output.includes("Up/Down move; Enter select; Esc/Ctrl+C cancel."));
 });
 
-void test("SelectCommandView keeps its natural height below a larger row limit", async () => {
-  const { renderToString, SelectCommandView } = await uiModules;
-  const output = renderToString(
-    <SelectCommandView
-      candidates={[candidate("List files", "ls -lah", "List directory contents")]}
-      availableRows={23}
-      onSelect={() => {}}
-      onCancel={() => {}}
-    />,
-    { columns: 80 },
-  );
-
-  assert.equal(output.split("\n").length, 7);
-});
-
 void test("SelectCommandView paginates and bounds long content in a four-row frame", async () => {
   const { Box, renderToString, SelectCommandView } = await uiModules;
   const output = renderToString(

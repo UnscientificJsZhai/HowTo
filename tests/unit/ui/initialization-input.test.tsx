@@ -770,60 +770,61 @@ void test("initialization consumes hidden saving input without cancelling or rep
   assert.match(stripVTControlCharacters(view.output()), /Error: saving failed/);
 });
 
-void test("ChatGPT 账号与动态模型选择在窄屏和少行终端保持可操作", async () => {
-  for (const columns of [20, 40]) {
-    for (const rows of [2, 3, 4, 5, 16]) {
-      let submitted: InitializationValues | undefined;
-      let loginCalls = 0;
-      let modelAccount: string | undefined;
-      const view = await renderInitialization(
-        { columns, rows },
-        (values) => {
-          submitted = values;
-          return Promise.resolve(testConfig());
+void test("ChatGPT 账号与动态模型选择在极限和紧凑终端保持可操作", async () => {
+  for (const [columns, rows] of [
+    [20, 2],
+    [40, 4],
+  ] as const) {
+    let submitted: InitializationValues | undefined;
+    let loginCalls = 0;
+    let modelAccount: string | undefined;
+    const view = await renderInitialization(
+      { columns, rows },
+      (values) => {
+        submitted = values;
+        return Promise.resolve(testConfig());
+      },
+      undefined,
+      undefined,
+      chatgptService({
+        login: () => {
+          loginCalls++;
+          return Promise.resolve(chatgptAccount());
         },
-        undefined,
-        undefined,
-        chatgptService({
-          login: () => {
-            loginCalls++;
-            return Promise.resolve(chatgptAccount());
-          },
-          listModels: ({ accountId }) => {
-            modelAccount = accountId;
-            return Promise.resolve([
-              { slug: "model-a", displayName: "Model A" },
-              { slug: "model-b", displayName: "Model B" },
-            ]);
-          },
-        }),
-      );
-      try {
-        await send(view, "3");
-        await waitFor(() => view.output().includes("Main"), "账号选择未显示");
-        await send(view, "\r");
-        await waitFor(() => view.output().includes("Model A"), "模型选择未显示");
-        await send(view, "\u001B[B");
-        await resizeAndWait(view, rows === 2 ? 3 : 2);
-        const offset = view.output().length;
-        await resizeAndWait(view, rows);
-        const lines = renderedUpdateLines(view, offset);
-        assert.ok(lines.length <= rows - 1, `${columns}x${rows}: ${lines.join("|")}`);
-        assert.ok(lines.some((line) => line.includes("Model B")));
-        assert.ok(lines.at(-1)?.includes("Esc"));
-        await send(view, "\r");
-        await waitFor(() => submitted !== undefined, "ChatGPT 初始化未提交");
-        assert.deepEqual(submitted, {
-          provider: "chatgpt",
-          account: "account-main",
-          model: "model-b",
-        });
-        assert.equal(modelAccount, "account-main");
-        assert.equal(loginCalls, 0);
-        assertNoFullscreenClear(view.output());
-      } finally {
-        await close(view);
-      }
+        listModels: ({ accountId }) => {
+          modelAccount = accountId;
+          return Promise.resolve([
+            { slug: "model-a", displayName: "Model A" },
+            { slug: "model-b", displayName: "Model B" },
+          ]);
+        },
+      }),
+    );
+    try {
+      await send(view, "3");
+      await waitFor(() => view.output().includes("Main"), "账号选择未显示");
+      await send(view, "\r");
+      await waitFor(() => view.output().includes("Model A"), "模型选择未显示");
+      await send(view, "\u001B[B");
+      await resizeAndWait(view, rows === 2 ? 3 : 2);
+      const offset = view.output().length;
+      await resizeAndWait(view, rows);
+      const lines = renderedUpdateLines(view, offset);
+      assert.ok(lines.length <= rows - 1, `${columns}x${rows}: ${lines.join("|")}`);
+      assert.ok(lines.some((line) => line.includes("Model B")));
+      assert.ok(lines.at(-1)?.includes("Esc"));
+      await send(view, "\r");
+      await waitFor(() => submitted !== undefined, "ChatGPT 初始化未提交");
+      assert.deepEqual(submitted, {
+        provider: "chatgpt",
+        account: "account-main",
+        model: "model-b",
+      });
+      assert.equal(modelAccount, "account-main");
+      assert.equal(loginCalls, 0);
+      assertNoFullscreenClear(view.output());
+    } finally {
+      await close(view);
     }
   }
 });

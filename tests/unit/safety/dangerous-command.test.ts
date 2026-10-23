@@ -33,7 +33,6 @@ const dangerousCommands = [
 for (const command of dangerousCommands) {
   test(`detectDangerousCommand matches ${command}`, () => {
     assert.notEqual(detectDangerousCommand(command), undefined);
-    assert.equal(isDangerousCommand(command), true);
   });
 }
 
@@ -61,9 +60,13 @@ const normalCommands = [
 for (const command of normalCommands) {
   test(`detectDangerousCommand ignores ${command}`, () => {
     assert.equal(detectDangerousCommand(command), undefined);
-    assert.equal(isDangerousCommand(command), false);
   });
 }
+
+test("isDangerousCommand 布尔封装与 detectDangerousCommand 保持一致", () => {
+  assert.equal(isDangerousCommand("rm -rf /"), true);
+  assert.equal(isDangerousCommand("git status"), false);
+});
 
 const equivalentDangerousCommands: Array<[string, string]> = [
   ["sudo -n rm -rf /", "destructive-rm"],

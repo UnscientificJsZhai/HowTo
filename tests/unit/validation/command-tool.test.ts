@@ -11,19 +11,10 @@ import {
 } from "../../../src/validation/command-tool.js";
 import { AiResponseValidationError } from "../../../src/validation/ai-response.js";
 
-test("candidateUsesRequestedCommand accepts direct requested command", () => {
+test("candidateUsesRequestedCommand 接受直接命令以及带环境变量或 sudo/env 前缀的工具", () => {
   assert.equal(candidateUsesRequestedCommand("git status", "git"), true);
-});
-
-test("candidateUsesRequestedCommand accepts sudo and environment prefixes", () => {
   assert.equal(candidateUsesRequestedCommand("FOO=bar sudo git status", "git"), true);
-});
-
-test("candidateUsesRequestedCommand accepts env prefixes", () => {
   assert.equal(candidateUsesRequestedCommand("env FOO=bar git status", "git"), true);
-});
-
-test("use git 接受明确工具并正确消费 sudo/env 参数", () => {
   assert.equal(candidateUsesRequestedCommand("sudo -u root git status", "git"), true);
   assert.equal(candidateUsesRequestedCommand("env -P /usr/bin git status", "git"), true);
 });

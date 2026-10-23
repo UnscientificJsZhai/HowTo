@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { GoogleGenAI } from "@google/genai";
 import { extractGeminiResponseText, GeminiCommandProvider } from "../../src/ai/gemini.js";
 import { AiProviderError } from "../../src/ai/errors.js";
 import type { GenerateCommandsRequest } from "../../src/ai/types.js";
@@ -77,7 +78,6 @@ test("Gemini 拒绝异常 envelope 结构", () => {
 });
 
 test("Gemini 异常 envelope、空结果和 SDK 异常统一为固定 Provider 错误", async () => {
-  const provider = new GeminiCommandProvider({ apiKey: "howto-fake-key", model: "gemini-test" });
   const request: GenerateCommandsRequest = {
     question: "list files",
     arguments: [],
@@ -89,22 +89,37 @@ test("Gemini 异常 envelope、空结果和 SDK 异常统一为固定 Provider �
   };
 
   // 典型分支 1：响应解析为空
-  Reflect.set(provider, "client", {
-    models: { generateContent: () => Promise.resolve(envelope([{ inlineData: {} }])) },
-  });
-  await assert.rejects(() => provider.generateCommands(request), isFixedProviderError);
+  const emptyProvider = new GeminiCommandProvider(
+    { apiKey: "howto-fake-key", model: "gemini-test" },
+    {
+      client: {
+        models: { generateContent: () => Promise.resolve(envelope([{ inlineData: {} }])) },
+      } as unknown as GoogleGenAI,
+    },
+  );
+  await assert.rejects(() => emptyProvider.generateCommands(request), isFixedProviderError);
 
   // 典型分支 2：响应文本为空白
-  Reflect.set(provider, "client", {
-    models: { generateContent: () => Promise.resolve(envelope([{ text: " \n " }])) },
-  });
-  await assert.rejects(() => provider.generateCommands(request), isFixedProviderError);
+  const blankProvider = new GeminiCommandProvider(
+    { apiKey: "howto-fake-key", model: "gemini-test" },
+    {
+      client: {
+        models: { generateContent: () => Promise.resolve(envelope([{ text: " \n " }])) },
+      } as unknown as GoogleGenAI,
+    },
+  );
+  await assert.rejects(() => blankProvider.generateCommands(request), isFixedProviderError);
 
   // 典型分支 3：SDK 抛出异常
-  Reflect.set(provider, "client", {
-    models: { generateContent: () => Promise.reject(new Error("HOWTO_FAKE_SDK_SECRET")) },
-  });
-  await assert.rejects(() => provider.generateCommands(request), isFixedProviderError);
+  const errorProvider = new GeminiCommandProvider(
+    { apiKey: "howto-fake-key", model: "gemini-test" },
+    {
+      client: {
+        models: { generateContent: () => Promise.reject(new Error("HOWTO_FAKE_SDK_SECRET")) },
+      } as unknown as GoogleGenAI,
+    },
+  );
+  await assert.rejects(() => errorProvider.generateCommands(request), isFixedProviderError);
 });
 
 function envelope(parts: unknown) {

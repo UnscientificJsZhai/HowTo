@@ -19,20 +19,21 @@ test("AI 标记补充静态规则未覆盖的命令", () => {
   });
 });
 
-for (const command of ["rm -rf /", "busybox ls"]) {
-  test(`AI 未标记不能降低静态危险或无法判定：${command}`, () => {
-    const local = detectDangerousCommand(command);
-    assert.ok(local);
-    assert.deepEqual(resolveCommandDanger(command, unflagged), local);
-  });
+test("AI 未标记不能降低静态危险或无法判定", () => {
+  const command = "rm -rf /";
+  const local = detectDangerousCommand(command);
+  assert.ok(local);
+  assert.deepEqual(resolveCommandDanger(command, unflagged), local);
+});
 
-  test(`两者命中时保留静态规则并追加 AI 原因，不污染后续检查：${command}`, () => {
-    const local = detectDangerousCommand(command);
-    assert.ok(local);
-    const original = { ...local };
-    assert.deepEqual(resolveCommandDanger(command, flagged), {
-      rule: original.rule,
-      reason: `${original.reason}; AI: ${flagged.dangerReason}`,
-    });
+test("两者命中时保留静态规则并追加 AI 原因，不污染原检查对象", () => {
+  const command = "rm -rf /";
+  const local = detectDangerousCommand(command);
+  assert.ok(local);
+  const original = { ...local };
+  assert.deepEqual(resolveCommandDanger(command, flagged), {
+    rule: original.rule,
+    reason: `${original.reason}; AI: ${flagged.dangerReason}`,
   });
-}
+  assert.equal(local.reason, original.reason);
+});

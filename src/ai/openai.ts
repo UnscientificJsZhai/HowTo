@@ -6,12 +6,20 @@ import type { CommandProvider, GenerateCommandsRequest, GenerateCommandsResult }
 import { COMMAND_GENERATION_SCHEMA } from "./command-schema.js";
 import { AiProviderError } from "./errors.js";
 
+export interface OpenAiDependencies {
+  client?: OpenAI;
+}
+
 export class OpenAiCommandProvider implements CommandProvider {
   private readonly client: OpenAI;
   private readonly model: string;
 
-  constructor(config: AppConfig["openai"]) {
+  constructor(config: AppConfig["openai"], dependencies: OpenAiDependencies = {}) {
     this.model = config.model;
+    if (dependencies.client !== undefined) {
+      this.client = dependencies.client;
+      return;
+    }
     try {
       this.client = new OpenAI(buildOpenAiClientOptions(config));
     } catch {

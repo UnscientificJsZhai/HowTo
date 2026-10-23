@@ -9,13 +9,17 @@ import type { CommandProvider, GenerateCommandsRequest, GenerateCommandsResult }
 import { COMMAND_GENERATION_SCHEMA } from "./command-schema.js";
 import { AiProviderError } from "./errors.js";
 
+export interface GeminiDependencies {
+  client?: GoogleGenAI;
+}
+
 export class GeminiCommandProvider implements CommandProvider {
   private readonly client: GoogleGenAI;
   private readonly model: string;
 
-  constructor(config: AppConfig["gemini"]) {
+  constructor(config: AppConfig["gemini"], dependencies: GeminiDependencies = {}) {
     this.model = config.model;
-    this.client = new GoogleGenAI(buildGeminiClientOptions(config));
+    this.client = dependencies.client ?? new GoogleGenAI(buildGeminiClientOptions(config));
   }
 
   async generateCommands(

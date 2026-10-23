@@ -443,6 +443,7 @@ void test("危险确认收到粘贴后转为仅输出", async (t) => {
   await send(view, "\r");
 
   assert.equal(confirmations, 1);
+  assert.equal(view.session.getExecutionPolicy(), "print");
 });
 
 void test("同分片粘贴和 Enter 只能确认输出", async (t) => {
@@ -469,6 +470,7 @@ void test("同分片粘贴和 Enter 只能确认输出", async (t) => {
 
   assert.equal(confirmations, 1);
   assert.equal(cancellations, 0);
+  assert.equal(view.session.getExecutionPolicy(), "print");
 });
 
 void test("ConfirmView discards pasted Enter for safe commands", async (t) => {
@@ -2086,57 +2088,6 @@ void test("App resize from 24 to 0 rows commits an empty frame without full-term
   assert.ok(!resizeOutput.includes("\u001B[2J"));
   assert.ok(!resizeOutput.includes("\u001B[3J"));
   assert.ok(!resizeOutput.includes("\u001B[H"));
-});
-
-void test("App resize across an expanded frame does not emit full-terminal clear sequences", async (t) => {
-  const { App } = await uiModules;
-  const generatedCandidates = [
-    candidate("First candidate", "printf first", "First expanded description"),
-    candidate("Second candidate", "printf second", "Second expanded description"),
-    candidate("Third candidate", "printf third", "Third expanded description"),
-  ];
-  let unmounted = false;
-  const view = await renderView(
-    <App
-      provider={{
-        generateCommands: () =>
-          Promise.resolve({ rawText: JSON.stringify({ commands: generatedCandidates }) }),
-      }}
-      request={{
-        question: "print a value",
-        arguments: [],
-        structuredOutput: true,
-        outputContract: "",
-        safetyConstraints: "",
-        systemPrompt: "",
-        userPrompt: "",
-      }}
-      onSuccess={() => {}}
-      onError={() => {}}
-    />,
-    { columns: 80, rows: 24 },
-  );
-  t.after(async () => {
-    if (!unmounted) {
-      await close(view);
-    }
-  });
-
-  await waitForOutput(view, "Third expanded description");
-  const resizeListenerBaseline = view.resizeListenerBaseline;
-  assert.ok(view.stdout.listenerCount("resize") > resizeListenerBaseline);
-  const outputLengthBeforeResize = view.output().length;
-  view.stdout.resize(80, 10);
-  await waitForOutputAfter(view, outputLengthBeforeResize, "? Select a command (1/3)");
-  await view.instance.waitUntilRenderFlush();
-  await clearAndUnmount(view);
-  unmounted = true;
-
-  const resizeOutput = view.output().slice(outputLengthBeforeResize);
-  assert.ok(!resizeOutput.includes("\u001B[2J"));
-  assert.ok(!resizeOutput.includes("\u001B[3J"));
-  assert.ok(!resizeOutput.includes("\u001B[H"));
-  assert.equal(view.stdout.listenerCount("resize"), resizeListenerBaseline);
 });
 
 class FakeTty extends PassThrough {

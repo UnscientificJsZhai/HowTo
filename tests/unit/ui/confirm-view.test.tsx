@@ -294,15 +294,11 @@ void test("ConfirmView renders only the command after confirmation is done", asy
   }
 });
 
-void test("isDangerConfirmationInput accepts EXECUTE case-insensitively", async () => {
+void test("isDangerConfirmationInput 不区分大小写匹配 EXECUTE 并拒绝其他输入", async () => {
   const { isDangerConfirmationInput } = await uiModules;
   assert.equal(isDangerConfirmationInput("EXECUTE"), true);
   assert.equal(isDangerConfirmationInput("execute"), true);
   assert.equal(isDangerConfirmationInput("ExEcUtE"), true);
-});
-
-void test("isDangerConfirmationInput rejects non-matching input", async () => {
-  const { isDangerConfirmationInput } = await uiModules;
   assert.equal(isDangerConfirmationInput("EXECUTE!"), false);
   assert.equal(isDangerConfirmationInput("run"), false);
   assert.equal(isDangerConfirmationInput(" execute "), false);

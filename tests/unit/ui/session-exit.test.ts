@@ -101,37 +101,66 @@ void test("输入输出检查拒绝时不注册退出钩子，也不更改终端
   }
 });
 
-void test("注册或构造中途失败会回滚资源并注销已取得的钩子", (t) => {
-  for (const stage of ["register", "raw", "ref", "paste"]) {
-    const h = exitHarness(t);
-    if (stage === "register") {
-      h.resources.registerExit = () => {
-        throw new Error("FAKE-secret");
-      };
-    }
-    const setRaw = h.input.setRawMode.bind(h.input);
-    h.input.setRawMode = (enabled) => {
-      setRaw(enabled);
-      if (enabled && stage === "raw") throw new Error("FAKE-secret");
-      return h.input;
-    };
-    h.input.ref = () => {
-      h.input.refs++;
-      if (stage === "ref") throw new Error("FAKE-secret");
-      return h.input;
-    };
-    h.output.on("data", (chunk: Buffer) => {
-      if (stage === "paste" && chunk.toString() === ENABLE_PASTE) throw new Error("FAKE-secret");
-    });
-    assert.throws(() => h.create(), InteractiveSessionError);
-    assert.equal(h.state.registered, false);
-    assert.equal(h.state.removals, stage === "register" ? 0 : 1);
-    assert.equal(h.state.releases, 1);
-    assert.equal(h.input.isRaw, false);
-    assert.equal(h.input.refs, 0);
-    if (stage !== "register") h.exit();
-    assert.equal(h.state.releases, 1);
-  }
+void test("退出钩子注册阶段失败时回滚资源", (t) => {
+  const h = exitHarness(t);
+  h.resources.registerExit = () => {
+    throw new Error("FAKE-secret");
+  };
+  assert.throws(() => h.create(), InteractiveSessionError);
+  assert.equal(h.state.registered, false);
+  assert.equal(h.state.removals, 0);
+  assert.equal(h.state.releases, 1);
+  assert.equal(h.input.isRaw, false);
+  assert.equal(h.input.refs, 0);
+});
+
+void test("设置 raw 模式阶段失败时回滚终端并注销已取得的退出钩子", (t) => {
+  const h = exitHarness(t);
+  const setRaw = h.input.setRawMode.bind(h.input);
+  h.input.setRawMode = (enabled) => {
+    setRaw(enabled);
+    if (enabled) throw new Error("FAKE-secret");
+    return h.input;
+  };
+  assert.throws(() => h.create(), InteractiveSessionError);
+  assert.equal(h.state.registered, false);
+  assert.equal(h.state.removals, 1);
+  assert.equal(h.state.releases, 1);
+  assert.equal(h.input.isRaw, false);
+  assert.equal(h.input.refs, 0);
+  h.exit();
+  assert.equal(h.state.releases, 1);
+});
+
+void test("stdin ref 阶段失败时回滚终端并注销已取得的退出钩子", (t) => {
+  const h = exitHarness(t);
+  h.input.ref = () => {
+    h.input.refs++;
+    throw new Error("FAKE-secret");
+  };
+  assert.throws(() => h.create(), InteractiveSessionError);
+  assert.equal(h.state.registered, false);
+  assert.equal(h.state.removals, 1);
+  assert.equal(h.state.releases, 1);
+  assert.equal(h.input.isRaw, false);
+  assert.equal(h.input.refs, 0);
+  h.exit();
+  assert.equal(h.state.releases, 1);
+});
+
+void test("写入启用粘贴序列阶段失败时回滚终端并注销已取得的退出钩子", (t) => {
+  const h = exitHarness(t);
+  h.output.on("data", (chunk: Buffer) => {
+    if (chunk.toString() === ENABLE_PASTE) throw new Error("FAKE-secret");
+  });
+  assert.throws(() => h.create(), InteractiveSessionError);
+  assert.equal(h.state.registered, false);
+  assert.equal(h.state.removals, 1);
+  assert.equal(h.state.releases, 1);
+  assert.equal(h.input.isRaw, false);
+  assert.equal(h.input.refs, 0);
+  h.exit();
+  assert.equal(h.state.releases, 1);
 });
 
 void test("正常清理和运行期间输入输出失败均注销退出钩子", (t) => {

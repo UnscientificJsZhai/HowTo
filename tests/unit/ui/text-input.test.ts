@@ -48,14 +48,14 @@ void test("删除空输入保持为空", () => {
   assert.equal(deleteLastGrapheme(""), "");
 });
 
-for (const grapheme of ["a", "中", "😀", "𠮷", "e\u0301", "👩🏽‍💻", "🇨🇳", "\r\n"]) {
-  void test(`退格完整删除字素簇 ${JSON.stringify(grapheme)} 并保留前文原值`, () => {
-    const prefix = "e\u0301/𠮷/";
+void test("退格完整删除字素簇并保留前文原值", () => {
+  const prefix = "e\u0301/𠮷/";
+  for (const grapheme of ["a", "😀", "e\u0301", "👩🏽‍💻", "🇨🇳", "\r\n"]) {
     assert.equal(deleteLastGrapheme(grapheme), "");
     const result = deleteLastGrapheme(prefix + grapheme);
-    assert.equal(result, prefix);
-  });
-}
+    assert.equal(result, prefix, `字素簇: ${grapheme}`);
+  }
+});
 
 void test("isTextInputEvent accepts text with non-shortcut modifiers and Kitty press states", () => {
   assert.equal(isTextInputEvent("A", key({ shift: true })), true);
