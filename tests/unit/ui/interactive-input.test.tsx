@@ -415,6 +415,77 @@ void test("App resolves placeholders from a complete CLI question and keeps valu
   assert.equal(appError, undefined);
 });
 
+for (const structuredOutput of [true, false]) {
+  void test(`App 在${structuredOutput ? "结构化" : "兼容"}模式保留歧义目录占位符，填写后仍需确认`, async (t) => {
+    const { App } = await uiModules;
+    const parsed = parseCliArgs([
+      "use",
+      "find",
+      "find files named report.txt under either",
+      "/tmp/draft reports",
+      "or",
+      "/tmp/final reports",
+      "but I have not decided which directory",
+    ]);
+    assert.ok(parsed.question);
+    const promptRequest = createProviderPromptRequest({
+      question: parsed.question,
+      useCommand: parsed.useCommand,
+      structuredOutput,
+    });
+    const candidate: CommandCandidateContract = {
+      title: "Find report",
+      command: 'find "{{directory}}" -type f -name "report.txt"',
+      description: "Search the selected directory for the exact filename",
+      dangerous: false,
+      dangerReason: "",
+      placeholders: [
+        { name: "directory", description: "Choose /tmp/draft reports or /tmp/final reports" },
+      ],
+    };
+    let finalCommand: string | undefined;
+    let providerCalls = 0;
+    let appError: Error | undefined;
+    const view = await renderView(
+      <App
+        provider={{
+          generateCommands: (received) => {
+            providerCalls++;
+            assert.equal(received.question, parsed.question);
+            assert.equal(received.useCommand, "find");
+            assert.equal(received.structuredOutput, structuredOutput);
+            return Promise.resolve({ rawText: JSON.stringify({ commands: [candidate] }) });
+          },
+        }}
+        request={{ ...promptRequest, ...buildCommandGenerationPrompt(promptRequest) }}
+        onSuccess={(command) => {
+          finalCommand = command;
+        }}
+        onError={(error) => {
+          appError = error;
+        }}
+      />,
+    );
+    t.after(() => close(view));
+
+    await waitForOutput(view, "? Select a command");
+    await send(view, "\r");
+    await waitForOutput(view, "directory: Choose /tmp/draft reports or /tmp/final reports");
+    assert.equal(finalCommand, undefined);
+    await send(view, "/tmp/final reports");
+    await send(view, "\r");
+    const expectedCommand = 'find "/tmp/final reports" -type f -name "report.txt"';
+    await waitForOutput(view, expectedCommand);
+    assert.equal(finalCommand, undefined);
+    await send(view, "\r");
+    await waitFor(() => finalCommand !== undefined, "App did not confirm the chosen directory");
+
+    assert.equal(finalCommand, expectedCommand);
+    assert.equal(providerCalls, 1);
+    assert.equal(appError, undefined);
+  });
+}
+
 void test("ConfirmView accepts a typed uppercase EXECUTE confirmation", async (t) => {
   let confirmations = 0;
   let cancellations = 0;
