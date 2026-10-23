@@ -40,7 +40,7 @@ export class ConfigError extends Error {
   }
 }
 
-const DEFAULT_OPENAI_MODEL = "gpt-5.4-mini";
+const DEFAULT_OPENAI_MODEL = "gpt-6-luna";
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 
 export { DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL };

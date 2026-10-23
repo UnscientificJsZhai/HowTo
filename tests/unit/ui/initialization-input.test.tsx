@@ -213,7 +213,7 @@ void test("initialization preserves provider and field state across compact inte
       assert.deepEqual(submittedValues, {
         provider: "openai",
         apiKey: "Ab",
-        model: "gpt-5.4-mini",
+        model: "gpt-6-luna",
         openaiBaseUrl: undefined,
       });
       assertNoFullscreenClear(view.output());
@@ -364,7 +364,7 @@ void test("initialization keeps rich long values visible and submits their origi
     await send(view, "\r");
     frame = renderedUpdate(view, outputOffset);
     assert.ok(frame.includes("> Model:"));
-    assert.ok(frame.includes("Default: gpt-5.4"));
+    assert.ok(frame.includes("Default: gpt-6"));
 
     outputOffset = view.output().length;
     await send(view, `\u001B[200~${model}\u001B[201~`);
@@ -726,7 +726,7 @@ void test("initialization preserves provider and field input across one-row and 
   assert.deepEqual(submittedValues, {
     provider: "openai",
     apiKey: "abcd",
-    model: "gpt-5.4-mini",
+    model: "gpt-6-luna",
     openaiBaseUrl: undefined,
   });
   assert.equal(cancellations, 0);
