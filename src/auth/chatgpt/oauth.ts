@@ -22,7 +22,7 @@ type Tokens = NonNullable<AccountRecord["tokens"]>;
 
 export interface OAuthDependencies {
   fetch?: Fetch;
-  openBrowser?: (url: string) => Promise<boolean>;
+  openBrowser?: (url: string, signal?: AbortSignal) => Promise<boolean>;
 }
 
 export interface AuthorizationOptions {
@@ -37,24 +37,42 @@ export interface AuthorizationOptions {
   onRegistration: (clientId: string) => Promise<void>;
 }
 
-export async function openSystemBrowser(url: string): Promise<boolean> {
+export async function openSystemBrowser(url: string, signal?: AbortSignal): Promise<boolean> {
+  checkCancellation(signal);
   return new Promise((resolve) => {
     const child = spawn(process.platform === "darwin" ? "open" : "xdg-open", [url], {
       stdio: "ignore",
       shell: false,
     });
-    const timer = setTimeout(() => {
-      child.kill();
-      resolve(false);
-    }, 10_000);
-    child.once("error", () => {
+    let settled = false;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (opened: boolean) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
-      resolve(false);
+      signal?.removeEventListener("abort", stop);
+      resolve(opened);
+    };
+    const stop = () => {
+      if (settled) return;
+      if (child.pid !== undefined) {
+        // 只终止本次启动器；不向进程组发信号，以免关闭用户已打开的浏览器。
+        killTimer = setTimeout(() => child.kill("SIGKILL"), 500);
+        child.kill("SIGTERM");
+      }
+      finish(false);
+    };
+    const timer = setTimeout(stop, 10_000);
+    child.once("error", () => {
+      clearTimeout(killTimer);
+      finish(false);
     });
     child.once("exit", (code) => {
-      clearTimeout(timer);
-      resolve(code === 0);
+      clearTimeout(killTimer);
+      finish(code === 0);
     });
+    signal?.addEventListener("abort", stop, { once: true });
+    if (signal?.aborted) stop();
   });
 }
 
@@ -94,7 +112,7 @@ export async function authorizeChatGpt(
     }
     checkCancellation(signal);
     const opened = await awaitWithCancellation(
-      (dependencies.openBrowser ?? openSystemBrowser)(authorization.toString()),
+      (dependencies.openBrowser ?? openSystemBrowser)(authorization.toString(), signal),
       signal,
     );
     if (!opened || options.idTokenHint === undefined) {

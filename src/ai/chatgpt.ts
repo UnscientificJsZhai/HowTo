@@ -6,7 +6,8 @@ import type {
 import { getChatGptAccessToken } from "../auth/chatgpt/index.js";
 import { classifyChatGptHttpError } from "../auth/chatgpt/errors.js";
 import { type AppConfig, ConfigError } from "../config.js";
-import type { UsageGenerationSession, UsageToolCall } from "../usage/types.js";
+import type { UsageGenerationSession, UsageLookupResult, UsageToolCall } from "../usage/types.js";
+import { sanitizeUsageLookupResult } from "../usage/output.js";
 import { COMMAND_GENERATION_SCHEMA, USAGE_COMMAND_GENERATION_SCHEMA } from "./command-schema.js";
 import {
   type ChatGptDependencies,
@@ -51,23 +52,52 @@ export class ChatGptCommandProvider implements CommandProvider {
     const input = initial.input as ResponseInputItem[];
     const tracker = new UsageReplyTracker("chatgpt", this.model);
     const knownCredentials = new Set<string>();
+    const toolResults = new Map<string, UsageLookupResult>();
+    let credentialsChanged = false;
     let modelVerified = false;
     return {
       getKnownCredentials: () => [...knownCredentials],
       next: (replies, options, signal) =>
         runChatGptRequest(this.model, signal, this.dependencies, async (requestSignal) => {
-          for (const reply of tracker.accept(replies)) {
-            input.push({
-              type: "function_call_output",
-              call_id: reply.callId,
-              output: JSON.stringify(reply.result),
-            });
-          }
+          const previousCredentialCount = knownCredentials.size;
           const credentials = await (this.dependencies.getAccessToken ?? getChatGptAccessToken)({
             accountId: this.config.account,
             signal: requestSignal,
+            onCredentials: (values) => {
+              for (const value of values) knownCredentials.add(value);
+            },
           });
           knownCredentials.add(credentials.accessToken);
+          credentialsChanged ||=
+            previousCredentialCount > 0 && knownCredentials.size > previousCredentialCount;
+          // 审批期间凭据可能已刷新；在序列化工具结果前再次按最新的整组令牌脱敏。
+          for (const reply of tracker.accept(replies)) {
+            toolResults.set(reply.callId, reply.result);
+            input.push({
+              type: "function_call_output",
+              call_id: reply.callId,
+              output: "",
+            });
+          }
+          // 重试和后续轮次也重新处理历史结果，避免沿用旧凭据集合下的序列化内容。
+          for (const item of input) {
+            if (item.type !== "function_call_output") continue;
+            const result = toolResults.get(item.call_id);
+            if (result === undefined) continue;
+            const sanitized = sanitizeUsageLookupResult(result, [...knownCredentials]);
+            if (credentialsChanged) {
+              // 新令牌可能已被截断为无法精确匹配的片段；缓存重放同样适用。
+              for (const channel of ["stdout", "stderr"] as const) {
+                if (sanitized[`${channel}Truncated`]) {
+                  sanitized[channel] =
+                    "[redacted: truncated output omitted after credential rotation]";
+                  sanitized.credentialsRedacted = true;
+                }
+              }
+            }
+            toolResults.set(item.call_id, sanitized);
+            item.output = JSON.stringify(sanitized);
+          }
           const fetch = this.dependencies.fetch ?? globalThis.fetch;
           if (!modelVerified) {
             const models = await requestChatGptModels(

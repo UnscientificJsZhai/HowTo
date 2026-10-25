@@ -30,6 +30,12 @@ interface AccountOptions {
   accountId?: string;
   signal?: AbortSignal;
 }
+
+export interface ChatGptAccessTokenOptions extends AccountOptions {
+  /** 仅供本次请求脱敏，包含读取及刷新前后的整组令牌，不写入普通配置或日志。 */
+  onCredentials?: (credentials: readonly string[]) => void;
+}
+
 interface Dependencies extends OAuthDependencies {
   homeDirectory?: string;
 }
@@ -140,7 +146,7 @@ export async function loginChatGpt(
 }
 
 export async function getChatGptAccessToken(
-  options: AccountOptions = {},
+  options: ChatGptAccessTokenOptions = {},
   dependencies: Dependencies = {},
 ): Promise<{ accessToken: string; accountId: string }> {
   const store = createChatGptStore(dependencies.homeDirectory);
@@ -150,6 +156,7 @@ export async function getChatGptAccessToken(
     const account = selectAccount(data.accounts, options.accountId);
     const previous = account.tokens;
     if (previous === undefined) throw new ChatGptError("login_required");
+    observeCredentials(previous);
     if (account.refreshState !== undefined) throw new ChatGptError("refresh_invalid");
     if (!previous.scopes.includes("chatgpt.tokens.use.direct"))
       throw new ChatGptError("plan_permission");
@@ -181,6 +188,7 @@ export async function getChatGptAccessToken(
         dependencies.fetch,
       );
       const tokens = parseTokenResponse(response, previous);
+      observeCredentials(tokens);
       if (tokens.idToken !== previous.idToken) {
         await validateIdentity(tokens.idToken, account.clientId, metadata, {
           subject: account.subject,
@@ -210,6 +218,14 @@ export async function getChatGptAccessToken(
       throw error;
     }
   }, options.signal);
+
+  function observeCredentials(tokens: NonNullable<AccountRecord["tokens"]>): void {
+    options.onCredentials?.(
+      [tokens.accessToken, tokens.refreshToken, tokens.idToken].filter(
+        (value): value is string => typeof value === "string" && value !== "",
+      ),
+    );
+  }
 }
 
 export async function logoutChatGpt(

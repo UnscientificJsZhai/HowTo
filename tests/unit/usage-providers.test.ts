@@ -604,6 +604,112 @@ test("ChatGPT 不使用 delta、未完成调用或 incomplete 终态启动工具
   }
 });
 
+test("ChatGPT 凭据轮换后重新脱敏历史与当前结果，并省略已截断输出", async () => {
+  const requests: Record<string, unknown>[] = [];
+  const steps = [
+    callsWire("chatgpt", [call("first"), call("truncated")]),
+    callsWire("chatgpt", [call("replayed")]),
+    finalWire("chatgpt"),
+  ];
+  let round = 0;
+  const provider = new ChatGptCommandProvider(
+    { model: MODEL },
+    {
+      getAccessToken: ({ onCredentials }) => {
+        round++;
+        onCredentials?.(
+          round < 3
+            ? ["access-1", "refresh-1", "id-1"]
+            : ["access-1", "refresh-1", "id-1", "access-2", "refresh-2", "id-2"],
+        );
+        return Promise.resolve({
+          accessToken: round < 3 ? "access-1" : "access-2",
+          accountId: "test-account",
+        });
+      },
+      fetch: (input, init) => {
+        if (new Request(input).url.endsWith("/models"))
+          return Promise.resolve(
+            Response.json({
+              models: [{ slug: MODEL, display_name: "Usage test", visibility: "list" }],
+            }),
+          );
+        requests.push(snapshot(JSON.parse(init?.body as string)));
+        return Promise.resolve(
+          new Response(steps.shift() as string, {
+            headers: { "content-type": "text/event-stream" },
+          }),
+        );
+      },
+    },
+  );
+  const session = provider.createUsageSession(request(true));
+  await session.next([], { toolsEnabled: true });
+  await session.next(
+    [
+      {
+        callId: "first",
+        result: { ...result(), stdout: "old=refresh-1 rotated=id-2\n" },
+      },
+      {
+        callId: "truncated",
+        result: { ...result(), stdout: "partial output\n", stdoutTruncated: true },
+      },
+    ],
+    { toolsEnabled: true },
+  );
+  assert.deepEqual(returnedResults("chatgpt", requests[1]), [
+    {
+      id: "first",
+      result: {
+        ...result(),
+        stdout: "old=[redacted] rotated=id-2\n",
+        credentialsRedacted: true,
+      },
+    },
+    {
+      id: "truncated",
+      result: { ...result(), stdout: "partial output\n", stdoutTruncated: true },
+    },
+  ]);
+  await session.next(
+    [
+      {
+        callId: "replayed",
+        result: { ...result(), stdout: "cached=refresh-2\n" },
+      },
+    ],
+    { toolsEnabled: true },
+  );
+  assert.deepEqual(returnedResults("chatgpt", requests[2]), [
+    {
+      id: "first",
+      result: {
+        ...result(),
+        stdout: "old=[redacted] rotated=[redacted]\n",
+        credentialsRedacted: true,
+      },
+    },
+    {
+      id: "truncated",
+      result: {
+        ...result(),
+        stdout: "[redacted: truncated output omitted after credential rotation]",
+        stdoutTruncated: true,
+        credentialsRedacted: true,
+      },
+    },
+    {
+      id: "replayed",
+      result: {
+        ...result(),
+        stdout: "cached=[redacted]\n",
+        credentialsRedacted: true,
+      },
+    },
+  ]);
+});
+
 test("能力识别仅接受明确工具能力错误，拒绝认证、额度、网络、schema 和普通参数错误", () => {
   for (const error of [
     { status: 400, error: { code: "unsupported_parameter", param: "tools" } },

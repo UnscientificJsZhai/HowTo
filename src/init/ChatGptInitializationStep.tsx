@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useStdout } from "ink";
 import { getUserVisibleErrorMessage } from "../errors.js";
 import { toSingleLinePreview } from "../ui/single-line-preview.js";
 import { isTextInputEvent } from "../ui/text-input.js";
@@ -20,7 +20,7 @@ interface Props {
 }
 
 type SetupState =
-  | { step: "loading"; message: string; authorizationUrl?: string }
+  | { step: "loading"; message: string }
   | { step: "accounts"; accounts: ChatGptInitializationAccount[]; selectedIndex: number }
   | {
       step: "models";
@@ -37,6 +37,9 @@ export const ChatGptInitializationStep: React.FC<Props> = ({
   onBack,
   onCancel,
 }) => {
+  const { write: writeStdout } = useStdout();
+  const writeStdoutRef = useRef(writeStdout);
+  writeStdoutRef.current = writeStdout;
   const [state, setState] = useState<SetupState>({
     step: "loading",
     message: "Loading ChatGPT accounts...",
@@ -109,6 +112,7 @@ export const ChatGptInitializationStep: React.FC<Props> = ({
         step: "loading",
         message: "Complete ChatGPT sign-in in your browser...",
       });
+      const publishedUrls = new Set<string>();
       const signedInAccount = await service.login({
         accountId: account?.id,
         signal,
@@ -119,14 +123,21 @@ export const ChatGptInitializationStep: React.FC<Props> = ({
           try {
             const parsed = new URL(url);
             if (parsed.searchParams.has("id_token_hint")) return;
+            parsed.searchParams.delete("login_hint");
             authorizationUrl = parsed.toString();
           } catch {
             return;
           }
+          // 通过 Ink 的外部输出入口写完整链接，保留在滚动历史中，不受帧高度或缩放裁剪。
+          if (!publishedUrls.has(authorizationUrl)) {
+            publishedUrls.add(authorizationUrl);
+            writeStdoutRef.current(
+              `Open this authorization URL in your browser:\n${toSingleLinePreview(authorizationUrl)}\n`,
+            );
+          }
           updateState({
             step: "loading",
-            message: "Complete ChatGPT sign-in in your browser...",
-            authorizationUrl,
+            message: "Open the sign-in URL above in your browser...",
           });
         },
       });
@@ -251,14 +262,7 @@ export const ChatGptInitializationStep: React.FC<Props> = ({
             </SetupLine>
           ))
       ) : (
-        <>
-          <SetupLine>{toSingleLinePreview(status)}</SetupLine>
-          {state.step === "loading" && state.authorizationUrl !== undefined && frameRows >= 4 && (
-            <Box maxHeight={frameRows - 3} overflowX="hidden" overflowY="hidden">
-              <Text>{toSingleLinePreview(state.authorizationUrl)}</Text>
-            </Box>
-          )}
-        </>
+        <SetupLine>{toSingleLinePreview(status)}</SetupLine>
       )}
       <SetupLine>{state.step === "error" ? "Ent retry Esc back ^C" : help}</SetupLine>
     </Box>

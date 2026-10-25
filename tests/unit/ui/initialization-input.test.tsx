@@ -850,6 +850,7 @@ void test("ChatGPT 首次授权等待期间 Ctrl+C 中止，迟到结果和 URL 
       login: (options) => {
         loginOptions = options;
         options.onAuthorizationUrl("https://auth.openai.com/authorize?state=fake-state");
+        options.onAuthorizationUrl("https://auth.openai.com/authorize?state=fake-state");
         return pendingLogin.promise;
       },
       listModels: () => {
@@ -863,7 +864,10 @@ void test("ChatGPT 首次授权等待期间 Ctrl+C 中止，迟到结果和 URL 
   await waitFor(() => view.output().includes("Continue with ChatGPT"), "登录入口未显示");
   await send(view, "\r");
   await waitFor(() => loginOptions !== undefined, "授权尚未开始");
-  assert.ok(view.output().includes("fake-state"));
+  assert.equal(
+    view.output().split("https://auth.openai.com/authorize?state=fake-state\n").length - 1,
+    1,
+  );
   assert.ok(view.output().includes("Esc back ^C cancel"));
   await send(view, "\u0003");
   assert.equal(cancellations, 1);

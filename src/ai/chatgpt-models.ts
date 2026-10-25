@@ -1,4 +1,4 @@
-import { getChatGptAccessToken } from "../auth/chatgpt/index.js";
+import { getChatGptAccessToken, type ChatGptAccessTokenOptions } from "../auth/chatgpt/index.js";
 import { ChatGptError, classifyChatGptHttpError } from "../auth/chatgpt/errors.js";
 import { ConfigError } from "../config.js";
 import { hasUnsafeTerminalControlCharacters } from "../terminal-text.js";
@@ -17,7 +17,7 @@ export interface ChatGptRequestOptions {
 
 export interface ChatGptDependencies {
   getAccessToken?: (
-    options: ChatGptRequestOptions,
+    options: ChatGptAccessTokenOptions,
   ) => Promise<{ accessToken: string; accountId: string }>;
   fetch?: typeof globalThis.fetch;
   timeoutMilliseconds?: number;

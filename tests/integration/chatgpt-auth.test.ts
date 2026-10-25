@@ -306,13 +306,15 @@ test("ChatGPT 等待浏览器时取消立即释放回调监听", async () => {
   const f = await fixture();
   const controller = new AbortController();
   let callback: string | undefined;
+  let browserSignal: AbortSignal | undefined;
   try {
     const pending = loginChatGpt(
       { signal: controller.signal },
       {
         ...f.dependencies,
-        openBrowser: (url) => {
+        openBrowser: (url, signal) => {
           callback = new URL(url).searchParams.get("redirect_uri")!;
+          browserSignal = signal;
           controller.abort();
           return new Promise<boolean>(() => undefined);
         },
@@ -320,6 +322,7 @@ test("ChatGPT 等待浏览器时取消立即释放回调监听", async () => {
     );
     await assert.rejects(pending, InteractionCancelledError);
     assert.ok(callback);
+    assert.equal(browserSignal?.aborted, true);
     await assert.rejects(fetch(callback));
     assert.equal(f.tokenCalls, 0);
   } finally {
@@ -331,15 +334,32 @@ test("ChatGPT 并发刷新只使用一次旋转 token，后来的请求读取新
   const f = await fixture();
   try {
     await f.login();
+    const before = (await f.store.listAccounts())[0].tokens!;
     await f.expire();
+    const observed = new Set<string>();
     const results = await Promise.all([
-      getChatGptAccessToken({}, f.dependencies),
+      getChatGptAccessToken(
+        { onCredentials: (values) => values.forEach((value) => observed.add(value)) },
+        f.dependencies,
+      ),
       getChatGptAccessToken({}, f.dependencies),
     ]);
+    const after = (await f.store.listAccounts())[0].tokens!;
     assert.equal(f.refreshCalls, 1);
     assert.equal(results[0].accessToken, "access-2");
     assert.deepEqual(results[0], results[1]);
-    assert.equal((await f.store.listAccounts())[0].tokens?.refreshToken, "refresh-2");
+    assert.equal(after.refreshToken, "refresh-2");
+    assert.deepEqual(
+      observed,
+      new Set([
+        before.accessToken,
+        before.refreshToken,
+        before.idToken,
+        after.accessToken,
+        after.refreshToken,
+        after.idToken,
+      ]),
+    );
   } finally {
     await f.cleanup();
   }
