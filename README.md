@@ -250,9 +250,11 @@ Homebrew uninstall aliases such as `rm/uninstal`, and yum/dnf upgrade or removal
 
 Linux checks also cover system package changes through apk, pacman, and zypper, and OpenRC service or runlevel changes, such as `apk upgrade`, `pacman -Syu`, `zypper dup`, `rc-service sshd stop`, and `rc-update del sshd`. Common queries and apk/zypper metadata refreshes keep ordinary confirmation; unsupported options, dynamic arguments, and additional service commands conservatively require `EXECUTE`. Query arguments are also checked: `zypper repos --export …`, which writes to a file, still requires additional confirmation.
 
-If howto detects bracketed paste during an interactive run, including automatic initialization, that run permanently switches to printing the final command for manual execution. At final confirmation, Enter prints the command without running it, and the terminal shows an explanation. Returning to selection or resizing the terminal does not restore execution. Keyboard-only runs keep the usual Enter or `EXECUTE` confirmation.
+Pasting does not disable command execution or `use` lookups. API key, placeholder, and query argument fields accept complete paste blocks; CR/LF remain data and never submit a field. Submitting a field discards remaining keys and pastes from that input batch. Selection, query approval, and final confirmation screens ignore paste. Type `EXECUTE` on the keyboard for dangerous commands; execution still requires a separate confirmation.
 
-Paste spanning a hidden terminal view is discarded as a whole. These rules apply to recognized bracketed-paste input; the terminal protocol cannot authenticate arbitrary pasted keystrokes or embedded end markers. The execution restriction applies to howto's own command launch.
+Paste containing unsupported control characters (including Tab), or spanning a field, screen, or hidden view, is discarded with an explanation. Each paste is limited to 256 KiB. An unfinished paste cancels the interaction after 5 seconds without new data or 30 seconds in total, restores the terminal, and exits with status 1 without executing a command.
+
+These rules cover complete, valid bracketed paste. The terminal protocol cannot authenticate embedded end markers or delayed bytes after them, or reliably distinguish unframed paste from typing. Screen isolation does not guarantee that arbitrary forged protocol input cannot trigger execution.
 
 > [!WARNING]
 > A command that passes local checks and is not flagged by AI is not guaranteed to be safe. These checks add confirmation requirements; they do not provide a complete safety proof or guarantee AI assessment accuracy.

@@ -91,15 +91,20 @@ try:
         assert not process_gone(query_pid), 'query exited before cancellation'
     if phase == 'paste':
         os.write(fd, b'\x1b[200~ignored\r\x1b[201~')
+        wait_for('当前页面忽略粘贴'.encode())
+        assert not process_gone(query_pid), 'paste interrupted the running query'
+        assert not os.path.exists(os.path.join(test_home, 'tool-result.json')), 'paste completed the query'
+        with open(os.path.join(test_home, 'query-release'), 'w') as handle:
+            handle.write('yes')
         wait_for(b'Select a command')
         with open(os.path.join(test_home, 'tool-result.json')) as handle:
             result = json.load(handle)
-        assert result['status'] == 'permission_revoked', 'paste did not revoke query permission'
+        assert result['status'] == 'success', 'query did not complete normally after paste'
         assert result['stdout'] == 'QUERY_PARTIAL_OUTPUT\n', 'partial query output was lost'
         assert result['actualCommand'] is not None, 'executed query command was not returned'
         assert not os.path.exists(os.path.join(test_home, 'executed')), 'paste executed final command'
         os.write(fd, b'\r')
-        wait_for('仅输出:'.encode())
+        wait_for(b'Final command:')
         os.write(fd, b'\r')
     else:
         os.write(fd, b'\x03')
@@ -126,8 +131,8 @@ try:
     exit_code = os.waitstatus_to_exitcode(status)
     assert os.WIFEXITED(status) and exit_code == expected, 'wrong exit: ' + repr(bytes(output[-3000:]))
     assert ('FIXTURE_EXIT:' + str(expected)).encode() in output
-    assert b'COMMAND_EXECUTED' not in output
-    assert (b'COMMAND_PRINTED' in output) == (phase == 'paste')
+    assert (b'COMMAND_EXECUTED' in output) == (phase == 'paste')
+    assert b'COMMAND_PRINTED' not in output
     if query_pid is not None:
         deadline = time.monotonic() + 2
         while not process_gone(query_pid) and time.monotonic() < deadline:
@@ -156,7 +161,7 @@ finally:
 `;
 
 for (const phase of ["approval", "running", "paste"] as const) {
-  void test(`真实 PTY 查询 ${phase} ${phase === "paste" ? "粘贴后仅输出" : "Ctrl+C 退出 130"}并恢复终端`, (t) => {
+  void test(`真实 PTY 查询 ${phase} ${phase === "paste" ? "粘贴后继续查询和执行" : "Ctrl+C 退出 130"}并恢复终端`, (t) => {
     if (process.platform === "win32") {
       t.skip("此自动回归需要 POSIX 控制终端");
       return;
@@ -187,14 +192,11 @@ for (const phase of ["approval", "running", "paste"] as const) {
       }
       assert.ifError(result.error);
       assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`);
-      assert.equal(existsSync(join(testHome, "executed")), false);
-      assert.equal(existsSync(join(testHome, "printed")), phase === "paste");
+      assert.equal(existsSync(join(testHome, "executed")), phase === "paste");
+      assert.equal(existsSync(join(testHome, "printed")), false);
       assert.equal(existsSync(join(testHome, "query-pid")), phase !== "approval");
       if (phase === "paste") {
-        assert.match(
-          readFileSync(join(testHome, "tool-result.json"), "utf8"),
-          /permission_revoked/,
-        );
+        assert.match(readFileSync(join(testHome, "tool-result.json"), "utf8"), /success/);
       }
       t.diagnostic(
         `Node ${process.versions.node} / libuv ${process.versions.uv}: ${result.stdout.trim()}`,

@@ -8,7 +8,9 @@ if (phase === "query-child") {
   process.on("SIGTERM", () => {});
   process.stdout.write("QUERY_PARTIAL_OUTPUT\n");
   writeFileSync("query-pid", String(process.pid));
-  setInterval(() => {}, 1_000);
+  setInterval(() => {
+    if (existsSync("query-release")) process.exit(0);
+  }, 10);
 } else {
   const [
     { toAppError },
@@ -66,10 +68,10 @@ if (phase === "query-child") {
                 });
               }
               assert.equal(phase, "paste");
-              assert.equal(options.toolsEnabled, false);
+              assert.equal(options.toolsEnabled, true);
               assert.equal(replies.length, 1);
               assert.equal(replies[0].callId, "pty-query");
-              assert.equal(replies[0].result.status, "permission_revoked");
+              assert.equal(replies[0].result.status, "success");
               assert.equal(replies[0].result.stdout, "QUERY_PARTIAL_OUTPUT\n");
               assert.deepEqual(replies[0].result.actualCommand?.args, args);
               writeFileSync("tool-result.json", JSON.stringify(replies[0].result));
@@ -88,7 +90,7 @@ if (phase === "query-child") {
       execute: () => {
         checkOriginal();
         executions++;
-        writeFileSync("executed", "unexpected");
+        writeFileSync("executed", "yes");
         process.stdout.write("COMMAND_EXECUTED\n");
         return Promise.resolve(0);
       },
@@ -108,8 +110,8 @@ if (phase === "query-child") {
   }
   assert.equal(sessionCount, 1);
   assert.equal(turns, phase === "paste" ? 2 : 1);
-  assert.equal(executions, 0);
-  assert.equal(prints, phase === "paste" ? 1 : 0);
+  assert.equal(executions, phase === "paste" ? 1 : 0);
+  assert.equal(prints, 0);
   assert.equal(existsSync("query-pid"), phase !== "approval");
   process.stdout.write(`FIXTURE_EXIT:${process.exitCode}\n`);
 }

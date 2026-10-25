@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useLayoutEffect } from "react";
 import { Box, Text, type Key } from "ink";
 import type { CommandCandidateContract } from "../ai/types.js";
 import { hasUnsafeTerminalControlCharacters } from "../terminal-text.js";
@@ -6,6 +6,7 @@ import { SelectedCommandDisplay } from "./SelectedCommandDisplay.js";
 import { toSingleLinePreview, toTailPreview } from "./single-line-preview.js";
 import { isTextInputEvent } from "./text-input.js";
 import { usePasteAwareInput } from "./use-paste-aware-input.js";
+import { useOptionalInteractiveSession } from "./InteractiveSessionProvider.js";
 import {
   applyPlaceholderResolutionInput,
   createPlaceholderResolution,
@@ -34,11 +35,13 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
   onBack,
   onCancel,
 }) => {
+  const session = useOptionalInteractiveSession();
   const [resolutionState, setResolutionState] = useState<PlaceholderResolutionState>(() =>
     createPlaceholderResolution(candidate),
   );
   const resolutionStateRef = useRef(resolutionState);
   const finishedRef = useRef(false);
+  useLayoutEffect(() => session?.beginView(), [session, resolutionState.activeIndex]);
   const { currentPlaceholder, currentBuffer, resolvedValues } =
     getPlaceholderResolutionView(resolutionState);
 
@@ -48,6 +51,8 @@ export const ResolvePlaceholdersView: React.FC<Props> = ({
 
     switch (transition.type) {
       case "editing":
+        if (transition.state.activeIndex !== resolutionStateRef.current.activeIndex)
+          session?.suspendViewInput();
         resolutionStateRef.current = transition.state;
         setResolutionState(transition.state);
         return;

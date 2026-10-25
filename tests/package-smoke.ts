@@ -149,8 +149,10 @@ try:
     os.write(fd,b'\r')
     wait_for(b'Final command:')
     if mode=='paste':
-        os.write(fd,b'\x1b[200~pasted\x1b[201~')
-        wait_for('仅输出:'.encode())
+        os.write(fd,b'\x1b[200~pasted\r\nEXECUTE\r\x1b[201~')
+        wait_for('当前页面忽略粘贴'.encode())
+        assert b'PACKAGE_EXECUTED\r\n' not in output, repr(bytes(output[-2000:]))
+        assert os.waitpid(pid,os.WNOHANG)==(0,0), 'paste must not confirm execution'
     os.write(fd,b'\r')
     deadline=time.monotonic()+5
     while status is None and time.monotonic()<deadline:
@@ -163,9 +165,8 @@ try:
     assert output.count(b'\x1b[?2004h')==1 and output.count(b'\x1b[?2004l')==1
     mask=termios.ICANON|termios.ECHO
     assert termios.tcgetattr(fd)[3]&mask==mask
-    assert output.count(b'PACKAGE_EXECUTED\r\n')==(1 if mode=='confirm' else 0), repr(bytes(output[-2000:]))
-    if mode=='paste': assert b"printf 'PACKAGE_%s\\n' EXECUTED\r\n" in output
-    print(json.dumps({'mode':mode,'exitCode':0,'executions':1 if mode=='confirm' else 0}))
+    assert output.count(b'PACKAGE_EXECUTED\r\n')==1, repr(bytes(output[-2000:]))
+    print(json.dumps({'mode':mode,'exitCode':0,'executions':1}))
 finally:
     if status is None:
         try: os.killpg(pid,signal.SIGKILL)

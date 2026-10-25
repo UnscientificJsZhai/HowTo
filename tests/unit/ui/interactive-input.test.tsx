@@ -148,7 +148,7 @@ void test("ResolvePlaceholdersView drops an unsafe paste as one block and accept
   assert.equal(resolvedCommand, "printf '%s' safe-value");
 });
 
-void test("占位符遇到伪结束后仍永久保持仅输出权限", async (t) => {
+void test("粘贴后的独立 Enter 可以提交当前占位符，不改变执行权限", async (t) => {
   let resolvedCommand: string | undefined;
   const { ResolvePlaceholdersView } = await uiModules;
   const view = await renderView(
@@ -169,7 +169,7 @@ void test("占位符遇到伪结束后仍永久保持仅输出权限", async (t)
   await send(view, `\u001B[200~${attackValue}\u001B[201~\r\u001B[201~`);
 
   assert.equal(resolvedCommand, `printf '%s' ${attackValue}`);
-  assert.equal(view.session.getExecutionPolicy(), "print");
+  assert.equal(view.session.getExecutionPolicy(), "execute");
 });
 
 void test("ResolvePlaceholdersView treats pasted CR and LF as data until a real Enter", async (t) => {
@@ -331,7 +331,7 @@ void test("App renders placeholder line breaks safely while preserving the final
 
   const confirmationOffset = view.output().length;
   await send(view, "\r");
-  await waitForOutputAfter(view, confirmationOffset, "Enter输出 Esc取消");
+  await waitForOutputAfter(view, confirmationOffset, "Final command:");
   await waitForOutputAfter(view, confirmationOffset, "literal␍␊part");
   await waitForOutputAfter(view, confirmationOffset, "A␍␊B");
   await waitForOutputAfter(view, confirmationOffset, "C␊D␍E");
@@ -407,7 +407,7 @@ void test("App resolves placeholders from a complete CLI question and keeps valu
   await send(view, "\r");
   await waitForOutput(view, "printf '%s %s' {{second}} done");
   assert.equal(finalCommand, undefined);
-  await send(view, "\r");
+  await send(view, "EXECUTE\r");
   await waitFor(() => finalCommand !== undefined, "App did not confirm the literal value");
 
   assert.equal(finalCommand, "printf '%s %s' {{second}} done");
@@ -515,7 +515,7 @@ void test("ConfirmView accepts a typed uppercase EXECUTE confirmation", async (t
   assert.equal(cancellations, 0);
 });
 
-void test("危险确认收到粘贴后转为仅输出", async (t) => {
+void test("危险确认忽略粘贴的 EXECUTE，仍可由键盘完成确认", async (t) => {
   let confirmations = 0;
   const { ConfirmView } = await uiModules;
   const view = await renderView(
@@ -533,13 +533,13 @@ void test("危险确认收到粘贴后转为仅输出", async (t) => {
   t.after(() => close(view));
 
   await send(view, "\u001B[200~EXECUTE\u001B[201~");
-  await send(view, "\r");
-
+  assert.equal(confirmations, 0);
+  await send(view, "EXECUTE\r");
   assert.equal(confirmations, 1);
-  assert.equal(view.session.getExecutionPolicy(), "print");
+  assert.equal(view.session.getExecutionPolicy(), "execute");
 });
 
-void test("同分片粘贴和 Enter 只能确认输出", async (t) => {
+void test("同分片粘贴 EXECUTE 和 Enter 不能批准危险命令", async (t) => {
   let confirmations = 0;
   let cancellations = 0;
   const { ConfirmView } = await uiModules;
@@ -561,9 +561,9 @@ void test("同分片粘贴和 Enter 只能确认输出", async (t) => {
 
   await send(view, "\u001B[200~EXECUTE\u001B[201~\r");
 
-  assert.equal(confirmations, 1);
-  assert.equal(cancellations, 0);
-  assert.equal(view.session.getExecutionPolicy(), "print");
+  assert.equal(confirmations, 0);
+  assert.equal(cancellations, 1);
+  assert.equal(view.session.getExecutionPolicy(), "execute");
 });
 
 void test("ConfirmView discards pasted Enter for safe commands", async (t) => {
@@ -594,7 +594,7 @@ void test("ConfirmView discards pasted Enter for safe commands", async (t) => {
   assert.equal(cancellations, 0);
 });
 
-void test("伪结束后只确认输出一次，后续输入不恢复执行权限或再次取消", async (t) => {
+void test("粘贴短语后 Enter 取消一次，后续输入不能再次确认或取消", async (t) => {
   let confirmations = 0;
   let cancellations = 0;
   const { ConfirmView } = await uiModules;
@@ -615,16 +615,16 @@ void test("伪结束后只确认输出一次，后续输入不恢复执行权限
   t.after(() => close(view));
 
   await send(view, "\u001B[200~EXECUTE\u001B[201~\r\u001B[201~");
-  assert.equal(confirmations, 1);
-  assert.equal(view.session.getExecutionPolicy(), "print");
-  assert.equal(cancellations, 0);
+  assert.equal(confirmations, 0);
+  assert.equal(view.session.getExecutionPolicy(), "execute");
+  assert.equal(cancellations, 1);
 
   await send(view, "EXECUTE");
   await send(view, "\r");
   await send(view, "\u0003");
-  assert.equal(confirmations, 1);
-  assert.equal(view.session.getExecutionPolicy(), "print");
-  assert.equal(cancellations, 0);
+  assert.equal(confirmations, 0);
+  assert.equal(view.session.getExecutionPolicy(), "execute");
+  assert.equal(cancellations, 1);
 });
 
 void test("ConfirmView treats a pasted Delete byte as rejected data, not a key", async (t) => {
@@ -1020,8 +1020,8 @@ void test("App preserves compact placeholder input through visible and hidden re
     assert.ok(restoredOutput.endsWith(" Ent Esc"));
 
     await send(view, "\r");
-    await waitForOutput(view, "仅输出:");
-    await send(view, "\r");
+    await waitForOutput(view, " Enter Esc");
+    await send(view, "EXECUTE\r");
     await waitFor(() => finalCommand !== undefined, "App did not execute the restored input");
 
     assert.equal(finalCommand, expectedCommand);

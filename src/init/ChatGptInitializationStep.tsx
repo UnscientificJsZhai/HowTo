@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useLayoutEffect } from "react";
 import { Box, Text, useStdout } from "ink";
 import { getUserVisibleErrorMessage } from "../errors.js";
 import { formatChatGptAuthorizationInstructions } from "../auth/chatgpt/instructions.js";
@@ -6,6 +6,7 @@ import type { ChatGptLoginOptions } from "../auth/chatgpt/types.js";
 import { toSingleLinePreview } from "../ui/single-line-preview.js";
 import { isTextInputEvent } from "../ui/text-input.js";
 import { usePasteAwareInput } from "../ui/use-paste-aware-input.js";
+import { useInteractiveSession } from "../ui/InteractiveSessionProvider.js";
 import type {
   ChatGptInitializationAccount,
   ChatGptInitializationModel,
@@ -41,6 +42,7 @@ export const ChatGptInitializationStep: React.FC<Props> = ({
   onBack,
   onCancel,
 }) => {
+  const session = useInteractiveSession();
   const { write: writeStdout } = useStdout();
   const writeStdoutRef = useRef(writeStdout);
   writeStdoutRef.current = writeStdout;
@@ -51,8 +53,10 @@ export const ChatGptInitializationStep: React.FC<Props> = ({
   const stateRef = useRef(state);
   const operationRef = useRef<AbortController | undefined>(undefined);
   const finishedRef = useRef(false);
+  useLayoutEffect(() => session.beginView(), [session, state.step]);
 
   const updateState = (next: SetupState) => {
+    if (next.step !== stateRef.current.step) session.suspendViewInput();
     stateRef.current = next;
     setState(next);
   };
@@ -152,6 +156,7 @@ export const ChatGptInitializationStep: React.FC<Props> = ({
   const finish = (callback: () => void) => {
     if (finishedRef.current) return;
     finishedRef.current = true;
+    session.suspendViewInput();
     operationRef.current?.abort();
     callback();
   };
@@ -202,7 +207,7 @@ export const ChatGptInitializationStep: React.FC<Props> = ({
         );
       }
     },
-    onPaste: () => {},
+    onPaste: session.reportIgnoredPaste,
     isPasteActive: true,
   });
 

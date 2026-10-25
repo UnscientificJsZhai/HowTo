@@ -237,9 +237,9 @@ void test("候选页首次写入终端时输入处理器已经就绪", async (t)
     const result = Reflect.apply(write, h.output, [chunk, ...args]) as boolean;
     if (!sent && chunk.toString().includes("Select a command")) {
       sent = true;
-      // 同步交付给 Ink，固定复现 render commit 与被动 effect 之间的输入窗口。
-      h.session.input.emit("readable");
-      h.session.input.push("\r");
+      // 经原始会话同步交付并保留归属，复现 commit 与被动 effect 之间的输入窗口。
+      h.input.write("\r");
+      h.session.checkExecutionPolicy();
       h.session.input.emit("readable");
     }
     return result;

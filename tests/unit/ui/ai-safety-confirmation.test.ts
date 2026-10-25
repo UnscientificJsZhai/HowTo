@@ -107,18 +107,17 @@ test("AI 风险原因安全预览，缩至紧凑高度仍只能按危险流程�
   assert.deepEqual(h.executions, [candidate.command]);
 });
 
-test("AI 标记不会恢复粘贴后已撤销的执行权限", async (t) => {
+test("AI 危险确认忽略粘贴，键盘确认后仍可执行", async (t) => {
   const candidate = aiCandidate("git clean -fd");
   const h = await startSession(t, [candidate]);
   await h.send("\r");
   await waitFor(() => h.text().includes("EXECUTE+Enter"), "危险确认没有显示");
   await h.send(PASTE_START + "EXECUTE" + PASTE_END);
-  await waitFor(() => h.text().includes("仅输出:"), "粘贴后未切换为仅输出");
   await h.send("EXECUTE\r\r");
-  assert.equal(await h.finish(), 0);
-  assert.equal(h.session.getExecutionPolicy(), "print");
-  assert.deepEqual(h.executions, []);
-  assert.deepEqual(h.printed, [candidate.command]);
+  assert.equal(await h.finish(), 7);
+  assert.equal(h.session.getExecutionPolicy(), "execute");
+  assert.deepEqual(h.executions, [candidate.command]);
+  assert.deepEqual(h.printed, []);
 });
 
 function aiCandidate(command: string): CommandCandidateContract {

@@ -488,7 +488,7 @@ void test("初始化不将 provider 粘贴当选择，并记录不可恢复的�
   });
   t.after(() => close(view));
   await send(view, "\u001B[200~1\r\u001B[201~");
-  assert.equal(view.session.getExecutionPolicy(), "print");
+  assert.equal(view.session.getExecutionPolicy(), "execute");
   assert.equal(view.output().includes("Configure openai"), false);
   await send(view, "1");
   await send(view, "\u001B[200~FAKE-key\u001B[201~\r");
@@ -499,7 +499,7 @@ void test("初始化不将 provider 粘贴当选择，并记录不可恢复的�
     submittedValues?.provider !== "chatgpt" ? submittedValues?.apiKey : undefined,
     "FAKE-key",
   );
-  assert.equal(view.session.getExecutionPolicy(), "print");
+  assert.equal(view.session.getExecutionPolicy(), "execute");
 });
 
 void test("initialization prioritizes validation, values, and defaults without changing pasted input", async (t) => {
@@ -1034,7 +1034,7 @@ void test("ChatGPT 选择页消费粘贴内容，不把数字与换行当账号�
   await waitFor(() => view.output().includes("Main"), "账号未显示");
   await send(view, "\u001B[200~1\r\u001B[201~");
   assert.equal(modelCalls, 0);
-  assert.equal(view.session.getExecutionPolicy(), "print");
+  assert.equal(view.session.getExecutionPolicy(), "execute");
   await send(view, "\r");
   await waitFor(() => view.output().includes("Model A"), "模型未显示");
   await send(view, "\u001B[200~1\r\u001B[201~");

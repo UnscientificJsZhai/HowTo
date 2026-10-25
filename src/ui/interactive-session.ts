@@ -4,11 +4,14 @@ import { StringDecoder } from "node:string_decoder";
 import { ReadStream } from "node:tty";
 import signalExit from "signal-exit";
 import { normalizePhysicalRows, toResizeSafeOutput } from "./resize-safe-output.js";
-import { PasteFramingFilter, PasteStartObserver } from "./paste-framing.js";
+import { PasteFramingError, PasteFramingFilter } from "./paste-framing.js";
+import { KeyboardFramingFilter } from "./keyboard-framing.js";
 
 export type InteractiveExecutionPolicy = "execute" | "print";
 export const ENABLE_PASTE = "\u001b[?2004h";
 export const DISABLE_PASTE = "\u001b[?2004l";
+export const PASTE_IDLE_TIMEOUT_MS = 5_000;
+export const PASTE_DURATION_LIMIT_MS = 30_000;
 
 export class InteractiveSessionError extends Error {
   constructor(message = "交互终端输入不可用。") {
@@ -22,6 +25,8 @@ interface InputResources {
   releaseInput?: () => void;
   readPendingInput?: () => Buffer;
   registerExit?: (callback: () => void, options: { alwaysLast: boolean }) => () => void;
+  pasteIdleTimeoutMs?: number;
+  pasteDurationLimitMs?: number;
 }
 
 function inputIsUnavailable(input: NodeJS.ReadStream, expectedClose = false): boolean {
@@ -59,6 +64,28 @@ function assertAvailableInput(input: NodeJS.ReadStream, output: NodeJS.WriteStre
 class SessionInput extends Readable {
   readonly isTTY = true;
   isRaw = true;
+  private readonly owners = new WeakMap<Buffer, object>();
+  private readonly onDelivery: (owner: object | undefined) => void;
+  constructor(onDelivery: (owner: object | undefined) => void) {
+    // 每次 read 只交付一批输入，Ink 不能把不同页面收到的批次合并后重新解释。
+    super({ objectMode: true });
+    this.onDelivery = onDelivery;
+  }
+  deliver(text: string, owner: object): void {
+    const chunk = Buffer.from(text);
+    this.owners.set(chunk, owner);
+    this.push(chunk);
+  }
+  override read(size?: number): Buffer | null {
+    const chunk = super.read(size) as Buffer | null;
+    // Ink 的独立 Esc 会延后解析；空 read 不能抹掉它原本的输入归属。
+    if (chunk !== null) this.onDelivery(this.owners.get(chunk));
+    return chunk;
+  }
+  override setEncoding(): this {
+    // UTF-8 已由物理会话完整解码；保留 Buffer 身份以及对应的输入边界。
+    return this;
+  }
   override _read(): void {}
   setRawMode(enabled: boolean): this {
     this.isRaw = enabled;
@@ -75,9 +102,24 @@ class SessionInput extends Readable {
 export class InteractiveSession {
   readonly input: NodeJS.ReadStream;
   readonly output: NodeJS.WriteStream;
-  private readonly bridge = new SessionInput();
-  private readonly observer = new PasteStartObserver();
-  private readonly filter = new PasteFramingFilter();
+  private readonly bridge = new SessionInput((owner) => {
+    this.deliveryOwner = owner;
+  });
+  private readonly keyboard = new KeyboardFramingFilter();
+  private readonly filter = new PasteFramingFilter(
+    (reason) => {
+      this.reportInputNotice(
+        reason === "control"
+          ? "粘贴内容包含不支持的控制字符，已整块丢弃；请检查后重新输入。"
+          : "粘贴跨越页面、字段或隐藏阶段，已整块丢弃；请在当前字段重新粘贴。",
+      );
+    },
+    () => this.clearPasteTimers(),
+  );
+  private inputOwner: object = {};
+  private deliveryOwner: object | undefined;
+  private readonly noticeListeners = new Set<(message: string) => void>();
+  private readonly pendingNotices = new Set<string>();
   private decoder = new StringDecoder("utf8");
   private readonly policyListeners = new Set<() => void>();
   private readonly failureListeners = new Set<(error: Error) => void>();
@@ -97,20 +139,31 @@ export class InteractiveSession {
   private view: object | undefined;
   private viewEnabled = false;
   private prefixTimer: ReturnType<typeof setTimeout> | undefined;
+  private pasteIdleTimer: ReturnType<typeof setTimeout> | undefined;
+  private pasteDurationTimer: ReturnType<typeof setTimeout> | undefined;
+  private unfinishedInputAtClose = false;
   private removeExitHook: (() => void) | undefined;
+  private readonly physicalInput: NodeJS.ReadStream;
+  private readonly physicalOutput: NodeJS.WriteStream;
+  private readonly resources: InputResources;
 
   constructor(
-    private readonly physicalInput: NodeJS.ReadStream,
-    private readonly physicalOutput: NodeJS.WriteStream,
-    private readonly resources: InputResources = {},
+    physicalInput: NodeJS.ReadStream,
+    physicalOutput: NodeJS.WriteStream,
+    resources: InputResources = {},
   ) {
+    this.physicalInput = physicalInput;
+    this.physicalOutput = physicalOutput;
+    this.resources = resources;
     this.input = this.bridge as unknown as NodeJS.ReadStream;
     this.output = toResizeSafeOutput(this.wrapOutput());
     this.originalRaw = resources.restoreRaw ?? physicalInput.isRaw === true;
     try {
       assertAvailableInput(physicalInput, physicalOutput);
       // Ink 先卸载界面，再由资源持有者同步恢复物理终端。
-      this.removeExitHook = (resources.registerExit ?? signalExit)(
+      const registerExit: NonNullable<InputResources["registerExit"]> =
+        resources.registerExit ?? signalExit;
+      this.removeExitHook = registerExit(
         () => {
           try {
             this.dispose();
@@ -156,10 +209,11 @@ export class InteractiveSession {
   checkExecutionPolicy = (): InteractiveExecutionPolicy => {
     this.throwIfFailed();
     if (this.closed) throw new InteractiveSessionError();
-    // 查询仍需保留终端租约；在启动进程前同步读取尚未交付的粘贴起始标记。
+    // 查询保留终端租约；启动进程前同步检查尚未交付的输入及未闭合粘贴。
     this.drain();
     this.observePendingInput();
     this.throwIfFailed();
+    this.assertCompleteInput();
     return this.policy;
   };
   subscribeExecutionPolicy = (listener: () => void): (() => void) => {
@@ -173,6 +227,31 @@ export class InteractiveSession {
     else this.failureListeners.add(listener);
     return () => {
       this.failureListeners.delete(listener);
+    };
+  }
+
+  isInputCurrent = (): boolean => this.inputActive && this.deliveryOwner === this.inputOwner;
+
+  reportInputNotice(message: string): void {
+    if (this.disposing || this.closed) return;
+    if (this.noticeListeners.size === 0) this.pendingNotices.add(message);
+    else for (const listener of this.noticeListeners) listener(message);
+  }
+
+  reportIgnoredPaste = (): void => {
+    this.reportInputNotice("当前页面忽略粘贴，请使用键盘完成选择或确认。");
+  };
+
+  reportStalePaste = (): void => {
+    this.reportInputNotice("粘贴属于上一页面或字段，已丢弃；请在当前字段重新粘贴。");
+  };
+
+  subscribeInputNotice(listener: (message: string) => void): () => void {
+    this.noticeListeners.add(listener);
+    for (const message of this.pendingNotices) listener(message);
+    this.pendingNotices.clear();
+    return () => {
+      this.noticeListeners.delete(listener);
     };
   }
 
@@ -193,6 +272,7 @@ export class InteractiveSession {
   }
 
   suspendViewInput(): void {
+    this.inputOwner = {};
     this.viewEnabled = false;
     this.setInputActive(false);
     this.drain();
@@ -207,8 +287,11 @@ export class InteractiveSession {
     this.drain();
     this.observePendingInput();
     this.throwIfFailed();
+    this.assertCompleteInput();
     this.dispose();
     this.throwIfFailed();
+    if (this.unfinishedInputAtClose)
+      throw new InteractiveSessionError("粘贴或输入序列尚未结束，已取消本次交互。");
     // 本次检查后不经过 await，执行 action 必须同步到达实际 spawn。
     return this.getExecutionPolicy() === "print" ? actions.print() : actions.execute();
   }
@@ -231,7 +314,7 @@ export class InteractiveSession {
     this.viewEnabled = false;
     this.setInputActive(false);
     this.clearPrefixTimer();
-    this.filter.clear();
+    this.clearPasteTimers();
     let cleanupFailed = false;
     const cleanup = (action: () => void) => {
       try {
@@ -256,6 +339,13 @@ export class InteractiveSession {
       });
     // 恢复终端时仍保留原始观察，最后再同步排空并撤下监听。
     this.drain();
+    try {
+      this.assertCompleteInput();
+    } catch {
+      this.unfinishedInputAtClose = true;
+    }
+    this.filter.clear();
+    this.keyboard.clear();
     this.checkTerminalState();
     this.physicalInput.off("readable", this.drain);
     this.physicalInput.off("end", this.handleFailure);
@@ -290,6 +380,8 @@ export class InteractiveSession {
     this.bridge.destroy();
     this.policyListeners.clear();
     this.failureListeners.clear();
+    this.noticeListeners.clear();
+    this.pendingNotices.clear();
     if (cleanupFailed && !this.failure) {
       this.failure = new InteractiveSessionError("无法恢复交互终端状态。");
     }
@@ -336,11 +428,13 @@ export class InteractiveSession {
   };
   private setInputActive(active: boolean): void {
     if (active !== this.inputActive) {
+      if (!active) this.inputOwner = {};
       // 隐藏边界不能把未完成的 UTF-8 字符带入下一个可见输入阶段。
       this.decoder = new StringDecoder("utf8");
     }
     this.inputActive = active;
     this.filter.setActive(active);
+    this.keyboard.setActive(active);
   }
   private updateVisibility = (): void => {
     const active = this.viewEnabled && normalizePhysicalRows(this.physicalOutput.rows) > 1;
@@ -351,13 +445,58 @@ export class InteractiveSession {
     if (this.prefixTimer !== undefined) clearTimeout(this.prefixTimer);
     this.prefixTimer = undefined;
   }
+  private clearPasteTimers(): void {
+    if (this.pasteIdleTimer !== undefined) clearTimeout(this.pasteIdleTimer);
+    if (this.pasteDurationTimer !== undefined) clearTimeout(this.pasteDurationTimer);
+    this.pasteIdleTimer = undefined;
+    this.pasteDurationTimer = undefined;
+  }
+  private updatePasteTimers(): void {
+    if (
+      this.disposing ||
+      (!this.filter.hasUnfinishedPaste() && !this.keyboard.hasUnfinishedSequence())
+    ) {
+      this.clearPasteTimers();
+      return;
+    }
+    const stop = () => {
+      this.fail(
+        new InteractiveSessionError("粘贴或按键序列未在时限内结束，已取消本次交互；请重新运行。"),
+      );
+    };
+    if (this.pasteIdleTimer !== undefined) clearTimeout(this.pasteIdleTimer);
+    this.pasteIdleTimer = setTimeout(
+      stop,
+      this.resources.pasteIdleTimeoutMs ?? PASTE_IDLE_TIMEOUT_MS,
+    );
+    this.pasteDurationTimer ??= setTimeout(
+      stop,
+      this.resources.pasteDurationLimitMs ?? PASTE_DURATION_LIMIT_MS,
+    );
+  }
+  private processInput(bytes: Buffer): void {
+    const owner = this.inputOwner;
+    if (normalizePhysicalRows(this.physicalOutput.rows) <= 1) this.setInputActive(false);
+    const filtered = this.keyboard.push(this.filter.push(this.decoder.write(bytes)));
+    if (filtered !== "") this.bridge.deliver(filtered, owner);
+    this.updatePasteTimers();
+  }
+  private assertCompleteInput(): void {
+    this.filter.assertComplete();
+    this.keyboard.assertComplete();
+  }
+  private flushEscape(owner: object): void {
+    this.prefixTimer = setTimeout(() => {
+      this.prefixTimer = undefined;
+      if (this.closed) return;
+      const text = this.keyboard.flushEscape();
+      if (text !== "") this.bridge.deliver(text, owner);
+    }, 20);
+  }
   private observePendingInput(): void {
     if (!this.inputAcquired || this.failure || !this.resources.readPendingInput) return;
     const bytes = this.resources.readPendingInput();
-    if (this.observer.observe(bytes) && this.policy !== "print") {
-      this.policy = "print";
-      for (const listener of this.policyListeners) listener();
-    }
+    if (bytes.length > 0) this.processInput(bytes);
   }
 
   private drain = (): void => {
@@ -369,26 +508,25 @@ export class InteractiveSession {
         if (typeof chunk !== "string" && !Buffer.isBuffer(chunk))
           throw new InteractiveSessionError();
         const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
-        if (this.observer.observe(bytes) && this.policy !== "print") {
-          this.policy = "print";
-          for (const listener of this.policyListeners) listener();
-        }
-        if (normalizePhysicalRows(this.physicalOutput.rows) <= 1) this.setInputActive(false);
-        const text = typeof chunk === "string" ? chunk : this.decoder.write(chunk);
-        const filtered = this.filter.push(text);
-        if (filtered !== "") this.bridge.push(filtered);
+        this.processInput(bytes);
       }
       if (!this.disposing && this.filter.hasPendingKeyboardPrefix()) {
-        // 此延迟仅保留独立 Esc 的键盘语义，绝不用于恢复执行权限。
+        // 此延迟只保留独立 Esc 的键盘语义；刷新仍属于收到前缀时的输入边界。
+        const owner = this.inputOwner;
         this.prefixTimer = setTimeout(() => {
           this.prefixTimer = undefined;
           if (this.closed) return;
-          const text = this.filter.flushKeyboardPrefix();
-          if (text !== "") this.bridge.push(text);
+          const text = this.keyboard.push(this.filter.flushKeyboardPrefix());
+          if (text !== "") this.bridge.deliver(text, owner);
+          if (this.keyboard.hasStandaloneEscape()) this.flushEscape(owner);
         }, 20);
+      } else if (!this.disposing && this.keyboard.hasStandaloneEscape()) {
+        this.flushEscape(this.inputOwner);
       }
-    } catch {
-      this.handleFailure();
+    } catch (error) {
+      this.fail(
+        new InteractiveSessionError(error instanceof PasteFramingError ? error.message : undefined),
+      );
     }
   };
 

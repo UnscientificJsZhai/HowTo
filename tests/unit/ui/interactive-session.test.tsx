@@ -53,18 +53,18 @@ const modules = importWithoutColor(async () => {
   };
 });
 
-void test("会话先读取原始开始标记，再向 Ink 桥接输入交付；权限不能恢复", async (t) => {
+void test("分片粘贴不撤销执行权限，未结束时拒绝交接", async (t) => {
   for (const payload of ["", "safe", "\u001b[2Jbad", "未结束"]) {
     const h = sessionHarness();
     t.after(() => h.close());
     const closeView = h.session.beginView();
     const received: string[] = [];
     h.session.input.on("data", (chunk: Buffer) => {
-      assert.equal(h.session.getExecutionPolicy(), "print");
+      assert.equal(h.session.getExecutionPolicy(), "execute");
       received.push(chunk.toString());
     });
     for (const byte of Buffer.from(PASTE_START)) await h.send(Buffer.from([byte]));
-    assert.equal(h.session.getExecutionPolicy(), "print");
+    assert.equal(h.session.getExecutionPolicy(), "execute");
     await h.send(payload + (payload === "未结束" ? "" : PASTE_END));
     closeView();
     h.output.resize(1);
@@ -72,10 +72,18 @@ void test("会话先读取原始开始标记，再向 Ink 桥接输入交付；�
     const closeNext = h.session.beginView();
     await h.send("\r");
     closeNext();
-    assert.equal(h.session.getExecutionPolicy(), "print");
+    assert.equal(h.session.getExecutionPolicy(), "execute");
     let executed = 0;
-    assert.equal(h.session.handoff({ execute: () => ++executed, print: () => 0 }), 0);
-    assert.equal(executed, 0);
+    if (payload === "未结束") {
+      assert.throws(
+        () => h.session.handoff({ execute: () => ++executed, print: () => 0 }),
+        /尚未结束/,
+      );
+      assert.equal(executed, 0);
+    } else {
+      assert.equal(h.session.handoff({ execute: () => ++executed, print: () => 0 }), 1);
+      assert.equal(executed, 1);
+    }
     assert.ok(received.every((text) => !text.includes("bad")));
   }
 });
@@ -89,7 +97,7 @@ void test("UTF-8 按所有字节分片时保留中文 emoji CR LF，不误判 C1
   const text = `${PASTE_START}中文😀👩🏽‍💻\r\n尾${PASTE_END}`;
   for (const byte of Buffer.from(text)) await h.send(Buffer.from([byte]));
   assert.equal(Buffer.concat(received).toString(), text);
-  assert.equal(h.session.getExecutionPolicy(), "print");
+  assert.equal(h.session.getExecutionPolicy(), "execute");
 });
 
 void test("原始 framing 丢弃跨隐藏和无视图的整块粘贴，也排空恢复前的缓冲", async (t) => {
@@ -114,7 +122,7 @@ void test("原始 framing 丢弃跨隐藏和无视图的整块粘贴，也排空
   release();
 });
 
-void test("键盘 Esc 真正刷新后到达的开始标记后缀仍撤销权限", async (t) => {
+void test("键盘 Esc 刷新后到达的粘贴尾部整块丢弃且不撤销执行权限", async (t) => {
   const h = sessionHarness();
   t.after(() => h.close());
   h.session.beginView();
@@ -123,10 +131,10 @@ void test("键盘 Esc 真正刷新后到达的开始标记后缀仍撤销权限"
     received += chunk.toString();
   });
   await h.send("\u001b");
-  await waitFor(() => received === "\u001b", "Esc 前缀未刷新");
+  await waitFor(() => received === "\u001b[27u", "Esc 前缀未刷新");
   await h.send("[200~EXECUTE" + PASTE_END);
-  assert.equal(h.session.getExecutionPolicy(), "print");
-  assert.equal(received, "\u001b");
+  assert.equal(h.session.getExecutionPolicy(), "execute");
+  assert.equal(received, "\u001b[27u");
 });
 
 void test("Esc 刷新后的隐藏或无视图输入不会混入恢复后的键盘文本", async (t) => {
@@ -139,14 +147,14 @@ void test("Esc 刷新后的隐藏或无视图输入不会混入恢复后的键�
       received += chunk.toString();
     });
     await h.send("\u001b");
-    await waitFor(() => received === "\u001b", "Esc 前缀未刷新");
+    await waitFor(() => received === "\u001b[27u", "Esc 前缀未刷新");
     if (boundary === "hidden") h.output.resize(1);
     else release();
     await h.send("[2");
     if (boundary === "hidden") h.output.resize(24);
     else h.session.beginView();
     await h.send("X");
-    assert.equal(received, "\u001bX", boundary);
+    assert.equal(received, "\u001b[27uX", boundary);
     assert.equal(h.session.getExecutionPolicy(), "execute");
   }
 });
@@ -321,7 +329,7 @@ void test("自有读者在输出、执行、取消和终端失败后只释放一
   for (const event of [
     "dispose",
     "execute",
-    "print",
+    "paste",
     "error",
     "end",
     "close",
@@ -346,8 +354,8 @@ void test("自有读者在输出、执行、取消和终端失败后只释放一
     let executed = 0;
     let printed = 0;
     try {
-      if (event === "execute" || event === "print") {
-        if (event === "print") input.write(PASTE_START);
+      if (event === "execute" || event === "paste") {
+        if (event === "paste") input.write(PASTE_START + PASTE_END);
         session.handoff({ execute: () => ++executed, print: () => ++printed });
       } else if (event === "dispose") session.dispose();
       else if (event.startsWith("output-")) output.emit(event.slice("output-".length));
@@ -359,8 +367,8 @@ void test("自有读者在输出、执行、取消和终端失败后只释放一
       assert.equal(input.listenerCount("readable"), 0);
       assert.equal(output.listenerCount("resize"), 0);
       assert.equal(input.refs, 0);
-      assert.equal(executed, event === "execute" ? 1 : 0);
-      assert.equal(printed, event === "print" ? 1 : 0);
+      assert.equal(executed, event === "execute" || event === "paste" ? 1 : 0);
+      assert.equal(printed, 0);
     } finally {
       session.dispose();
       input.destroy();
@@ -467,7 +475,7 @@ void test("清理中 destroy 的异步 error 在关闭前被接收，任何模�
     import { PassThrough } from 'node:stream';
     import { setImmediate as nextTurn } from 'node:timers/promises';
     import { createInteractiveSession, DISABLE_PASTE } from ${JSON.stringify(moduleUrl)};
-    import { PASTE_START } from ${JSON.stringify(framingUrl)};
+    import { PASTE_START, PASTE_END } from ${JSON.stringify(framingUrl)};
     const lateErrors = [];
     process.on('uncaughtException', error => lateErrors.push(error.message));
     class FakeTty extends PassThrough {
@@ -500,7 +508,7 @@ void test("清理中 destroy 的异步 error 在关闭前被接收，任何模�
         const session = createInteractiveSession({input, output});
         let failures = 0;
         session.subscribeFailure(() => { failures++; session.suspendViewInput(); });
-        if (policy === 'print') input.write(PASTE_START);
+        if (policy === 'print') input.write(PASTE_START + PASTE_END);
         let execute = 0, print = 0, message;
         try {
           session.handoff({execute: () => ++execute, print: () => ++print});
@@ -573,7 +581,10 @@ void test("UI 最终清理时输入或输出 destroy(error) 会拒绝运行，�
           Promise.resolve({ rawText: JSON.stringify({ commands: [testCandidate()] }) }),
       },
       request: testRequest(),
-      execute: () => Promise.resolve(++executions),
+      execute: () => {
+        executions++;
+        return Promise.resolve(0);
+      },
       print: () => printed++,
     });
     const rejected = assert.rejects(result, (error: Error) => {
@@ -645,16 +656,16 @@ void test("资源获取同步 emit error 后正常返回时不再 ref 或重新�
   }
 });
 
-void test("最终同步交接在恢复资源后再次读取权限，清理失败也绝不调用执行器", () => {
+void test("最终同步交接拒绝恢复资源期间的未闭合粘贴与清理失败", () => {
   const h = sessionHarness();
   let executed = 0;
   h.output.on("data", (chunk: Buffer) => {
     if (chunk.toString() === DISABLE_PASTE) h.input.write(PASTE_START);
   });
   assert.equal(h.session.getExecutionPolicy(), "execute");
-  assert.equal(h.session.handoff({ execute: () => ++executed, print: () => 0 }), 0);
+  assert.throws(() => h.session.handoff({ execute: () => ++executed, print: () => 0 }), /尚未结束/);
   assert.equal(executed, 0);
-  assert.equal(h.session.getExecutionPolicy(), "print");
+  assert.equal(h.session.getExecutionPolicy(), "execute");
   h.close();
 
   const failing = sessionHarness();
@@ -674,7 +685,7 @@ void test("最终同步交接在恢复资源后再次读取权限，清理失败
   failing.close();
 });
 
-void test("卸载后恢复 raw 和 ref 期间到达的分片粘贴在真实最外层仍只能输出", async (t) => {
+void test("卸载后恢复 raw 和 ref 期间的未闭合粘贴拒绝执行", async (t) => {
   const { runInteractiveCommand } = await modules;
   const h = sessionHarness();
   t.after(() => h.close());
@@ -697,18 +708,22 @@ void test("卸载后恢复 raw 和 ref 期间到达的分片粘贴在真实最�
         Promise.resolve({ rawText: JSON.stringify({ commands: [testCandidate()] }) }),
     },
     request: testRequest(),
-    execute: () => Promise.resolve(++executions),
+    execute: () => {
+      executions++;
+      return Promise.resolve(0);
+    },
     print: (command) => printed.push(command),
   });
+  const rejected = assert.rejects(result, /尚未结束/);
   await waitFor(() => h.text().includes("Select a command"), "候选没有显示");
   await h.send("\r");
   await waitFor(() => h.text().includes("Final command:"), "最终确认没有显示");
   assert.equal(h.session.getExecutionPolicy(), "execute");
   await h.send("\r");
-  assert.equal(await bounded(result), 0);
+  await bounded(rejected);
   assert.equal(executions, 0);
-  assert.deepEqual(printed, [testCandidate().command]);
-  assert.equal(h.session.getExecutionPolicy(), "print");
+  assert.deepEqual(printed, []);
+  assert.equal(h.session.getExecutionPolicy(), "execute");
 });
 
 void test("真实最外层调度保持纯键盘普通和危险确认行为，取消始终不执行", async (t) => {
@@ -758,7 +773,7 @@ void test("真实最外层调度保持纯键盘普通和危险确认行为，取
   }
 });
 
-void test("伪结束第一片先完成 UI 时最外层 execute 仍为零，外层结束未到也只能输出", async (t) => {
+void test("危险确认忽略粘贴的 EXECUTE，随后 Enter 只取消且不执行", async (t) => {
   const { runInteractiveCommand } = await modules;
   const h = sessionHarness();
   t.after(() => h.close());
@@ -774,18 +789,22 @@ void test("伪结束第一片先完成 UI 时最外层 execute 仍为零，外�
         }),
     },
     request: testRequest(),
-    execute: () => Promise.resolve(++executions),
+    execute: () => {
+      executions++;
+      return Promise.resolve(0);
+    },
     print: (value) => printed.push(value),
   });
+  const rejected = assert.rejects(result, InteractionCancelledError);
   await waitFor(() => h.text().includes("Select a command"), "候选没有显示");
   await h.send("\r");
   await waitFor(() => h.text().includes("EXECUTE+Enter"), "危险确认没有显示");
   await h.send(PASTE_START + "EXECUTE" + PASTE_END + "\r");
-  assert.equal(await bounded(result), 0);
+  await bounded(rejected);
   assert.equal(executions, 0);
-  assert.deepEqual(printed, [command]);
+  assert.deepEqual(printed, []);
   h.input.write(PASTE_END + "EXECUTE\r\r");
-  assert.equal(h.session.getExecutionPolicy(), "print");
+  assert.equal(h.session.getExecutionPolicy(), "execute");
   assert.equal(executions, 0);
 });
 
@@ -801,7 +820,10 @@ void test("loading 隐藏与 done 卸载阶段的粘贴都由最终调度重新�
       session: h.session,
       provider: { generateCommands: () => provider.promise },
       request: testRequest(),
-      execute: () => Promise.resolve(++executions),
+      execute: () => {
+        executions++;
+        return Promise.resolve(0);
+      },
       print: (value) => printed.push(value),
     });
     await waitFor(() => h.text().includes("Thinking"), "loading 没有显示");
@@ -811,20 +833,17 @@ void test("loading 隐藏与 done 卸载阶段的粘贴都由最终调度重新�
     provider.resolve({ rawText: JSON.stringify({ commands: [testCandidate()] }) });
     await waitFor(() => h.text().includes("Select a command"), "候选没有显示");
     await h.send("\r");
-    await waitFor(
-      () => h.text().includes(phase === "unmount" ? "Final command:" : "仅输出:"),
-      "确认没有显示",
-    );
+    await waitFor(() => h.text().includes("Final command:"), "确认没有显示");
     if (phase === "unmount") {
       assert.equal(h.session.getExecutionPolicy(), "execute");
       h.output.on("data", (chunk: Buffer) => {
-        if (chunk.includes(Buffer.from("\u001b[?25h"))) h.input.write(PASTE_START);
+        if (chunk.includes(Buffer.from("\u001b[?25h"))) h.input.write(PASTE_START + PASTE_END);
       });
     }
     await h.send("\r");
     assert.equal(await bounded(result), 0);
-    assert.equal(executions, 0, phase);
-    assert.deepEqual(printed, [testCandidate().command]);
+    assert.equal(executions, 1, phase);
+    assert.deepEqual(printed, []);
   }
 });
 
@@ -838,7 +857,10 @@ void test("输入 error end close 与输出 error 会结束运行并恢复资源
       session: h.session,
       provider: { generateCommands: () => new Promise(() => {}) },
       request: testRequest(),
-      execute: () => Promise.resolve(++executions),
+      execute: () => {
+        executions++;
+        return Promise.resolve(0);
+      },
       print: () => assert.fail("失败不能输出命令"),
     });
     const failure = assert.rejects(
@@ -861,7 +883,7 @@ void test("输入 error end close 与输出 error 会结束运行并恢复资源
   }
 });
 
-void test("自动初始化与 App 共用同一原始租约，独立初始化粘贴也可保存一次", async (t) => {
+void test("自动初始化粘贴保存后继续共享终端并正常执行", async (t) => {
   const { initializeConfig, runInteractiveCommand } = await modules;
   const home = await mkdtemp(join(tmpdir(), "howto-ui-init-test-"));
   t.after(() => rm(home, { recursive: true, force: true }));
@@ -887,7 +909,7 @@ void test("自动初始化与 App 共用同一原始租约，独立初始化粘�
   assert.equal(h.input.isRaw, true);
   assert.deepEqual(h.input.rawChanges, [true]);
   assert.equal(h.bytes().includes(Buffer.from(DISABLE_PASTE)), false);
-  assert.equal(h.session.getExecutionPolicy(), "print");
+  assert.equal(h.session.getExecutionPolicy(), "execute");
   await h.send(PASTE_START + "GAP");
   const printed: string[] = [];
   let executions = 0;
@@ -898,21 +920,24 @@ void test("自动初始化与 App 共用同一原始租约，独立初始化粘�
         Promise.resolve({ rawText: JSON.stringify({ commands: [testCandidate()] }) }),
     },
     request: testRequest(),
-    execute: () => Promise.resolve(++executions),
+    execute: () => {
+      executions++;
+      return Promise.resolve(0);
+    },
     print: (value) => printed.push(value),
   });
   await waitFor(() => h.text().includes("Select a command"), "初始化后候选没有显示");
   await h.send(PASTE_END);
   await h.send("\r");
-  await waitFor(() => h.text().includes("Enter输出 Esc取消"), "仅输出确认没有显示");
+  await waitFor(() => h.text().includes("Final command:"), "仅输出确认没有显示");
   await h.send("\r");
   assert.equal(await bounded(result), 0);
-  assert.equal(executions, 0);
-  assert.deepEqual(printed, [testCandidate().command]);
+  assert.equal(executions, 1);
+  assert.deepEqual(printed, []);
   assert.deepEqual(h.input.rawChanges, [true, false]);
 });
 
-void test("隐藏粘贴经过真实 App 后只输出既有占位符值，初始化也不保存隐藏片段", async (t) => {
+void test("隐藏粘贴整块丢弃，既有占位符仍可执行且初始化不保存隐藏片段", async (t) => {
   const { runInteractiveCommand, initializeConfig } = await modules;
   const h = sessionHarness();
   t.after(() => h.close());
@@ -928,7 +953,10 @@ void test("隐藏粘贴经过真实 App 后只输出既有占位符值，初始�
       generateCommands: () => Promise.resolve({ rawText: JSON.stringify({ commands: [command] }) }),
     },
     request: testRequest(),
-    execute: () => Promise.resolve(++executions),
+    execute: () => {
+      executions++;
+      return Promise.resolve(0);
+    },
     print: (value) => printed.push(value),
   });
   await waitFor(() => h.text().includes("Select a command"), "候选没有显示");
@@ -941,11 +969,11 @@ void test("隐藏粘贴经过真实 App 后只输出既有占位符值，初始�
   h.output.resize(24);
   await h.send(PASTE_END);
   await h.send("\r");
-  await waitFor(() => h.text().includes("Enter输出 Esc取消"), "输出确认没有显示");
+  await waitFor(() => h.text().includes("Final command:"), "输出确认没有显示");
   await h.send("\r");
   assert.equal(await bounded(result), 0);
-  assert.equal(executions, 0);
-  assert.deepEqual(printed, ["printf kept"]);
+  assert.equal(executions, 1);
+  assert.deepEqual(printed, []);
   assert.equal(h.text().includes("HIDDEN"), false);
 
   const home = await mkdtemp(join(tmpdir(), "howto-ui-hidden-init-"));
@@ -976,7 +1004,7 @@ void test("隐藏粘贴经过真实 App 后只输出既有占位符值，初始�
   assert.equal(init.text().includes("HIDDEN"), false);
 });
 
-void test("保存中和初始化卸载空隙首次收到粘贴时同样撤销后续 App 的执行权限", async (t) => {
+void test("保存中和初始化卸载空隙的粘贴不影响后续 App 执行", async (t) => {
   const { render, InitializationApp, InteractiveSessionProvider, runInteractiveCommand } =
     await modules;
   for (const phase of ["saving", "gap"]) {
@@ -1044,16 +1072,19 @@ void test("保存中和初始化卸载空隙首次收到粘贴时同样撤销后
           }),
       },
       request: testRequest(),
-      execute: () => Promise.resolve(++executions),
+      execute: () => {
+        executions++;
+        return Promise.resolve(0);
+      },
       print: (value) => printed.push(value),
     });
     await waitFor(() => h.text().includes("Select a command"), "后续候选没有显示");
     await h.send("\r");
-    await waitFor(() => h.text().includes("Enter输出 Esc取消"), "后续确认没有显示");
+    await waitFor(() => h.text().includes("Final command:"), "后续确认没有显示");
     await h.send("\r");
     assert.equal(await bounded(result), 0);
-    assert.equal(executions, 0, phase);
-    assert.deepEqual(printed, [testCandidate().command]);
+    assert.equal(executions, 1, phase);
+    assert.deepEqual(printed, []);
     assert.equal(submissions, 1);
     assert.equal(h.text().includes("IGNORED"), false);
   }
@@ -1078,8 +1109,8 @@ void test("初始化遇到终端读取失败会拒绝等待并清理，不留下
   assert.equal(h.text().includes("FAKE-secret"), false);
 });
 
-void test("默认输出出口将原始命令写到 stdout、固定说明写到 stderr，返回零", async (t) => {
-  const { runInteractiveCommand, MANUAL_EXECUTION_NOTICE } = await modules;
+void test("粘贴后仍将原始命令交给执行器，不额外打印命令或手动执行说明", async (t) => {
+  const { runInteractiveCommand } = await modules;
   const h = sessionHarness();
   t.after(() => h.close());
   const stdout: unknown[][] = [];
@@ -1097,17 +1128,21 @@ void test("默认输出出口将原始命令写到 stdout、固定说明写到 s
         }),
     },
     request: testRequest(),
-    execute: () => Promise.resolve(++executed),
+    execute: (value) => {
+      assert.equal(value, command);
+      executed++;
+      return Promise.resolve(0);
+    },
   });
   await waitFor(() => h.text().includes("Select a command"), "候选没有显示");
   await h.send(PASTE_START + PASTE_END);
   await h.send("\r");
-  await waitFor(() => h.text().includes("Enter输出 Esc取消"), "确认没有显示");
+  await waitFor(() => h.text().includes("Final command:"), "确认没有显示");
   await h.send("\r");
   assert.equal(await bounded(result), 0);
-  assert.equal(executed, 0);
-  assert.deepEqual(stdout, [[command]]);
-  assert.deepEqual(stderr, [[MANUAL_EXECUTION_NOTICE]]);
+  assert.equal(executed, 1);
+  assert.deepEqual(stdout, []);
+  assert.deepEqual(stderr, []);
   assert.ok(h.text().includes("A␍␊B"));
 });
 

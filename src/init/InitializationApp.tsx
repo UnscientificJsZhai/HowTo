@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useLayoutEffect } from "react";
 import { Box, Text, type Key } from "ink";
 import type { AppConfig } from "../config.js";
 import type { ChatGptLoginOptions } from "../auth/chatgpt/types.js";
@@ -47,6 +47,8 @@ export const InitializationApp: React.FC<Props> = ({
   const submitStatusRef = useRef(submitStatus);
   const [errorMessage, setErrorMessage] = useState("");
   const frameRows = Math.max(0, rows - 1);
+  const inputField = state.step === "input" ? `${state.provider}:${state.fieldIndex}` : state.step;
+  useLayoutEffect(() => session.beginView(), [session, inputField]);
 
   const cancel = () => {
     session.suspendViewInput();
@@ -82,7 +84,17 @@ export const InitializationApp: React.FC<Props> = ({
       return;
     }
 
-    const update = applyInitializationInput(stateRef.current, event);
+    const previous = stateRef.current;
+    const update = applyInitializationInput(previous, event);
+    if (
+      update.state.step !== previous.step ||
+      (update.state.step === "input" &&
+        previous.step === "input" &&
+        (update.state.fieldIndex !== previous.fieldIndex ||
+          update.state.provider !== previous.provider))
+    )
+      session.suspendViewInput();
+    if (event.type === "paste" && previous.step !== "input") session.reportIgnoredPaste();
     stateRef.current = update.state;
     setState(update.state);
 

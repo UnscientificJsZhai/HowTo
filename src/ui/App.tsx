@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState, useLayoutEffect } from "react";
 import { Box, Text, usePaste, useStderr, useWindowSize, type Key } from "ink";
 import { useKeyboardInput } from "./use-keyboard-input.js";
 import { useInteractiveSession } from "./InteractiveSessionProvider.js";
@@ -76,9 +76,16 @@ export const App: React.FC<Props> = ({
   const frameRows = Math.max(0, rows - 1);
   const isFrameVisible = frameRows > 0;
 
-  usePaste(() => {}, { isActive: isFrameVisible });
+  usePaste(
+    () => {
+      if (status === "resolving" || status === "usage-approval" || status === "confirming") return;
+      if (session.isInputCurrent()) session.reportIgnoredPaste();
+      else session.reportStalePaste();
+    },
+    { isActive: isFrameVisible },
+  );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (status !== "done" && status !== "error" && status !== "usage-approval")
       return session.beginView();
   }, [session, status]);
@@ -191,6 +198,7 @@ export const App: React.FC<Props> = ({
   }, [provider, request, session]);
 
   const handleSelect = (candidate: CommandCandidateContract) => {
+    session.suspendViewInput();
     setSelectedCandidate(candidate);
     setResolvedValues(new Map());
     if (candidate.placeholders.length > 0) {
@@ -213,6 +221,7 @@ export const App: React.FC<Props> = ({
 
   const handleResolve = (resolved: ResolvedCommand) => {
     if (!selectedCandidate) return;
+    session.suspendViewInput();
     setResolvedValues(resolved.values);
     setFinalCommand(resolved.command);
     setDanger(resolveCommandDanger(resolved.command, selectedCandidate));
@@ -231,6 +240,7 @@ export const App: React.FC<Props> = ({
   };
 
   const handleBackToSelection = () => {
+    session.suspendViewInput();
     setStatus("selecting");
   };
 

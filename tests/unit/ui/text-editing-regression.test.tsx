@@ -176,7 +176,7 @@ const deleteRelease = "\u001b[3;1:3~";
 
 for (const hasPlaceholder of [false, true]) {
   for (const pasted of [false, true]) {
-    void test(`Enter 释放事件不会跨越${hasPlaceholder ? "占位符" : "候选选择"}后的${pasted ? "仅输出" : "执行"}确认`, async (t) => {
+    void test(`Enter 释放事件不会跨越${hasPlaceholder ? "占位符" : "候选选择"}后的${pasted ? "粘贴后" : ""}执行确认`, async (t) => {
       const { App } = await modules;
       const command = hasPlaceholder ? "printf '%s' '{{value}}'" : "printf keyboard-safe";
       const candidate = {
@@ -206,17 +206,14 @@ for (const hasPlaceholder of [false, true]) {
         await sendAndFlush(view, backspaceRelease);
         await sendAndFlush(view, enterPress);
       }
-      await waitFor(
-        () => view.text().includes(pasted ? "仅输出:" : "Final command:"),
-        "最终确认未显示",
-      );
+      await waitFor(() => view.text().includes("Final command:"), "最终确认未显示");
       assert.deepEqual(confirmed, []);
       await sendAndFlush(view, enterRelease);
       await sendAndFlush(view, "\u001b[27;1:3u\u001b[99;5:3u");
       assert.deepEqual(confirmed, []);
       await sendAndFlush(view, enterPress);
       assert.deepEqual(confirmed, [hasPlaceholder ? "printf '%s' 'ab'" : command]);
-      assert.equal(view.session.getExecutionPolicy(), pasted ? "print" : "execute");
+      assert.equal(view.session.getExecutionPolicy(), "execute");
     });
   }
 }
@@ -484,7 +481,7 @@ for (const chunks of [["safe-value\r\rignored\r"], ["safe-", "value", "\r"]]) {
   });
 }
 
-void test("初始化同批键盘字段按顺序提交，提交后的输入不能再次完成或取消", async (t) => {
+void test("初始化字段提交后丢弃同批剩余输入，每个字段独立确认", async (t) => {
   const { InitializationApp } = await modules;
   const submissions: InitializationValues[] = [];
   const view = await renderInSession(
@@ -501,6 +498,9 @@ void test("初始化同批键盘字段按顺序提交，提交后的输入不能
   );
   await sendAndFlush(view, "1");
   await sendAndFlush(view, "FAKE-key\rmodel-test\rhttps://example.invalid/v1\rignored\r\u0003");
+  assert.deepEqual(submissions, []);
+  await sendAndFlush(view, "model-test\r");
+  await sendAndFlush(view, "https://example.invalid/v1\rignored\r\u0003");
   assert.deepEqual(submissions, [
     {
       provider: "openai",

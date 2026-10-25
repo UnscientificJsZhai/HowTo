@@ -6,7 +6,7 @@ import {
   InteractiveSession,
   InteractiveSessionError,
 } from "../../../src/ui/interactive-session.js";
-import { PASTE_START } from "../../../src/ui/paste-framing.js";
+import { PASTE_START, PASTE_END } from "../../../src/ui/paste-framing.js";
 import { SessionFakeTty } from "./session-test-helpers.js";
 
 function exitHarness(t: TestContext) {
@@ -179,11 +179,11 @@ void test("正常清理和运行期间输入输出失败均注销退出钩子", 
   }
 });
 
-void test("执行和仅输出交接前同步完成终端恢复与钩子注销", (t) => {
+void test("键盘和完整粘贴后的交接都先恢复终端与注销钩子再执行", (t) => {
   for (const policy of ["execute", "print"]) {
     const h = exitHarness(t);
     const session = h.create();
-    if (policy === "print") h.input.write(PASTE_START);
+    if (policy === "print") h.input.write(PASTE_START + PASTE_END);
     const actions: string[] = [];
     const action = (name: string) => {
       assert.equal(h.state.registered, false);
@@ -198,7 +198,7 @@ void test("执行和仅输出交接前同步完成终端恢复与钩子注销", 
       session.handoff({ execute: () => action("execute"), print: () => action("print") }),
       7,
     );
-    assert.deepEqual(actions, [policy]);
+    assert.deepEqual(actions, ["execute"]);
     h.exit();
     assert.equal(h.state.removals, 1);
     assert.equal(h.bytes(), ENABLE_PASTE + DISABLE_PASTE);

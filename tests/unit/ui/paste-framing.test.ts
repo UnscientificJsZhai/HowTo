@@ -4,19 +4,24 @@ import {
   PASTE_END,
   PASTE_START,
   PasteFramingFilter,
-  PasteStartObserver,
+  MAX_PASTE_BYTES,
+  PasteFramingError,
 } from "../../../src/ui/paste-framing.js";
 
-void test("开始标记的每个分割位置都撤销权限，包括逐字节输入", () => {
+void test("开始标记的每个分割位置与逐字节输入都保持粘贴原子性", () => {
   for (let split = 0; split <= PASTE_START.length; split++) {
-    const observer = new PasteStartObserver();
-    const found = observer.observe(Buffer.from(PASTE_START.slice(0, split)));
-    assert.equal(found || observer.observe(Buffer.from(PASTE_START.slice(split))), true);
+    const filter = new PasteFramingFilter();
+    filter.setActive(true);
+    assert.equal(filter.push(PASTE_START.slice(0, split)), "");
+    assert.equal(
+      filter.push(PASTE_START.slice(split) + "safe" + PASTE_END),
+      PASTE_START + "safe" + PASTE_END,
+    );
   }
-  const observer = new PasteStartObserver();
-  for (const [index, byte] of Buffer.from(PASTE_START).entries()) {
-    assert.equal(observer.observe(Buffer.from([byte])), index === 5);
-  }
+  const filter = new PasteFramingFilter();
+  filter.setActive(true);
+  const input = PASTE_START + "value" + PASTE_END;
+  assert.equal([...input].map((character) => filter.push(character)).join(""), input);
 });
 
 void test("完整安全粘贴对全部分片保持原始顺序及 CR LF Unicode", () => {
@@ -59,18 +64,49 @@ void test("任何一个原始位置跨隐藏都会丢弃整块粘贴，下一块
 
 void test("键盘前缀刷新保留开始标记匹配，不能把后续 payload 当键盘", () => {
   for (let split = 1; split < PASTE_START.length; split++) {
-    const observer = new PasteStartObserver();
     const filter = new PasteFramingFilter();
     filter.setActive(true);
     const first = PASTE_START.slice(0, split);
-    observer.observe(Buffer.from(first));
     assert.equal(filter.push(first), "");
-    assert.equal(filter.flushKeyboardPrefix(), first);
+    assert.equal(filter.flushKeyboardPrefix(), split === 1 ? first : "");
     const rest = `${PASTE_START.slice(split)}EXECUTE${PASTE_END}`;
-    assert.equal(observer.observe(Buffer.from(rest)), true);
-    assert.equal(filter.push(rest), "");
+    assert.equal(filter.push(rest), split === 1 ? "" : PASTE_START + "EXECUTE" + PASTE_END);
     assert.equal(filter.push("fresh"), "fresh");
   }
+});
+
+void test("被拒粘贴也受大小上限约束，错误不回显内容", () => {
+  for (const prefix of ["", "\t"]) {
+    const filter = new PasteFramingFilter();
+    filter.setActive(true);
+    assert.throws(() => filter.push(PASTE_START + prefix + "x".repeat(MAX_PASTE_BYTES + 1)), {
+      name: "Error",
+      message: "粘贴内容超过 256 KiB，已取消本次交互。",
+    });
+  }
+});
+
+void test("未闭合粘贴不能通过交接检查，完整结束后恢复", () => {
+  const filter = new PasteFramingFilter();
+  filter.setActive(true);
+  filter.push(PASTE_START + "unfinished");
+  assert.throws(() => filter.assertComplete(), PasteFramingError);
+  assert.equal(filter.push("\r\u0003"), "");
+  filter.push(PASTE_END);
+  assert.doesNotThrow(() => filter.assertComplete());
+  assert.equal(filter.push("fresh"), "fresh");
+});
+
+void test("控制字符与跨边界丢弃通知各包含明确原因且不包含原文", () => {
+  const reasons: string[] = [];
+  const filter = new PasteFramingFilter((reason) => reasons.push(reason));
+  filter.setActive(true);
+  filter.push(PASTE_START + "secret\t\u001b");
+  filter.push(PASTE_END);
+  filter.push(PASTE_START + "hidden");
+  filter.setActive(false);
+  filter.push(PASTE_END);
+  assert.deepEqual(reasons, ["control", "boundary"]);
 });
 
 void test("Esc 拒绝后跨页保留首个新按键，迟到的粘贴尾部仍整块丢弃", () => {
@@ -102,7 +138,7 @@ void test("已刷新前缀后在隐藏期间积累的内容不回放，恢复后
         const filter = new PasteFramingFilter();
         filter.setActive(true);
         filter.push(marker.slice(0, flushed));
-        assert.equal(filter.flushKeyboardPrefix(), marker.slice(0, flushed));
+        assert.equal(filter.flushKeyboardPrefix(), flushed === 1 ? marker.slice(0, flushed) : "");
         filter.setActive(false);
         assert.equal(filter.push(marker.slice(flushed, hiddenEnd)), "");
         filter.setActive(true);

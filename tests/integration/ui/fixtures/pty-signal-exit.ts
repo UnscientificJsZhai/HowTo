@@ -73,6 +73,7 @@ try {
     });
   }
 } catch (error) {
+  if (phase === "incomplete" && error instanceof Error) process.stderr.write(`${error.message}\n`);
   process.exitCode = toAppError(error).exitCode;
 } finally {
   session.dispose();

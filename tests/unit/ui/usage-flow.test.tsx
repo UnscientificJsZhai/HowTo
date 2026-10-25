@@ -68,9 +68,9 @@ void test("拒绝只结束当前查询，重复拒绝不再审批，LLM 可改�
 });
 
 for (const phase of ["approval", "editing", "running"] as const) {
-  void test(`查询 ${phase} 阶段粘贴永久撤权，并继续生成仅输出候选`, async (t) => {
+  void test(`查询 ${phase} 阶段粘贴按页面处理，后续查询与最终执行继续可用`, async (t) => {
     const flow = await startFlow(t, [
-      lookup("query", phase === "running" ? ["--hang"] : ["--help"]),
+      lookup("query", phase === "running" ? ["--wait"] : ["--help"]),
     ]);
     await flow.approval();
     if (phase === "editing") {
@@ -80,14 +80,29 @@ for (const phase of ["approval", "editing", "running"] as const) {
       await flow.send("\r");
       await waitFor(() => existsSync(flow.log), "查询尚未运行");
     }
-    await flow.send(PASTE_START + "IGNORED\r" + PASTE_END);
+    if (phase === "editing") {
+      await flow.send("\u0015");
+      await flow.send(PASTE_START + "nested 'two words' --help" + PASTE_END + "\r\r");
+      assert.equal(existsSync(flow.log), false);
+      await flow.send("\r");
+    } else {
+      await flow.send(PASTE_START + "IGNORED\r" + PASTE_END);
+      assert.equal(flow.turns.length, 1, "粘贴不能结束当前审批或运行查询");
+      if (phase === "approval") await flow.send("\r");
+      else await flow.releaseQuery();
+    }
     await flow.selected();
-    assert.equal(flow.session.getExecutionPolicy(), "print");
-    assert.equal(flow.turns[1][0].result.status, "permission_revoked");
-    assert.equal(existsSync(flow.log), phase === "running");
-    await flow.finish(true);
-    assert.deepEqual(flow.executed, []);
-    assert.deepEqual(flow.printed, [flow.finalCommand]);
+    assert.equal(flow.session.getExecutionPolicy(), "execute");
+    assert.equal(flow.turns[1][0].result.status, "success");
+    if (phase === "editing")
+      assert.deepEqual(flow.turns[1][0].result.actualCommand?.args, [
+        "nested",
+        "two words",
+        "--help",
+      ]);
+    await flow.finish();
+    assert.deepEqual(flow.executed, [flow.finalCommand]);
+    assert.deepEqual(flow.printed, []);
   });
 }
 
@@ -191,14 +206,16 @@ void test("一行终端的能力降级仍完整输出固定提示，降级后继
   await flow.finish();
 });
 
-void test("查询启动前同步观察尚未交付的粘贴，保留终端租约", () => {
+void test("查询启动前拒绝未闭合粘贴，完整粘贴不撤权且保留终端租约", () => {
   const h = sessionHarness();
   try {
     assert.equal(h.session.getExecutionPolicy(), "execute");
     h.input.write(PASTE_START);
-    assert.equal(h.session.checkExecutionPolicy(), "print");
+    assert.throws(() => h.session.checkExecutionPolicy(), /尚未结束/);
+    h.input.write(PASTE_END);
+    assert.equal(h.session.checkExecutionPolicy(), "execute");
     assert.equal(h.input.isRaw, true);
-    assert.equal(h.session.getExecutionPolicy(), "print");
+    assert.equal(h.session.getExecutionPolicy(), "execute");
   } finally {
     h.close();
   }
@@ -228,7 +245,7 @@ async function startFlow(
   const log = join(directory, "calls");
   await writeFile(
     executable,
-    `#!${process.execPath}\nconst fs = require('node:fs');\nfs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + '\\n');\nprocess.stdout.write(JSON.stringify(process.argv.slice(2)));\nif (process.argv.includes('--hang')) setInterval(() => {}, 1000);\n`,
+    `#!${process.execPath}\nconst fs = require('node:fs');\nfs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + '\\n');\nprocess.stdout.write(JSON.stringify(process.argv.slice(2)));\nif (process.argv.includes('--hang')) setInterval(() => {}, 1000);\nif (process.argv.includes('--wait')) { const timer = setInterval(() => { if (fs.existsSync(${JSON.stringify(join(directory, "release"))})) clearInterval(timer); }, 10); }\n`,
     { mode: 0o700 },
   );
   const h = sessionHarness(dimensions.rows, dimensions.columns);
@@ -291,12 +308,10 @@ async function startFlow(
           throw new Error(`${error.message}\n${h.text()}\n${JSON.stringify(turns)}`);
         },
       ),
-    async finish(print = false) {
+    releaseQuery: () => writeFile(join(directory, "release"), ""),
+    async finish() {
       await h.send("\r");
-      await waitFor(
-        () => h.text().includes(print ? "仅输出:" : "Final command:"),
-        "最终确认没有显示",
-      );
+      await waitFor(() => h.text().includes("Final command:"), "最终确认没有显示");
       await h.send("\r");
       assert.equal(await result, 0);
     },

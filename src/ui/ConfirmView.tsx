@@ -2,10 +2,9 @@ import React, { useRef, useState } from "react";
 import { Box, Text, useStdout, type Key } from "ink";
 import type { DangerousCommandMatch } from "../safety/dangerous-command.js";
 import type { CommandCandidateContract } from "../ai/types.js";
-import { hasUnsafeTerminalControlCharacters } from "../terminal-text.js";
 import { deleteLastGrapheme, isTextInputEvent } from "./text-input.js";
 import { toSingleLinePreview, toTailPreview } from "./single-line-preview.js";
-import { useExecutionPolicy } from "./InteractiveSessionProvider.js";
+import { useOptionalInteractiveSession } from "./InteractiveSessionProvider.js";
 import { usePasteAwareInput } from "./use-paste-aware-input.js";
 
 interface Props {
@@ -38,7 +37,7 @@ export const ConfirmView: React.FC<Props> = ({
   availableRows = 3,
   availableColumns,
 }) => {
-  const { policy, getPolicy } = useExecutionPolicy();
+  const session = useOptionalInteractiveSession();
   const [buffer, setBuffer] = useState("");
   const bufferRef = useRef(buffer);
   const finishedRef = useRef(false);
@@ -60,14 +59,6 @@ export const ConfirmView: React.FC<Props> = ({
       if (key.escape) {
         finishedRef.current = true;
         onCancel();
-        return;
-      }
-
-      if (getPolicy() === "print") {
-        if (key.return) {
-          finishedRef.current = true;
-          onConfirm();
-        }
         return;
       }
 
@@ -95,18 +86,7 @@ export const ConfirmView: React.FC<Props> = ({
         onConfirm();
       }
     },
-    onPaste: (input) => {
-      if (
-        finishedRef.current ||
-        getPolicy() === "print" ||
-        danger === undefined ||
-        hasUnsafeTerminalControlCharacters(input)
-      ) {
-        return;
-      }
-
-      updateBuffer((previous) => previous + input);
-    },
+    onPaste: () => session?.reportIgnoredPaste(),
     isPasteActive: isInputActive && availableRows > 0 && !isDone,
   });
 
@@ -122,30 +102,6 @@ export const ConfirmView: React.FC<Props> = ({
 
   if (isDone) {
     return <CommandPreview command={command} />;
-  }
-
-  if (policy === "print") {
-    if (availableRows === 1) {
-      return (
-        <Box height={1} maxHeight={1} overflowX="hidden" overflowY="hidden">
-          <CommandPreview command={command} prefix="仅输出:" prefixWidth={7} />
-          <Box width={8} flexShrink={0}>
-            <Text> Ent Esc</Text>
-          </Box>
-        </Box>
-      );
-    }
-    return (
-      <Box flexDirection="column">
-        {danger && availableRows >= 3 && (
-          <Text color="red" wrap="truncate-middle">
-            Risk: {toSingleLinePreview(danger.reason)} [{toSingleLinePreview(danger.rule)}]
-          </Text>
-        )}
-        <Text wrap="truncate-middle">仅输出: {toSingleLinePreview(command)}</Text>
-        <Text wrap="truncate-end">Enter输出 Esc取消</Text>
-      </Box>
-    );
   }
 
   if (!danger && availableRows === 1) {
