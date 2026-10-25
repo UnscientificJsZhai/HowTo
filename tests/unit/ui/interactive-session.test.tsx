@@ -129,6 +129,28 @@ void test("键盘 Esc 真正刷新后到达的开始标记后缀仍撤销权限"
   assert.equal(received, "\u001b");
 });
 
+void test("Esc 刷新后的隐藏或无视图输入不会混入恢复后的键盘文本", async (t) => {
+  for (const boundary of ["hidden", "view"] as const) {
+    const h = sessionHarness();
+    t.after(() => h.close());
+    const release = h.session.beginView();
+    let received = "";
+    h.session.input.on("data", (chunk: Buffer) => {
+      received += chunk.toString();
+    });
+    await h.send("\u001b");
+    await waitFor(() => received === "\u001b", "Esc 前缀未刷新");
+    if (boundary === "hidden") h.output.resize(1);
+    else release();
+    await h.send("[2");
+    if (boundary === "hidden") h.output.resize(24);
+    else h.session.beginView();
+    await h.send("X");
+    assert.equal(received, "\u001bX", boundary);
+    assert.equal(h.session.getExecutionPolicy(), "execute");
+  }
+});
+
 void test("原始 raw 与 bracketed 租约跨卸载和重挂载连续，输出代理保留物理尺寸", () => {
   const h = sessionHarness(3, 20);
   const baselineBeforeExit = process.listenerCount("beforeExit");

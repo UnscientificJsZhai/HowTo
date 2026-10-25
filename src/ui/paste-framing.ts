@@ -20,7 +20,8 @@ export class PasteFramingFilter {
   private active = false;
   private pending = "";
   private flushedPrefix = 0;
-  private invalidPrefix = false;
+  // 失效前缀仍参与粘贴标记匹配，但不能再作为键盘输入交付。
+  private invalidPrefixLength = 0;
   private collecting = false;
   private discardPaste = false;
   private paste = "";
@@ -28,7 +29,7 @@ export class PasteFramingFilter {
   setActive(active: boolean): void {
     this.active = active;
     if (!active) {
-      this.invalidPrefix = true;
+      this.invalidPrefixLength = this.pending.length;
       if (this.collecting) {
         this.discardPaste = true;
         this.paste = "";
@@ -39,9 +40,8 @@ export class PasteFramingFilter {
   push(text: string): string {
     let output = "";
     for (const character of text) {
-      if (this.pending === "" && !this.collecting) this.invalidPrefix = !this.active;
       this.pending += character;
-      if (!this.active) this.invalidPrefix = true;
+      if (!this.active) this.invalidPrefixLength = this.pending.length;
       if (this.collecting) {
         while (this.pending !== "" && !PASTE_END.startsWith(this.pending)) {
           if (!this.discardPaste) this.paste += this.pending[0];
@@ -58,7 +58,7 @@ export class PasteFramingFilter {
           this.collecting = false;
           this.paste = "";
           this.pending = "";
-          this.invalidPrefix = false;
+          this.invalidPrefixLength = 0;
         }
         continue;
       }
@@ -69,24 +69,22 @@ export class PasteFramingFilter {
       ) {
         if (this.flushedPrefix > 0) {
           this.flushedPrefix--;
-          // 已交付的 Esc 等键盘前缀可以跨过视图边界保留，用于识别迟到的粘贴尾部。
-          // 当新输入已证明它不是粘贴标记时，旧前缀不能吞掉新页面的第一个按键。
-          if (this.flushedPrefix === 0) this.invalidPrefix = !this.active;
-        } else if (this.active && !this.invalidPrefix) output += this.pending[0];
+        } else if (this.active && this.invalidPrefixLength === 0) output += this.pending[0];
+        if (this.invalidPrefixLength > 0) this.invalidPrefixLength--;
         this.pending = this.pending.slice(1);
-        if (this.pending === "") this.invalidPrefix = !this.active;
       }
       if (this.pending === PASTE_START) {
         this.collecting = true;
-        this.discardPaste = !this.active || this.invalidPrefix || this.flushedPrefix > 0;
+        this.discardPaste = !this.active || this.invalidPrefixLength > 0 || this.flushedPrefix > 0;
         this.pending = "";
         this.flushedPrefix = 0;
+        this.invalidPrefixLength = 0;
         this.paste = "";
       } else if (this.pending === PASTE_END) {
         // 孤立的协议结束标记不作为表单文字交付。
         this.pending = "";
         this.flushedPrefix = 0;
-        this.invalidPrefix = false;
+        this.invalidPrefixLength = 0;
       }
     }
     return output;
@@ -98,7 +96,8 @@ export class PasteFramingFilter {
 
   flushKeyboardPrefix(): string {
     if (this.collecting) return "";
-    const result = this.active && !this.invalidPrefix ? this.pending.slice(this.flushedPrefix) : "";
+    const result =
+      this.active && this.invalidPrefixLength === 0 ? this.pending.slice(this.flushedPrefix) : "";
     // 刷新只影响键盘体验，保留完整标记匹配状态；权限观察器也完全独立。
     this.flushedPrefix = this.pending.length;
     return result;
@@ -108,6 +107,7 @@ export class PasteFramingFilter {
     this.pending = "";
     this.paste = "";
     this.flushedPrefix = 0;
+    this.invalidPrefixLength = 0;
     this.collecting = false;
     this.active = false;
   }

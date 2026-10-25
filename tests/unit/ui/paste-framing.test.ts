@@ -94,3 +94,33 @@ void test("Esc 拒绝后跨页保留首个新按键，迟到的粘贴尾部仍�
     assert.equal(filter.push("\r"), "\r");
   }
 });
+
+void test("已刷新前缀后在隐藏期间积累的内容不回放，恢复后的新按键仍保留", () => {
+  for (const marker of [PASTE_START, PASTE_END]) {
+    for (let flushed = 1; flushed < marker.length - 1; flushed++) {
+      for (let hiddenEnd = flushed + 1; hiddenEnd < marker.length; hiddenEnd++) {
+        const filter = new PasteFramingFilter();
+        filter.setActive(true);
+        filter.push(marker.slice(0, flushed));
+        assert.equal(filter.flushKeyboardPrefix(), marker.slice(0, flushed));
+        filter.setActive(false);
+        assert.equal(filter.push(marker.slice(flushed, hiddenEnd)), "");
+        filter.setActive(true);
+        assert.equal(filter.push("X"), "X");
+        assert.equal(filter.push("\r"), "\r");
+      }
+    }
+  }
+});
+
+void test("已刷新前缀与隐藏输入仍可识别完整粘贴并丢弃整块内容", () => {
+  const filter = new PasteFramingFilter();
+  filter.setActive(true);
+  filter.push("\u001b");
+  assert.equal(filter.flushKeyboardPrefix(), "\u001b");
+  filter.setActive(false);
+  assert.equal(filter.push("[2"), "");
+  filter.setActive(true);
+  assert.equal(filter.push("00~HIDDEN" + PASTE_END), "");
+  assert.equal(filter.push(PASTE_START + "fresh" + PASTE_END), PASTE_START + "fresh" + PASTE_END);
+});

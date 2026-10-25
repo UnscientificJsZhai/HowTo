@@ -176,6 +176,8 @@ export async function getChatGptAccessToken(
     const metadata = await discoverOpenIdConfiguration(options.signal, dependencies.fetch);
     account.refreshState = "refreshing";
     await transaction.save(data);
+    const fetcher = dependencies.fetch ?? globalThis.fetch;
+    let refreshRequestStarted = false;
     try {
       const response = await requestJson(
         metadata.token_endpoint,
@@ -190,7 +192,10 @@ export async function getChatGptAccessToken(
           }),
         },
         options.signal,
-        dependencies.fetch,
+        (input, init) => {
+          refreshRequestStarted = true;
+          return fetcher(input, init);
+        },
       );
       const tokens = parseTokenResponse(response, previous);
       observeCredentials(tokens);
@@ -217,8 +222,9 @@ export async function getChatGptAccessToken(
         await transaction.save(data);
         throw new ChatGptError("refresh_invalid");
       }
-      // 明确的服务端失败保留当前凭证；中断或丢失响应无法安全重放旋转 token。
-      account.refreshState = error instanceof OAuthHttpError ? undefined : "reauth_required";
+      // 尚未调用 fetch 的取消可以恢复；请求开始后的中断或响应丢失不能安全重放。
+      account.refreshState =
+        !refreshRequestStarted || error instanceof OAuthHttpError ? undefined : "reauth_required";
       await transaction.save(data);
       throw error;
     }

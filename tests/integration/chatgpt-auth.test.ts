@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { request as httpRequest } from "node:http";
 import { createServer, type Server } from "node:net";
-import { mkdtemp, rm } from "node:fs/promises";
+import fs, { mkdtemp, rm } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -454,21 +455,23 @@ test("ChatGPT 并发刷新只使用一次旋转 token，后来的请求读取新
     await f.login();
     const before = (await f.store.listAccounts())[0].tokens!;
     await f.expire();
-    const observed = new Set<string>();
-    const results = await Promise.all([
-      getChatGptAccessToken(
-        { onCredentials: (values) => values.forEach((value) => observed.add(value)) },
-        f.dependencies,
+    const observations = [new Set<string>(), new Set<string>()];
+    const results = await Promise.all(
+      observations.map((observed) =>
+        getChatGptAccessToken(
+          { onCredentials: (values) => values.forEach((value) => observed.add(value)) },
+          f.dependencies,
+        ),
       ),
-      getChatGptAccessToken({}, f.dependencies),
-    ]);
+    );
     const after = (await f.store.listAccounts())[0].tokens!;
     assert.equal(f.refreshCalls, 1);
     assert.equal(results[0].accessToken, "access-2");
     assert.deepEqual(results[0], results[1]);
     assert.equal(after.refreshToken, "refresh-2");
+    // 锁竞争顺序不由调用顺序保证；实际刷新者必须独立观察到旋转前后的整组凭据。
     assert.deepEqual(
-      observed,
+      observations.find((observed) => observed.has(before.accessToken)),
       new Set([
         before.accessToken,
         before.refreshToken,
@@ -478,6 +481,77 @@ test("ChatGPT 并发刷新只使用一次旋转 token，后来的请求读取新
         after.idToken,
       ]),
     );
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("ChatGPT 刷新标记写盘时取消不发送 token，之后仍可使用原凭据刷新", async (t) => {
+  const f = await fixture();
+  try {
+    await f.login();
+    await f.expire();
+    const before = await f.store.listAccounts();
+    const controller = new AbortController();
+    const accountsPath = await fs.realpath(
+      join(f.dependencies.homeDirectory, ".howto", "chatgpt", "accounts.json"),
+    );
+    const rename = fs.rename;
+    let cancelled = false;
+    // 在原子替换完成、save 尚未返回时安排取消，避免依赖文件监听或计时器抢占窄窗口。
+    const replacement = t.mock.method(fs, "rename", async (...paths: Parameters<typeof rename>) => {
+      await rename(...paths);
+      if (paths[1] === accountsPath && !cancelled) {
+        cancelled = true;
+        controller.abort();
+      }
+    });
+    syncBuiltinESMExports();
+    try {
+      await assert.rejects(
+        getChatGptAccessToken({ signal: controller.signal }, f.dependencies),
+        InteractionCancelledError,
+      );
+    } finally {
+      replacement.mock.restore();
+      syncBuiltinESMExports();
+    }
+    assert.equal(cancelled, true);
+    assert.equal(f.refreshCalls, 0);
+    assert.deepEqual(await f.store.listAccounts(), before);
+    assert.equal((await getChatGptAccessToken({}, f.dependencies)).accessToken, "access-2");
+    assert.equal(f.refreshCalls, 1);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("ChatGPT 刷新请求已发送后取消仍禁止重放原 token", async () => {
+  const f = await fixture();
+  try {
+    await f.login();
+    await f.expire();
+    const controller = new AbortController();
+    let refreshCalls = 0;
+    const dependencies = {
+      ...f.dependencies,
+      fetch: (async (input, init) => {
+        const url = input instanceof Request ? input.url : input.toString();
+        if (url === metadata.token_endpoint) {
+          refreshCalls++;
+          controller.abort();
+          throw new Error("secret upstream detail");
+        }
+        return f.dependencies.fetch(input, init);
+      }) satisfies typeof fetch,
+    };
+    await assert.rejects(
+      getChatGptAccessToken({ signal: controller.signal }, dependencies),
+      InteractionCancelledError,
+    );
+    assert.equal((await f.store.listAccounts())[0].refreshState, "reauth_required");
+    await assert.rejects(getChatGptAccessToken({}, dependencies), { code: "refresh_invalid" });
+    assert.equal(refreshCalls, 1);
   } finally {
     await f.cleanup();
   }
