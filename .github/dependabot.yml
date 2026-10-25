@@ -1,0 +1,52 @@
+version: 2
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    # 常规更新等待发布满 3 天；安全更新不受冷却期影响。
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      # 补丁与小版本按依赖类型分组，主版本更新保留独立 PR。
+      npm-production:
+        applies-to: "version-updates"
+        dependency-type: "production"
+        update-types: ["minor", "patch"]
+      npm-development:
+        applies-to: "version-updates"
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+      npm-security:
+        applies-to: "security-updates"
+        patterns: ["*"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      actions-minor-and-patch:
+        applies-to: "version-updates"
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      actions-security:
+        applies-to: "security-updates"
+        patterns: ["*"]
