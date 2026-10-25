@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { createServer } from "node:http";
+import { createServer, type RequestListener } from "node:http";
 import { createRemoteJWKSet, customFetch, jwtVerify } from "jose";
 import { InteractionCancelledError } from "../../ui/tty.js";
 import { ChatGptError } from "./errors.js";
@@ -27,6 +27,8 @@ export interface OAuthDependencies {
 
 export interface AuthorizationOptions extends ChatGptLoginOptions {
   hostId: string;
+  /** 凭证存储使用的互斥端口，随机回调监听也必须避开。 */
+  reservedCallbackPort?: number;
   clientId?: string;
   subject?: string;
   idTokenHint?: string;
@@ -99,6 +101,7 @@ export async function authorizeChatGpt(
     options.clientId,
     signal,
     options.callbackPort,
+    options.reservedCallbackPort,
   );
   try {
     const authorization = new URL(metadata.authorization_endpoint);
@@ -272,6 +275,7 @@ async function listenForAuthorization(
   clientId: string | undefined,
   signal: AbortSignal,
   port = 0,
+  reservedPort?: number,
 ) {
   let resolve!: (value: { code: string; clientId: string }) => void;
   let reject!: (error: Error) => void;
@@ -281,7 +285,7 @@ async function listenForAuthorization(
     reject = no;
   });
   void result.catch(() => undefined);
-  const server = createServer((request, response) => {
+  const onRequest: RequestListener = (request, response) => {
     response.setHeader("Content-Type", "text/plain; charset=utf-8");
     response.setHeader("Cache-Control", "no-store");
     let url: URL;
@@ -327,17 +331,32 @@ async function listenForAuthorization(
       "HowTo authorization received. You can close this window and return to the terminal.",
     );
     resolve({ code, clientId: issuedClientId });
-  });
-  server.requestTimeout = 10_000;
-  server.headersTimeout = 10_000;
-  try {
+  };
+  let server = createServer(onRequest);
+  let reservedServer: typeof server | undefined;
+  const bind = async (): Promise<number> => {
+    checkCancellation(signal);
+    server.requestTimeout = 10_000;
+    server.headersTimeout = 10_000;
     await new Promise<void>((yes, no) => {
       server.once("error", no);
       server.listen(port, "127.0.0.1", yes);
     });
+    checkCancellation(signal);
     const address = server.address();
     if (address === null || typeof address === "string")
       throw new ChatGptError("authorization_failed");
+    return address.port;
+  };
+  try {
+    let callbackPort = await bind();
+    if (callbackPort === reservedPort) {
+      if (port !== 0) throw new ChatGptError("callback_port_unavailable");
+      // 暂时保留冲突监听，确保内核不会把同一端口再次分给替代监听。
+      reservedServer = server;
+      server = createServer(onRequest);
+      callbackPort = await bind();
+    }
     const abort = () => {
       settled = true;
       reject(new InteractionCancelledError());
@@ -345,7 +364,7 @@ async function listenForAuthorization(
     signal.addEventListener("abort", abort, { once: true });
     if (signal.aborted) abort();
     return {
-      redirectUri: `http://127.0.0.1:${address.port}/auth/callback`,
+      redirectUri: `http://127.0.0.1:${callbackPort}/auth/callback`,
       result,
       close() {
         signal.removeEventListener("abort", abort);
@@ -358,5 +377,8 @@ async function listenForAuthorization(
     server.close();
     checkCancellation(signal);
     throw new ChatGptError("callback_port_unavailable");
+  } finally {
+    reservedServer?.closeAllConnections();
+    reservedServer?.close();
   }
 }

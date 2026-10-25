@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { request as httpRequest } from "node:http";
+import { request as httpRequest, Server as HttpServer } from "node:http";
 import { createServer, type Server } from "node:net";
 import fs, { mkdtemp, rm } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
@@ -331,6 +331,84 @@ test(
     }
   },
 );
+
+for (const outcome of ["success", "bind_failure", "cancel"] as const) {
+  test(
+    outcome === "bind_failure"
+      ? "ChatGPT 随机回调重选失败时释放互斥端口，不打开浏览器或交换令牌"
+      : outcome === "cancel"
+        ? "ChatGPT 随机回调重选时取消，释放全部监听且不交换令牌"
+        : "ChatGPT 随机回调避开凭证互斥端口并完成登录",
+    { timeout: 10_000 },
+    async (t) => {
+      const f = await fixture();
+      const lockPort = await f.store.withLock((tx) => Promise.resolve(tx.lockPort));
+      const callbackServers: HttpServer[] = [];
+      const controller = new AbortController();
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- 下方仅通过 Reflect.apply 显式绑定当前监听器。
+      const originalListen = HttpServer.prototype.listen;
+      const replacement = t.mock.method(
+        HttpServer.prototype,
+        "listen",
+        function (this: HttpServer, ...args: unknown[]): HttpServer {
+          if (args[0] === 0) {
+            callbackServers.push(this);
+            if (callbackServers.length === 1) {
+              args[0] = lockPort;
+            } else if (outcome === "bind_failure") {
+              queueMicrotask(() =>
+                this.emit(
+                  "error",
+                  Object.assign(new Error("fixture bind failure"), { code: "EADDRINUSE" }),
+                ),
+              );
+              return this;
+            } else if (outcome === "cancel") {
+              this.once("listening", () => controller.abort());
+            }
+          }
+          return Reflect.apply(originalListen, this, args) as HttpServer;
+        },
+      );
+      try {
+        const login = loginChatGpt(
+          { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5_000)]) },
+          outcome === "success"
+            ? f.dependencies
+            : {
+                ...f.dependencies,
+                openBrowser: () => assert.fail("重选失败或取消后打开了浏览器"),
+              },
+        );
+        if (outcome !== "success") {
+          if (outcome === "cancel") await assert.rejects(login, InteractionCancelledError);
+          else await assert.rejects(login, { code: "callback_port_unavailable" });
+          assert.equal(f.tokenCalls, 0);
+          assert.deepEqual(await f.store.listAccounts(), []);
+        } else {
+          const account = await login;
+          assert.equal(account.signedIn, true);
+          const callback = new URL(f.authorization.searchParams.get("redirect_uri")!);
+          assert.notEqual(Number(callback.port), lockPort);
+          assert.equal(f.tokenCalls, 1);
+          assert.equal((await f.store.listAccounts())[0].id, account.id);
+        }
+        assert.ok(callbackServers.length > 0, "未触发随机端口冲突");
+        for (const callback of callbackServers) {
+          assert.equal(callback.listening, false, "回调监听未释放");
+        }
+      } finally {
+        controller.abort();
+        replacement.mock.restore();
+        for (const callback of callbackServers) {
+          callback.closeAllConnections();
+          callback.close();
+        }
+        await f.cleanup();
+      }
+    },
+  );
+}
 
 async function listen(server: Server, port = 0): Promise<number> {
   await new Promise<void>((resolve, reject) => {

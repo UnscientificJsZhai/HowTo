@@ -102,6 +102,34 @@ void test("一行审批可逐行查看完整命令、目的、风险和输出发
   assert.deepEqual(view.approved, [["part-".repeat(15) + "ARGS_END"]]);
 });
 
+for (const [name, key] of [
+  ["↑", "\u001b[A"],
+  ["PageUp", "\u001b[5~"],
+]) {
+  void test(`一行危险审批输入后仍可用 ${name} 回看内容，缩放保留确认短语`, async (t) => {
+    const view = await renderApproval(t, { rows: 1, columns: 80, executable: "/bin/rm" });
+    await view.send("\t");
+    await view.send("\u0015");
+    await view.send("-rf /");
+    await view.send("\r");
+    await view.send("E");
+    assert.ok(view.text().includes("EXECUTE> E"));
+    const offset = view.text().length;
+    for (let index = 0; index < 20; index++) await view.send(key);
+    const reviewed = view.text().slice(offset);
+    assert.ok(reviewed.includes("命令:"), "输入确认短语后无法回看命令");
+    assert.ok(reviewed.includes("目的:"), "输入确认短语后无法回看目的");
+    assert.ok(reviewed.includes("风险:"), "输入确认短语后无法回看风险");
+    assert.deepEqual(view.approved, []);
+    await view.resize(4);
+    await view.resize(1);
+    await view.send("XECUTE");
+    assert.ok(view.text().includes("EXECUTE> EXECUTE"));
+    await view.send("\r");
+    assert.deepEqual(view.approved, [["-rf", "/"]]);
+  });
+}
+
 void test("命令预览区分 CR 与 LF，凭据在全量显示和编辑光标处均脱敏", async (t) => {
   const secret = "FAKE-known-credential";
   const view = await renderApproval(t, {

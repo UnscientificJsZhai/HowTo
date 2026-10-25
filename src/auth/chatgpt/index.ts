@@ -84,6 +84,7 @@ export async function loginChatGpt(
       options.accountId === undefined ? undefined : selectAccount(data.accounts, options.accountId);
     return {
       hostId: await transaction.getHostId(),
+      lockPort: transaction.lockPort,
       account,
       generation: account?.generation ?? 0,
       id: account?.id ?? randomUUID(),
@@ -103,6 +104,7 @@ export async function loginChatGpt(
       signal: options.signal,
       noBrowser: options.noBrowser,
       callbackPort: options.callbackPort,
+      reservedCallbackPort: pending.lockPort,
       onAuthorizationUrl: options.onAuthorizationUrl,
       onRegistration: async (clientId) => {
         registeredClientId = clientId;

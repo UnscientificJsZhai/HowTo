@@ -90,7 +90,7 @@ function UsageReview({
   onEdit,
 }: Props & { args: string[]; onEdit: () => void }) {
   const session = useInteractiveSession();
-  const [scroll, setScroll] = useState(0);
+  const [scroll, setScroll] = useState<number | "end">(0);
   const [confirmation, setConfirmation] = useState("");
   const confirmationRef = useRef("");
   const finished = useRef(false);
@@ -112,7 +112,7 @@ function UsageReview({
     ...(request.danger ? [`EXECUTE> ${confirmation}`] : []),
   ].flatMap((line) => wrapUsageText(line, columns));
   const maximumScroll = Math.max(0, lines.length - bodyRows);
-  const offset = Math.min(scroll, maximumScroll);
+  const offset = scroll === "end" ? maximumScroll : Math.min(scroll, maximumScroll);
   const inputReady = usePasteAwareInput({
     onInput: (input: string, key: Key) => {
       if (finished.current || availableRows <= 0) return;
@@ -126,9 +126,20 @@ function UsageReview({
         finished.current = true;
         onEdit();
       } else if (key.upArrow || key.pageUp) {
-        setScroll((previous) => Math.max(0, previous - (key.pageUp ? bodyRows : 1)));
+        setScroll((previous) =>
+          Math.max(
+            0,
+            (previous === "end" ? maximumScroll : Math.min(previous, maximumScroll)) -
+              (key.pageUp ? bodyRows : 1),
+          ),
+        );
       } else if (key.downArrow || key.pageDown) {
-        setScroll((previous) => Math.min(maximumScroll, previous + (key.pageDown ? bodyRows : 1)));
+        setScroll((previous) =>
+          Math.min(
+            maximumScroll,
+            (previous === "end" ? maximumScroll : previous) + (key.pageDown ? bodyRows : 1),
+          ),
+        );
       } else if (key.return) {
         if (!request.danger || confirmationRef.current.toUpperCase() === "EXECUTE") {
           finished.current = true;
@@ -141,7 +152,7 @@ function UsageReview({
           confirmationRef.current += input;
         }
         setConfirmation(confirmationRef.current);
-        if (availableRows === 1) setScroll(Number.MAX_SAFE_INTEGER);
+        if (availableRows === 1) setScroll("end");
       }
     },
     onPaste: session.reportIgnoredPaste,
