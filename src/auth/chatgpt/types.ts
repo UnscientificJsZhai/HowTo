@@ -1,3 +1,8 @@
+export interface ChatGptLoginOptions {
+  noBrowser?: boolean;
+  callbackPort?: number;
+}
+
 export interface HostRecord {
   version: 1;
   hostId: string;

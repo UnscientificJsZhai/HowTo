@@ -106,12 +106,35 @@ howto use git 看看上周的提交
 howto --print 列出 /var/log 中最大的文件
 ```
 
+### 通过 SSH 登录 ChatGPT
+
+在有浏览器的本地电脑上建立 SSH 连接和回环端口转发：
+
+```bash
+ssh -o ExitOnForwardFailure=yes -L 127.0.0.1:1455:127.0.0.1:1455 user@server
+```
+
+进入远程 shell 后启动登录：
+
+```bash
+howto --chatgpt-login --no-browser --callback-port 1455
+```
+
+在本地浏览器打开输出的授权链接，保持 SSH 连接与 HowTo 运行，直到登录完成。将 `user@server` 替换为实际 SSH 目标。浏览器会回调本地电脑的 `127.0.0.1`，隧道再将回调转发给服务器上的 HowTo，无需向公网开放回调端口。服务器仍需能通过 HTTPS 访问 OpenAI 认证与 API 服务。
+
+若希望在同一次交互中完成登录并保存 provider、账号和模型选择，可改用 `howto --init --no-browser --callback-port 1455`，再选择 **Continue with ChatGPT**。初始化要求 TTY，独立登录命令不要求 TTY。
+
+两个选项均可单独使用，仅允许搭配 `--chatgpt-login` 或 `--init`，只影响本次调用。`--no-browser` 完全跳过浏览器启动器，已有账号重新登录时也会输出授权链接。`--callback-port` 接受 `1`–`65535` 的十进制整数；省略时随机分配可用端口，并输出对应端口的转发指引。选项不会写入配置，也不影响 API key provider。
+
+本地或远程端口无法绑定时，应选择另一个可用端口，同时修改隧道两端与 `--callback-port`；HowTo 不会静默替换明确指定的端口。已通过 SSH 连接时，可在另一个本地终端运行输出的 `ssh -N ...` 指令，再打开授权链接。登录最多等待 10 分钟，Ctrl+C 可取消并释放回调监听。登录后的普通请求和令牌刷新无需浏览器。本流程仍需在本地电脑的浏览器中授权，不使用设备码，也不接受粘贴回调地址。
+
 ## 使用
 
 ```text
 howto [options] [use <command>] <question...>
-howto --init
+howto --init [--no-browser] [--callback-port <port>]
 howto --version
+howto --chatgpt-login [--chatgpt-account <id>] [--no-browser] [--callback-port <port>]
 ```
 
 示例：
@@ -130,6 +153,8 @@ howto --ai-provider openai --print 列出监听的端口
 - `--print` - 打印已校验的命令候选项并退出，不执行命令。
 - `--ai-provider <openai|gemini|chatgpt>` - 选择 AI provider。
 - `--chatgpt-account <id>` / `--chatgpt-model <slug>` - 选择已保存的 ChatGPT 注册和当前可用模型。
+- `--no-browser` - 跳过 ChatGPT 浏览器启动器并输出授权链接，仅用于 `--chatgpt-login` 或 `--init`。
+- `--callback-port <port>` - 指定 ChatGPT 回环回调端口（`1`–`65535`，默认随机分配可用端口），仅用于 `--chatgpt-login` 或 `--init`。
 - `--gemini-api-key <key>` - 提供 Gemini API key。
 - `--gemini-model <model>` - 覆盖 Gemini 模型。
 - `--openai-api-url <url>` - 使用自定义 OpenAI 兼容 base URL。

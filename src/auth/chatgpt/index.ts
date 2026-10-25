@@ -16,7 +16,7 @@ import {
   type OAuthDependencies,
 } from "./oauth.js";
 import { createChatGptStore } from "./storage.js";
-import type { AccountRecord } from "./types.js";
+import type { AccountRecord, ChatGptLoginOptions } from "./types.js";
 
 export interface ChatGptAccountInfo {
   id: string;
@@ -71,11 +71,14 @@ export async function listChatGptAccounts(
 }
 
 export async function loginChatGpt(
-  options: AccountOptions & { onAuthorizationUrl?: (url: string) => void } = {},
+  options: AccountOptions &
+    ChatGptLoginOptions & { onAuthorizationUrl?: (url: string) => void } = {},
   dependencies: Dependencies = {},
 ): Promise<ChatGptAccountInfo> {
   const store = createChatGptStore(dependencies.homeDirectory);
   const pending = await store.withLock(async (transaction) => {
+    if (options.callbackPort === transaction.lockPort)
+      throw new ChatGptError("callback_port_unavailable");
     const data = await transaction.read();
     const account =
       options.accountId === undefined ? undefined : selectAccount(data.accounts, options.accountId);
@@ -98,6 +101,8 @@ export async function loginChatGpt(
         pending.account?.tokens !== undefined &&
         !pending.account.tokens.scopes.includes("chatgpt.tokens.use.direct"),
       signal: options.signal,
+      noBrowser: options.noBrowser,
+      callbackPort: options.callbackPort,
       onAuthorizationUrl: options.onAuthorizationUrl,
       onRegistration: async (clientId) => {
         registeredClientId = clientId;

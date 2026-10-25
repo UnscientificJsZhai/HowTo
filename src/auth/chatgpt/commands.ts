@@ -5,6 +5,7 @@ import type { ChatGptInitializationService } from "../../init/index.js";
 import { renderTerminalSafeText } from "../../terminal-text.js";
 import { InteractionCancelledError } from "../../ui/tty.js";
 import { listChatGptAccounts, loginChatGpt, logoutChatGpt } from "./index.js";
+import { formatChatGptAuthorizationInstructions } from "./instructions.js";
 
 export const CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage";
 
@@ -41,8 +42,9 @@ export async function runChatGptAction(options: GlobalOptions): Promise<void> {
           // 无显式账号的 login 新增注册；选择已存账号时才重用它的 client ID。
           accountId: options.chatgptAccount,
           signal,
-          onAuthorizationUrl: (url) =>
-            console.error(`Open this authorization URL if needed:\n${url}`),
+          noBrowser: options.noBrowser,
+          callbackPort: options.callbackPort,
+          onAuthorizationUrl: (url) => console.error(formatChatGptAuthorizationInstructions(url)),
         });
         console.log(`ChatGPT account: ${account.id}`);
         console.log(

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { request as httpRequest } from "node:http";
+import { createServer, type Server } from "node:net";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -132,6 +133,7 @@ async function fixture() {
   const dependencies = { homeDirectory, fetch: fetcher, openBrowser };
   return {
     dependencies,
+    completeAuthorization: openBrowser,
     requests,
     manualUrls,
     clientId,
@@ -221,6 +223,122 @@ test("ChatGPT 重登录重用 client/host 且不显示 ID token hint", async () 
     await f.cleanup();
   }
 });
+
+test(
+  "ChatGPT 无浏览器重登录使用指定端口、剥离提示参数且不启动浏览器",
+  { timeout: 15_000 },
+  async () => {
+    const f = await fixture();
+    const reserved = createServer();
+    const port = await listen(reserved);
+    await new Promise<void>((resolve) => reserved.close(() => resolve()));
+    try {
+      const first = await f.login();
+      const urls: string[] = [];
+      let completed: Promise<boolean> | undefined;
+      const account = await loginChatGpt(
+        {
+          accountId: first.id,
+          noBrowser: true,
+          callbackPort: port,
+          onAuthorizationUrl: (url) => {
+            urls.push(url);
+            completed = f.completeAuthorization(url);
+          },
+        },
+        { ...f.dependencies, openBrowser: () => assert.fail("无浏览器模式调用了启动器") },
+      );
+      await completed;
+      assert.equal(urls.length, 1);
+      const authorization = new URL(urls[0]);
+      assert.equal(
+        authorization.searchParams.get("redirect_uri"),
+        `http://127.0.0.1:${port}/auth/callback`,
+      );
+      assert.equal(authorization.searchParams.has("id_token_hint"), false);
+      assert.equal(authorization.searchParams.has("login_hint"), false);
+      assert.equal(authorization.searchParams.get("client_id"), f.clientId);
+      assert.equal(account.id, first.id);
+      assert.equal(account.signedIn, true);
+      assert.equal(account.planUsageEnabled, true);
+      assert.equal((await f.store.listAccounts()).length, 1);
+      assert.equal(f.tokenCalls, 2);
+    } finally {
+      await f.cleanup();
+    }
+  },
+);
+
+test(
+  "ChatGPT 指定端口被占用时失败，不启动浏览器、不换端口且保留原凭证",
+  { timeout: 15_000 },
+  async () => {
+    const f = await fixture();
+    const occupied = createServer();
+    try {
+      const account = await f.login();
+      const before = await f.store.listAccounts();
+      const port = await listen(occupied);
+      await assert.rejects(
+        loginChatGpt(
+          {
+            accountId: account.id,
+            callbackPort: port,
+            onAuthorizationUrl: () => assert.fail("绑定失败后发布了授权链接"),
+          },
+          { ...f.dependencies, openBrowser: () => assert.fail("绑定失败后打开了浏览器") },
+        ),
+        (error: unknown) =>
+          error instanceof ChatGptError && error.code === "callback_port_unavailable",
+      );
+      assert.deepEqual(await f.store.listAccounts(), before);
+      assert.equal(f.tokenCalls, 1);
+    } finally {
+      await new Promise<void>((resolve) => occupied.close(() => resolve()));
+      await f.cleanup();
+    }
+  },
+);
+
+test(
+  "ChatGPT 回调端口不能占用凭证互斥端口，授权前拒绝且保留原凭证",
+  { timeout: 10_000 },
+  async () => {
+    const f = await fixture();
+    try {
+      const account = await f.login();
+      const before = await f.store.listAccounts();
+      const port = await f.store.withLock((tx) => Promise.resolve(tx.lockPort));
+      const requestCount = f.requests.length;
+      await assert.rejects(
+        loginChatGpt(
+          {
+            accountId: account.id,
+            callbackPort: port,
+            onAuthorizationUrl: () => assert.fail("预留端口发布了授权链接"),
+          },
+          { ...f.dependencies, openBrowser: () => assert.fail("预留端口打开了浏览器") },
+        ),
+        (error: unknown) =>
+          error instanceof ChatGptError && error.code === "callback_port_unavailable",
+      );
+      assert.equal(f.requests.length, requestCount);
+      assert.deepEqual(await f.store.listAccounts(), before);
+    } finally {
+      await f.cleanup();
+    }
+  },
+);
+
+async function listen(server: Server, port = 0): Promise<number> {
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  return address.port;
+}
 
 for (const mismatch of ["nonce", "subject", "client"] as const) {
   test(`ChatGPT ${mismatch} 不匹配不能覆盖已存凭证`, async () => {

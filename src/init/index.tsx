@@ -1,6 +1,7 @@
 import React from "react";
 import { render, type Instance } from "ink";
 import type { GlobalOptions } from "../cli.js";
+import type { ChatGptLoginOptions } from "../auth/chatgpt/types.js";
 import type { AiProvider, AppConfig, ConfigEnvironment } from "../config.js";
 import { loadConfig } from "../config.js";
 import {
@@ -37,11 +38,13 @@ export interface ChatGptInitializationModel {
 
 export interface ChatGptInitializationService {
   listAccounts(options: { signal: AbortSignal }): Promise<ChatGptInitializationAccount[]>;
-  login(options: {
-    accountId?: string;
-    signal: AbortSignal;
-    onAuthorizationUrl: (url: string) => void;
-  }): Promise<ChatGptInitializationAccount>;
+  login(
+    options: ChatGptLoginOptions & {
+      accountId?: string;
+      signal: AbortSignal;
+      onAuthorizationUrl: (url: string) => void;
+    },
+  ): Promise<ChatGptInitializationAccount>;
   listModels(options: {
     accountId: string;
     signal: AbortSignal;
@@ -81,6 +84,10 @@ export async function initializeConfig({
       <InteractiveSessionProvider session={session}>
         <InitializationApp
           chatgptService={chatgptService}
+          chatgptLoginOptions={{
+            noBrowser: cliOptions.noBrowser,
+            callbackPort: cliOptions.callbackPort,
+          }}
           onSubmit={async (values) => {
             return validateAndPersistInitializationConfig(values, cliOptions, env);
           }}

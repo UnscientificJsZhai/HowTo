@@ -106,12 +106,35 @@ Print command candidates without entering the interactive UI:
 howto --print list the largest files under /var/log
 ```
 
+### ChatGPT login over SSH
+
+On your computer with a browser, connect to the server with a loopback port forward:
+
+```bash
+ssh -o ExitOnForwardFailure=yes -L 127.0.0.1:1455:127.0.0.1:1455 user@server
+```
+
+In that remote shell, start login:
+
+```bash
+howto --chatgpt-login --no-browser --callback-port 1455
+```
+
+Open the printed authorization URL in your local browser. Keep both the SSH connection and HowTo running until login completes. Replace `user@server` with your SSH destination. The browser redirects to its own `127.0.0.1`; the tunnel forwards that callback to HowTo on the server. No public callback listener is needed. The server still needs outbound HTTPS access to OpenAI's authentication and API services.
+
+To sign in and save your provider/model choices in one interactive session, run `howto --init --no-browser --callback-port 1455` instead, then choose **Continue with ChatGPT**. Initialization requires a TTY; the standalone login command does not.
+
+Both options are optional and apply only to `--chatgpt-login` or `--init`, only for the current invocation. `--no-browser` skips the browser launcher entirely and prints a link even when renewing an existing account. `--callback-port` accepts a decimal integer from `1` to `65535`; without it, HowTo chooses an available port and prints forwarding instructions for that port. These options are not saved in configuration and do not affect API key providers.
+
+If either end cannot bind the chosen port, choose another available port and use it on both ends of the tunnel and in `--callback-port`. HowTo does not silently change an explicitly requested port. If already connected over SSH, use the printed `ssh -N ...` command in another local terminal before opening the URL. Login waits up to 10 minutes; Ctrl+C cancels it and releases the callback listener. Once authenticated, ordinary requests and token refreshes need no browser. This flow still requires browser approval on your local computer; it does not use device codes or accept pasted callback URLs.
+
 ## Usage
 
 ```text
 howto [options] [use <command>] <question...>
-howto --init
+howto --init [--no-browser] [--callback-port <port>]
 howto --version
+howto --chatgpt-login [--chatgpt-account <id>] [--no-browser] [--callback-port <port>]
 ```
 
 Examples:
@@ -130,6 +153,8 @@ Options:
 - `--print` - print validated command candidates and exit without executing.
 - `--ai-provider <openai|gemini|chatgpt>` - select the AI provider.
 - `--chatgpt-account <id>` / `--chatgpt-model <slug>` - choose a local registration and an available ChatGPT model.
+- `--no-browser` - skip the ChatGPT browser launcher and print the authorization URL; only with `--chatgpt-login` or `--init`.
+- `--callback-port <port>` - use a specific ChatGPT loopback callback port (`1`–`65535`, random available port by default); only with `--chatgpt-login` or `--init`.
 - `--gemini-api-key <key>` - provide a Gemini API key.
 - `--gemini-model <model>` - override the Gemini model.
 - `--openai-api-url <url>` - use a custom OpenAI-compatible base URL.

@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Box, Text, useStdout } from "ink";
 import { getUserVisibleErrorMessage } from "../errors.js";
+import { formatChatGptAuthorizationInstructions } from "../auth/chatgpt/instructions.js";
+import type { ChatGptLoginOptions } from "../auth/chatgpt/types.js";
 import { toSingleLinePreview } from "../ui/single-line-preview.js";
 import { isTextInputEvent } from "../ui/text-input.js";
 import { usePasteAwareInput } from "../ui/use-paste-aware-input.js";
@@ -13,6 +15,7 @@ import type {
 
 interface Props {
   service?: ChatGptInitializationService;
+  loginOptions?: ChatGptLoginOptions;
   frameRows: number;
   onComplete: (values: Extract<InitializationValues, { provider: "chatgpt" }>) => void;
   onBack: () => void;
@@ -32,6 +35,7 @@ type SetupState =
 
 export const ChatGptInitializationStep: React.FC<Props> = ({
   service,
+  loginOptions,
   frameRows,
   onComplete,
   onBack,
@@ -114,6 +118,7 @@ export const ChatGptInitializationStep: React.FC<Props> = ({
       });
       const publishedUrls = new Set<string>();
       const signedInAccount = await service.login({
+        ...loginOptions,
         accountId: account?.id,
         signal,
         onAuthorizationUrl: (url) => {
@@ -131,9 +136,7 @@ export const ChatGptInitializationStep: React.FC<Props> = ({
           // 通过 Ink 的外部输出入口写完整链接，保留在滚动历史中，不受帧高度或缩放裁剪。
           if (!publishedUrls.has(authorizationUrl)) {
             publishedUrls.add(authorizationUrl);
-            writeStdoutRef.current(
-              `Open this authorization URL in your browser:\n${toSingleLinePreview(authorizationUrl)}\n`,
-            );
+            writeStdoutRef.current(`${formatChatGptAuthorizationInstructions(authorizationUrl)}\n`);
           }
           updateState({
             step: "loading",

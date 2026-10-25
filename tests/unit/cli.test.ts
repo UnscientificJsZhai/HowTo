@@ -261,6 +261,52 @@ test("ChatGPT 独立动作拒绝互斥动作、问题及生成参数", () => {
   for (const args of invalidArguments) assert.throws(() => parseCliArgs(args), CliParseError);
 });
 
+test("ChatGPT 登录与初始化接受独立的浏览器和回调端口选项", () => {
+  for (const [action, expectedAction] of [
+    ["--chatgpt-login", { chatgptAction: "login" }],
+    ["--init", { init: true }],
+  ] as const) {
+    assert.deepEqual(parseCliArgs([action, "--no-browser", "--callback-port", "1455"]), {
+      options: { print: false, ...expectedAction, noBrowser: true, callbackPort: 1455 },
+    });
+    assert.deepEqual(parseCliArgs(["--no-browser", action]), {
+      options: { print: false, noBrowser: true, ...expectedAction },
+    });
+  }
+  for (const port of [1, 65535]) {
+    assert.equal(
+      parseCliArgs(["--chatgpt-login", `--callback-port=${port}`]).options.callbackPort,
+      port,
+    );
+  }
+});
+
+test("登录回调端口拒绝非十进制整数和越界值", () => {
+  for (const value of ["", "0", "-1", "65536", "1.5", "1e3", "0x500", "+1455", " 1455", "1455\n"]) {
+    assert.throws(() => parseCliArgs(["--chatgpt-login", `--callback-port=${value}`]), {
+      name: "CliParseError",
+      message: "--callback-port must be an integer from 1 to 65535",
+    });
+  }
+});
+
+test("远程登录选项不进入生成或其他账号动作", () => {
+  for (const extra of [["--no-browser"], ["--callback-port=1455"]]) {
+    for (const args of [
+      ["list files"],
+      ["--chatgpt-status"],
+      ["--chatgpt-models"],
+      ["--chatgpt-logout"],
+      ["--chatgpt-status", "--init"],
+    ]) {
+      assert.throws(
+        () => parseCliArgs([...args, ...extra]),
+        /--no-browser and --callback-port require --chatgpt-login or --init/,
+      );
+    }
+  }
+});
+
 test("ChatGPT 生成参数保留选项终止符与自然语言问题语义", () => {
   assert.deepEqual(
     parseCliArgs([

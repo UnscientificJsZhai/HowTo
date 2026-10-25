@@ -11,6 +11,11 @@ const MESSAGES = {
     "ChatGPT authorization was not completed. Run howto --chatgpt-login again.",
   ],
   authorization_timeout: [2, "ChatGPT authorization timed out. Run howto --chatgpt-login again."],
+  invalid_callback_port: [2, "The ChatGPT callback port must be an integer from 1 to 65535."],
+  callback_port_unavailable: [
+    2,
+    "Could not listen on the ChatGPT callback port. Choose another --callback-port and update any SSH port forwarding to match.",
+  ],
   invalid_identity: [2, "ChatGPT identity validation failed. The saved account was not replaced."],
   invalid_response: [1, "ChatGPT returned an invalid authentication response."],
   session_changed: [

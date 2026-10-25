@@ -14,7 +14,7 @@ import {
   type Fetch,
   type OpenIdConfiguration,
 } from "./http.js";
-import type { AccountRecord } from "./types.js";
+import type { AccountRecord, ChatGptLoginOptions } from "./types.js";
 
 export const CHATGPT_SCOPES =
   "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct";
@@ -25,7 +25,7 @@ export interface OAuthDependencies {
   openBrowser?: (url: string, signal?: AbortSignal) => Promise<boolean>;
 }
 
-export interface AuthorizationOptions {
+export interface AuthorizationOptions extends ChatGptLoginOptions {
   hostId: string;
   clientId?: string;
   subject?: string;
@@ -80,6 +80,13 @@ export async function authorizeChatGpt(
   options: AuthorizationOptions,
   dependencies: OAuthDependencies = {},
 ) {
+  if (
+    options.callbackPort !== undefined &&
+    (!Number.isSafeInteger(options.callbackPort) ||
+      options.callbackPort < 1 ||
+      options.callbackPort > 65535)
+  )
+    throw new ChatGptError("invalid_callback_port");
   const timeout = AbortSignal.timeout(600_000);
   const signal =
     options.signal === undefined ? timeout : AbortSignal.any([options.signal, timeout]);
@@ -87,7 +94,12 @@ export async function authorizeChatGpt(
   const state = randomBytes(32).toString("base64url");
   const nonce = randomBytes(32).toString("base64url");
   const verifier = randomBytes(48).toString("base64url");
-  const listener = await listenForAuthorization(state, options.clientId, signal);
+  const listener = await listenForAuthorization(
+    state,
+    options.clientId,
+    signal,
+    options.callbackPort,
+  );
   try {
     const authorization = new URL(metadata.authorization_endpoint);
     authorization.search = new URLSearchParams({
@@ -111,10 +123,13 @@ export async function authorizeChatGpt(
       if (options.requestPlanConsent) authorization.searchParams.set("prompt", "consent");
     }
     checkCancellation(signal);
-    const opened = await awaitWithCancellation(
-      (dependencies.openBrowser ?? openSystemBrowser)(authorization.toString(), signal),
-      signal,
-    );
+    const opened = options.noBrowser
+      ? false
+      : await awaitWithCancellation(
+          (dependencies.openBrowser ?? openSystemBrowser)(authorization.toString(), signal),
+          signal,
+        );
+    checkCancellation(signal);
     if (!opened || options.idTokenHint === undefined) {
       // 手动打开地址不得包含保留的 ID token，避免终端历史泄露。
       authorization.searchParams.delete("id_token_hint");
@@ -256,6 +271,7 @@ async function listenForAuthorization(
   state: string,
   clientId: string | undefined,
   signal: AbortSignal,
+  port = 0,
 ) {
   let resolve!: (value: { code: string; clientId: string }) => void;
   let reject!: (error: Error) => void;
@@ -317,7 +333,7 @@ async function listenForAuthorization(
   try {
     await new Promise<void>((yes, no) => {
       server.once("error", no);
-      server.listen(0, "127.0.0.1", yes);
+      server.listen(port, "127.0.0.1", yes);
     });
     const address = server.address();
     if (address === null || typeof address === "string")
@@ -340,6 +356,7 @@ async function listenForAuthorization(
   } catch {
     server.closeAllConnections();
     server.close();
-    throw new ChatGptError("authorization_failed");
+    checkCancellation(signal);
+    throw new ChatGptError("callback_port_unavailable");
   }
 }

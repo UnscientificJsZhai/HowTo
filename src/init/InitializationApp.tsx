@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
 import { Box, Text, type Key } from "ink";
 import type { AppConfig } from "../config.js";
+import type { ChatGptLoginOptions } from "../auth/chatgpt/types.js";
 import { getUserVisibleErrorMessage } from "../errors.js";
 import { usePhysicalStdoutRows } from "../ui/resize-safe-output.js";
 import { toSingleLinePreview } from "../ui/single-line-preview.js";
@@ -23,6 +24,7 @@ interface Props {
   onCancel: () => void;
   onError: (error: Error) => void;
   chatgptService?: ChatGptInitializationService;
+  chatgptLoginOptions?: ChatGptLoginOptions;
 }
 
 type SubmitStatus = "editing" | "saving" | "error" | "cancelled";
@@ -35,6 +37,7 @@ export const InitializationApp: React.FC<Props> = ({
   onCancel,
   onError,
   chatgptService,
+  chatgptLoginOptions,
 }) => {
   const session = useInteractiveSession();
   const rows = usePhysicalStdoutRows();
@@ -135,6 +138,7 @@ export const InitializationApp: React.FC<Props> = ({
     content = (
       <ChatGptInitializationStep
         service={chatgptService}
+        loginOptions={chatgptLoginOptions}
         frameRows={frameRows}
         onComplete={submit}
         onBack={() => {

@@ -1,7 +1,9 @@
+import type { ChatGptLoginOptions } from "./auth/chatgpt/types.js";
+
 export type AiProviderOption = string;
 export type ChatGptAction = "login" | "logout" | "status" | "models";
 
-export interface GlobalOptions {
+export interface GlobalOptions extends ChatGptLoginOptions {
   print: boolean;
   init?: boolean;
   version?: boolean;
@@ -39,6 +41,7 @@ const VALUE_OPTIONS = new Set([
   "--openai-model",
   "--chatgpt-account",
   "--chatgpt-model",
+  "--callback-port",
   "--structured-output",
 ]);
 
@@ -49,12 +52,13 @@ const CHATGPT_ACTION_OPTIONS = new Map<string, ChatGptAction>([
   ["--chatgpt-models", "models"],
 ]);
 
-const BOOLEAN_OPTIONS = new Set(["--print", "--init", "--version"]);
+const BOOLEAN_OPTIONS = new Set(["--print", "--init", "--version", "--no-browser"]);
 
 export const USAGE = `Usage: howto [options] [use <command>] <question...>
-       howto --init
+       howto --init [--no-browser] [--callback-port <port>]
        howto --version
-       howto --chatgpt-login|--chatgpt-logout|--chatgpt-status|--chatgpt-models [--chatgpt-account <account>]
+       howto --chatgpt-login [--chatgpt-account <account>] [--no-browser] [--callback-port <port>]
+       howto --chatgpt-logout|--chatgpt-status|--chatgpt-models [--chatgpt-account <account>]
 
 Options:
   --init
@@ -72,6 +76,8 @@ Options:
   --chatgpt-models
   --chatgpt-account <account>
   --chatgpt-model <model>
+  --no-browser                 Skip opening the browser for ChatGPT login or --init
+  --callback-port <1-65535>     ChatGPT callback port (default: a random available port)
   --structured-output <true|false>
 
 Try: howto list files changed today`;
@@ -140,12 +146,26 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     return { options };
   }
 
+  if (
+    (options.noBrowser || options.callbackPort !== undefined) &&
+    options.chatgptAction !== "login" &&
+    !(options.init && options.chatgptAction === undefined)
+  ) {
+    throw new CliParseError("--no-browser and --callback-port require --chatgpt-login or --init");
+  }
+
   if (options.chatgptAction !== undefined) {
     const unsupportedOption = Object.keys(options).find(
-      (key) => key !== "print" && key !== "chatgptAction" && key !== "chatgptAccount",
+      (key) =>
+        key !== "print" &&
+        key !== "chatgptAction" &&
+        key !== "chatgptAccount" &&
+        !(options.chatgptAction === "login" && (key === "noBrowser" || key === "callbackPort")),
     );
     if (positionals.length > 0 || options.print || unsupportedOption !== undefined) {
-      throw new CliParseError("ChatGPT actions accept only --chatgpt-account and no question");
+      throw new CliParseError(
+        "ChatGPT actions accept --chatgpt-account and no question; only login also accepts --no-browser and --callback-port",
+      );
     }
     return { options };
   }
@@ -189,6 +209,14 @@ function assignOptionValue(options: GlobalOptions, optionName: string, value: st
     case "--chatgpt-model":
       options.chatgptModel = value;
       return;
+    case "--callback-port": {
+      const port = Number(value);
+      if (!/^\d+$/.test(value) || !Number.isSafeInteger(port) || port < 1 || port > 65535) {
+        throw new CliParseError("--callback-port must be an integer from 1 to 65535");
+      }
+      options.callbackPort = port;
+      return;
+    }
     case "--structured-output":
       options.structuredOutput = value;
       return;
@@ -207,6 +235,9 @@ function assignBooleanOption(options: GlobalOptions, optionName: string): void {
       return;
     case "--version":
       options.version = true;
+      return;
+    case "--no-browser":
+      options.noBrowser = true;
       return;
     default:
       throw new CliParseError(`unsupported option: ${optionName}`);

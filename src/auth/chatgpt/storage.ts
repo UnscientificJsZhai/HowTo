@@ -32,6 +32,8 @@ export class ChatGptStorageError extends Error {
 }
 
 export interface ChatGptTransaction {
+  /** 此存储预留的互斥端口，不能用于长时间等待的 OAuth 回调监听。 */
+  readonly lockPort: number;
   read(): Promise<AccountStore>;
   save(store: AccountStore): Promise<void>;
   getHostId(): Promise<string>;
@@ -89,7 +91,11 @@ export function createChatGptStore(homeDirectory?: string): ChatGptStore {
           await assertDirectoryUnchanged(directory);
           await removeAbandonedWrites(directory);
         });
+        const lockAddress = lock.address();
+        if (lockAddress === null || typeof lockAddress === "string")
+          throw new ChatGptStorageError();
         const transaction: ChatGptTransaction = {
+          lockPort: lockAddress.port,
           read: () => run(() => readAccounts(directory)),
           save: (value) =>
             run(async () => {
