@@ -21,8 +21,7 @@ import { getUserVisibleErrorMessage } from "../errors.js";
 import { generateWithUsageLookup } from "../usage/generate.js";
 import type { UsageApprovalDecision, UsageApprovalRequest } from "../usage/types.js";
 import { formatUsageCommand } from "../usage/arguments.js";
-import { sanitizeUsageText } from "../usage/output.js";
-import { UsageApprovalView } from "./UsageApprovalView.js";
+import { safeUsageDisplay, UsageApprovalView } from "./UsageApprovalView.js";
 import { toSingleLinePreview } from "./single-line-preview.js";
 
 type Status =
@@ -159,7 +158,12 @@ export const App: React.FC<Props> = ({
                 if (!isCurrent || controller.signal.aborted) return;
                 session.suspendViewInput();
                 setRunningQuery(
-                  command === null ? "" : formatUsageCommand(command.executable, command.args),
+                  command === null
+                    ? ""
+                    : safeUsageDisplay(
+                        formatUsageCommand(command.executable, command.args),
+                        command.knownCredentials,
+                      ),
                 );
                 setStatus(command === null ? "loading" : "usage-running");
               },
@@ -266,8 +270,7 @@ export const App: React.FC<Props> = ({
       )}
       {status === "usage-running" && (
         <Text wrap="truncate-middle">
-          查询运行中（Ctrl+C取消）:{" "}
-          {toSingleLinePreview(sanitizeUsageText(runningQuery, knownCredentials).text)}
+          查询运行中（Ctrl+C取消）: {toSingleLinePreview(runningQuery)}
         </Text>
       )}
       {status === "selecting" && (

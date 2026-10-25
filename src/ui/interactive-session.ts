@@ -115,6 +115,12 @@ export class InteractiveSession {
       );
     },
     () => this.clearPasteTimers(),
+    (text, active) => {
+      this.keyboard.setActive(active);
+      const framed = this.keyboard.push(text);
+      this.keyboard.setActive(this.inputActive);
+      return framed;
+    },
   );
   private inputOwner: object = {};
   private deliveryOwner: object | undefined;
@@ -477,7 +483,7 @@ export class InteractiveSession {
   private processInput(bytes: Buffer): void {
     const owner = this.inputOwner;
     if (normalizePhysicalRows(this.physicalOutput.rows) <= 1) this.setInputActive(false);
-    const filtered = this.keyboard.push(this.filter.push(this.decoder.write(bytes)));
+    const filtered = this.filter.push(this.decoder.write(bytes));
     if (filtered !== "") this.bridge.deliver(filtered, owner);
     this.updatePasteTimers();
   }
@@ -485,13 +491,26 @@ export class InteractiveSession {
     this.filter.assertComplete();
     this.keyboard.assertComplete();
   }
-  private flushEscape(owner: object): void {
+  private flushPrefix(owner: object, flush: () => string): void {
     this.prefixTimer = setTimeout(() => {
       this.prefixTimer = undefined;
       if (this.closed) return;
-      const text = this.keyboard.flushEscape();
-      if (text !== "") this.bridge.deliver(text, owner);
+      try {
+        const text = flush();
+        if (text !== "") this.bridge.deliver(text, owner);
+        this.updatePasteTimers();
+        if (this.keyboard.hasStandaloneEscape()) {
+          this.flushPrefix(owner, () => this.keyboard.flushEscape());
+        }
+      } catch (error) {
+        this.failInput(error);
+      }
     }, 20);
+  }
+  private failInput(error: unknown): void {
+    this.fail(
+      new InteractiveSessionError(error instanceof PasteFramingError ? error.message : undefined),
+    );
   }
   private observePendingInput(): void {
     if (!this.inputAcquired || this.failure || !this.resources.readPendingInput) return;
@@ -513,20 +532,12 @@ export class InteractiveSession {
       if (!this.disposing && this.filter.hasPendingKeyboardPrefix()) {
         // 此延迟只保留独立 Esc 的键盘语义；刷新仍属于收到前缀时的输入边界。
         const owner = this.inputOwner;
-        this.prefixTimer = setTimeout(() => {
-          this.prefixTimer = undefined;
-          if (this.closed) return;
-          const text = this.keyboard.push(this.filter.flushKeyboardPrefix());
-          if (text !== "") this.bridge.deliver(text, owner);
-          if (this.keyboard.hasStandaloneEscape()) this.flushEscape(owner);
-        }, 20);
+        this.flushPrefix(owner, () => this.filter.flushKeyboardPrefix());
       } else if (!this.disposing && this.keyboard.hasStandaloneEscape()) {
-        this.flushEscape(this.inputOwner);
+        this.flushPrefix(this.inputOwner, () => this.keyboard.flushEscape());
       }
     } catch (error) {
-      this.fail(
-        new InteractiveSessionError(error instanceof PasteFramingError ? error.message : undefined),
-      );
+      this.failInput(error);
     }
   };
 

@@ -159,6 +159,101 @@ void test("Esc 刷新后的隐藏或无视图输入不会混入恢复后的键�
   }
 });
 
+void test("待定按键后刷新 Esc 的异常走会话失败边界并恢复终端", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const prefix of ["\u001b[13;", "\u001b[1", "\u001bO"]) {
+    const h = sessionHarness();
+    t.after(() => h.close());
+    h.session.beginView();
+    const failures: Error[] = [];
+    h.session.subscribeFailure((error) => failures.push(error));
+    await h.send(prefix);
+    await h.send("\u001b");
+    assert.doesNotThrow(() => t.mock.timers.tick(20));
+    assert.equal(failures.length, 1);
+    assert.ok(failures[0] instanceof InteractiveSessionError);
+    assert.match(failures[0].message, /按键输入序列无效/);
+    assert.equal(h.session.getExecutionPolicy(), "print");
+    assert.equal(h.input.isRaw, false);
+    assert.equal(h.input.refs, 0);
+    assert.equal(h.input.listenerCount("readable"), 0);
+    assert.ok(h.bytes().toString().endsWith(DISABLE_PASTE));
+    assert.throws(() =>
+      h.session.handoff({ execute: () => assert.fail(), print: () => assert.fail() }),
+    );
+    t.mock.timers.tick(30_000);
+    assert.equal(failures.length, 1);
+  }
+});
+
+void test("完整按键在粘贴标记前缀的任意位置跨页或隐藏均整段丢弃", async (t) => {
+  for (const sequence of [
+    "\u001b[B",
+    "\u001b[20~",
+    "\u001b[13u",
+    "\u001bOM",
+    "\u001b\u001b[13u",
+    "\u001b😀",
+  ]) {
+    const characters = [...sequence];
+    for (let split = 1; split < characters.length; split++) {
+      for (const boundary of ["hidden", "view"]) {
+        const h = sessionHarness();
+        t.after(() => h.close());
+        const release = h.session.beginView();
+        let received = "";
+        h.session.input.on("data", (chunk: Buffer) => {
+          received += chunk.toString();
+        });
+        await h.send(characters.slice(0, split).join(""));
+        if (boundary === "hidden") {
+          h.output.resize(1);
+          h.output.resize(24);
+        } else {
+          release();
+          h.session.beginView();
+        }
+        await h.send(characters.slice(split).join("") + "fresh\r");
+        assert.equal(received, "fresh\r", `${boundary}: ${JSON.stringify(sequence)} at ${split}`);
+        assert.equal(h.session.checkExecutionPolicy(), "execute");
+      }
+    }
+  }
+});
+
+void test("隐藏或挂起期间闭合旧按键后不会超时或污染恢复后的 Enter", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const boundary of ["hidden", "suspended"]) {
+    for (const sequence of [
+      "\u001b[13u",
+      "\u001bOM",
+      "\u001b[20~",
+      "\u001b\u001b[13u",
+      "\u001b😀",
+    ]) {
+      const h = sessionHarness();
+      t.after(() => h.close());
+      h.session.beginView();
+      let received = "";
+      h.session.input.on("data", (chunk: Buffer) => {
+        received += chunk.toString();
+      });
+      const characters = [...sequence];
+      await h.send(characters.slice(0, -1).join(""));
+      if (boundary === "hidden") h.output.resize(1);
+      else h.session.suspendViewInput();
+      await h.send(characters.at(-1)!);
+      t.mock.timers.tick(30_000);
+      assert.equal(h.session.getExecutionPolicy(), "execute");
+      if (boundary === "hidden") h.output.resize(24);
+      else h.session.beginView();
+      await h.send("\r");
+      assert.equal(received, "\r");
+      assert.equal(h.session.checkExecutionPolicy(), "execute");
+    }
+  }
+});
+
 void test("原始 raw 与 bracketed 租约跨卸载和重挂载连续，输出代理保留物理尺寸", () => {
   const h = sessionHarness(3, 20);
   const baselineBeforeExit = process.listenerCount("beforeExit");

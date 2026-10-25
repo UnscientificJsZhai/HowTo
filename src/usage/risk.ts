@@ -11,7 +11,8 @@ export function resolveUsageCommandDanger(
 ): DangerousCommandMatch | undefined {
   const named = detectDangerousCommand(formatUsageCommand(commandName, args));
   const resolved = detectDangerousCommand(formatUsageCommand(executable, args));
-  const local = named ?? resolved;
+  const local =
+    named?.rule === "indeterminate-shell-command" ? (resolved ?? named) : (named ?? resolved);
   const reasons = new Set(
     [named?.reason, resolved?.reason].filter((reason) => reason !== undefined),
   );

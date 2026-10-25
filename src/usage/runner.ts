@@ -84,13 +84,17 @@ export function executeUsageLookup(options: ExecuteUsageLookupOptions): Promise<
     let cleanupTimeout: ReturnType<typeof setTimeout> | undefined;
     let unsubscribe = () => {};
 
-    const finish = () => {
-      if (completed) return;
-      completed = true;
+    const cleanupListeners = () => {
       if (timeout !== undefined) clearTimeout(timeout);
       if (cleanupTimeout !== undefined) clearTimeout(cleanupTimeout);
       options.signal.removeEventListener("abort", onAbort);
       unsubscribe();
+    };
+
+    const finish = () => {
+      if (completed) return;
+      completed = true;
+      cleanupListeners();
       const capturedStdout = stdout.finish();
       const capturedStderr = stderr.finish();
       result.stdout = capturedStdout.text;
@@ -145,11 +149,16 @@ export function executeUsageLookup(options: ExecuteUsageLookupOptions): Promise<
       if (options.getExecutionPolicy() === "print") stop("permission_revoked");
     };
 
-    options.signal.addEventListener("abort", onAbort, { once: true });
-    unsubscribe = options.subscribeExecutionPolicy(onPolicyChange);
-    if (options.signal.aborted) stop("cancelled");
-    // 必须最后同步复查；从复查到 spawn 不经过 await，避免待处理粘贴撤权后仍启动。
-    if (options.getExecutionPolicy() === "print") stop("permission_revoked");
+    try {
+      options.signal.addEventListener("abort", onAbort, { once: true });
+      unsubscribe = options.subscribeExecutionPolicy(onPolicyChange);
+      if (options.signal.aborted) stop("cancelled");
+      // 必须最后同步复查；从复查到 spawn 不经过 await，避免待处理输入使检查失败后仍启动。
+      if (options.getExecutionPolicy() === "print") stop("permission_revoked");
+    } catch (error) {
+      cleanupListeners();
+      throw error;
+    }
     if (stopStatus !== undefined || options.signal.aborted) {
       if (options.signal.aborted) stop("cancelled");
       finish();

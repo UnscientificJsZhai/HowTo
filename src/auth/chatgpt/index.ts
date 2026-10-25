@@ -265,6 +265,7 @@ export async function logoutChatGpt(
     account.refreshState = undefined;
     account.generation += 1;
     await transaction.save(data);
+    checkCancellation(options.signal);
     return { account: accountInfo(account), remoteRevocationConfirmed };
   }, options.signal);
 }

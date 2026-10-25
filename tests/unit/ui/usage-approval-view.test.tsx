@@ -4,6 +4,7 @@ import React from "react";
 import type { UsageApprovalRequest } from "../../../src/usage/types.js";
 import { importWithoutColor } from "./import-without-color.js";
 import { sessionHarness, waitFor } from "./session-test-helpers.js";
+import { PASTE_START, PASTE_END } from "../../../src/ui/paste-framing.js";
 
 const modules = importWithoutColor(async () => {
   const [{ render }, { UsageApprovalView }, { InteractiveSessionProvider }] = await Promise.all([
@@ -117,6 +118,41 @@ void test("命令预览区分 CR 与 LF，凭据在全量显示和编辑光标�
   for (let index = 0; index < 8; index++) await view.send("\u001b[D");
   assert.equal(view.text().includes(secret), false);
   assert.ok(view.text().includes("*****"));
+});
+
+void test("参数详情页忽略编辑动作及粘贴，返回后保留原参数与光标", async (t) => {
+  const view = await renderApproval(t);
+  const notices: string[] = [];
+  view.session.subscribeInputNotice((message) => notices.push(message));
+  await view.send("\t");
+  await view.send("\t");
+  const offset = view.text().length;
+  await view.send("forged\u007f\u0015\u001b[D\u001b[3~");
+  await view.send(PASTE_START + "forged" + PASTE_END);
+  assert.equal(view.text().slice(offset).includes("编辑查询参数"), false);
+  assert.ok(notices.some((message) => message.includes("忽略粘贴")));
+  await view.send("\r\r");
+  assert.deepEqual(view.approved, []);
+  await view.send("\r");
+  await view.send("\r");
+  assert.deepEqual(view.approved, [["--help"]]);
+});
+
+void test("编辑器先遮罩长凭据，重叠短凭据不能暴露后缀或光标片段", async (t) => {
+  const secret = "FAKE-token'private-suffix";
+  const argument = `prefix:${secret}:tail`;
+  const view = await renderApproval(t, {
+    rows: 20,
+    columns: 100,
+    args: [argument],
+    knownCredentials: ["FAKE-token", secret],
+  });
+  await view.send("\t");
+  for (let index = 0; index < secret.length; index++) await view.send("\u001b[D");
+  assert.equal(view.text().includes("private-suffix"), false);
+  await view.send("\r");
+  await view.send("\r");
+  assert.deepEqual(view.approved, [[argument]]);
 });
 
 async function renderApproval(

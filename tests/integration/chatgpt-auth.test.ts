@@ -18,6 +18,7 @@ import { ChatGptError } from "../../src/auth/chatgpt/errors.js";
 import { CHATGPT_ISSUER, CHATGPT_RESOURCE } from "../../src/auth/chatgpt/http.js";
 import { createChatGptStore } from "../../src/auth/chatgpt/storage.js";
 import { InteractionCancelledError } from "../../src/ui/tty.js";
+import { toAppError } from "../../src/errors.js";
 
 const metadata = {
   issuer: CHATGPT_ISSUER,
@@ -602,6 +603,43 @@ for (const remoteFailure of [false, true]) {
       assert.equal(stored.clientId, f.clientId);
       assert.equal(stored.subject, "test-subject");
       await assert.rejects(getChatGptAccessToken({}, f.dependencies), { code: "login_required" });
+    } finally {
+      await f.cleanup();
+    }
+  });
+}
+
+for (const stage of ["discovery", "revocation"]) {
+  test(`ChatGPT 注销在远程 ${stage} 取消后清除本地令牌并返回 130`, async () => {
+    const f = await fixture();
+    try {
+      const account = await f.login();
+      const controller = new AbortController();
+      const fetcher: typeof fetch = (input, init) => {
+        const url = input instanceof Request ? input.url : input.toString();
+        const shouldCancel =
+          stage === "discovery"
+            ? url.endsWith("/.well-known/openid-configuration")
+            : url === metadata.revocation_endpoint;
+        if (!shouldCancel) return f.dependencies.fetch(input, init);
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new InteractionCancelledError()), {
+            once: true,
+          });
+          controller.abort();
+        });
+      };
+      await assert.rejects(
+        logoutChatGpt(
+          { accountId: account.id, signal: controller.signal },
+          { ...f.dependencies, fetch: fetcher },
+        ),
+        (error) => error instanceof InteractionCancelledError && toAppError(error).exitCode === 130,
+      );
+      const [stored] = await f.store.listAccounts();
+      assert.equal(stored.tokens, undefined);
+      assert.equal(stored.refreshState, undefined);
+      assert.equal(stored.clientId, f.clientId);
     } finally {
       await f.cleanup();
     }

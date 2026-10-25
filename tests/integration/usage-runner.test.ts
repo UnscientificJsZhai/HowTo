@@ -6,6 +6,7 @@ import { join } from "node:path";
 import test, { type TestContext } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { getEventListeners } from "node:events";
 import { executeUsageLookup, resolveUsageExecutable } from "../../src/usage/runner.js";
 import type { UsageLookupArguments } from "../../src/usage/types.js";
 
@@ -115,6 +116,34 @@ test("权限已撤销、末次同步检查撤销或事先取消时绝不启动�
   const cancelled = await executeUsageLookup({ ...prepared, signal: controller.signal });
   assert.equal(cancelled.status, "cancelled");
   assert.equal(cancelled.actualCommand, null);
+  assert.equal(existsSync(marker), false);
+});
+
+test("启动前同步权限复查抛错时注销全部监听器且不执行查询", async (t) => {
+  const directory = await temporaryDirectory(t);
+  const marker = join(directory, "must-not-exist");
+  const controller = new AbortController();
+  const listeners = new Set<() => void>();
+  const failure = new Error("输入序列尚未结束");
+  await assert.rejects(
+    executeUsageLookup({
+      ...options(["marker", marker]),
+      signal: controller.signal,
+      subscribeExecutionPolicy(listener) {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+      getExecutionPolicy(): never {
+        throw failure;
+      },
+    }),
+    (error) => error === failure,
+  );
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+  assert.equal(listeners.size, 0);
+  controller.abort();
   assert.equal(existsSync(marker), false);
 });
 

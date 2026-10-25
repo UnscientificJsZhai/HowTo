@@ -373,6 +373,27 @@ test("已知凭据在工具参数和输出中脱敏，明确失败也不能回�
   assert.equal(flow.nextCalls[1].replies[0].result.credentialsRedacted, true);
 });
 
+test("审批和运行预览使用合并凭据，批准后重新读取会话令牌", async () => {
+  const flow = setup([{ kind: "tool_calls", calls: [call(["--help"])] }, final]);
+  const initial = ["FAKE-access", "FAKE-refresh", "FAKE-id"];
+  const rotated = "FAKE-rotated-token";
+  let credentials = initial;
+  flow.interaction.knownCredentials = ["FAKE-api-key"];
+  flow.session.getKnownCredentials = () => credentials;
+  flow.interaction.approve = (approval: UsageApprovalRequest): Promise<UsageApprovalDecision> => {
+    assert.deepEqual(approval.knownCredentials, ["FAKE-api-key", ...initial]);
+    credentials = [...initial, rotated];
+    return Promise.resolve<UsageApprovalDecision>({ kind: "approve", args: approval.lookup.args });
+  };
+  const running: Array<Parameters<NonNullable<UsageGenerationInteraction["onQueryRunning"]>>[0]> =
+    [];
+  flow.interaction.onQueryRunning = (command) => running.push(command);
+  await flow.run();
+  assert.deepEqual(running[0]?.knownCredentials, ["FAKE-api-key", ...initial, rotated]);
+  assert.equal(running[1], null);
+  assert.deepEqual(flow.executions[0].knownCredentials, ["FAKE-api-key", ...initial, rotated]);
+});
+
 test("扩展最终契约仍强校验危险标记、占位符与 use 工具", async () => {
   const cases = [
     { commands: [], failureReason: "" },

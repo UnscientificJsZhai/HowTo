@@ -710,6 +710,174 @@ test("ChatGPT 凭据轮换后重新脱敏历史与当前结果，并省略已截
   ]);
 });
 
+test("ChatGPT 读取凭据期间取消后，迟到凭据和回复不修改会话历史", async () => {
+  let tokenCalls = 0;
+  let finishCredentials!: () => void;
+  const requests: Record<string, unknown>[] = [];
+  const provider = new ChatGptCommandProvider(
+    { model: MODEL },
+    {
+      getAccessToken: async ({ onCredentials }) => {
+        const attempt = ++tokenCalls;
+        if (attempt === 2)
+          await new Promise<void>((resolve) => {
+            finishCredentials = () => resolve();
+          });
+        const accessToken = attempt === 2 ? "FAKE-late-credential" : KEY;
+        onCredentials?.([accessToken]);
+        return { accessToken, accountId: "test-account" };
+      },
+      fetch: (input, init) => {
+        if (new Request(input).url.endsWith("/models")) {
+          return Promise.resolve(
+            Response.json({
+              models: [{ slug: MODEL, display_name: "Usage test", visibility: "list" }],
+            }),
+          );
+        }
+        requests.push(snapshot(JSON.parse(init?.body as string)));
+        return Promise.resolve(
+          new Response(
+            (requests.length === 1
+              ? callsWire("chatgpt", [call("query")])
+              : finalWire("chatgpt")) as string,
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+        );
+      },
+    },
+  );
+  const session = provider.createUsageSession(request(true));
+  await session.next([], { toolsEnabled: true });
+  const controller = new AbortController();
+  const pending = session.next(
+    [{ callId: "query", result: { ...result(), stdout: "discarded-reply" } }],
+    { toolsEnabled: true },
+    controller.signal,
+  );
+  controller.abort();
+  await assert.rejects(pending, InteractionCancelledError);
+  finishCredentials();
+  await delay(0);
+  assert.deepEqual(session.getKnownCredentials?.(), [KEY]);
+  assert.equal(requests.length, 1);
+  const turn = await session.next(
+    [{ callId: "query", result: { ...result(), stdout: "accepted-reply" } }],
+    { toolsEnabled: true },
+  );
+  assert.equal(turn.kind, "final");
+  assert.match(JSON.stringify(requests[1]), /accepted-reply/);
+  assert.doesNotMatch(JSON.stringify(requests[1]), /discarded-reply/);
+});
+
+test("ChatGPT 观察到令牌旋转后取消，重试仍省略已截断的输出片段", async () => {
+  const controller = new AbortController();
+  const requests: Record<string, unknown>[] = [];
+  let attempt = 0;
+  const rotated = "FAKE-rotated-private-key";
+  const provider = new ChatGptCommandProvider(
+    { model: MODEL },
+    {
+      getAccessToken: ({ onCredentials }) => {
+        attempt++;
+        onCredentials?.(attempt === 1 ? [KEY] : [KEY, rotated]);
+        if (attempt === 2) controller.abort();
+        return Promise.resolve({
+          accessToken: attempt === 1 ? KEY : rotated,
+          accountId: "test-account",
+        });
+      },
+      fetch: (input, init) => {
+        if (new Request(input).url.endsWith("/models")) {
+          return Promise.resolve(
+            Response.json({
+              models: [{ slug: MODEL, display_name: "Usage test", visibility: "list" }],
+            }),
+          );
+        }
+        requests.push(snapshot(JSON.parse(init?.body as string)));
+        return Promise.resolve(
+          new Response(
+            (requests.length === 1
+              ? callsWire("chatgpt", [call("query")])
+              : finalWire("chatgpt")) as string,
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+        );
+      },
+    },
+  );
+  const session = provider.createUsageSession(request(true));
+  await session.next([], { toolsEnabled: true });
+  const truncated = { ...result(), stdout: "FAKE-rotated-", stdoutTruncated: true };
+  const replies = [{ callId: "query", result: truncated }];
+  await assert.rejects(
+    session.next(replies, { toolsEnabled: true }, controller.signal),
+    InteractionCancelledError,
+  );
+  await delay(0);
+  await session.next(replies, { toolsEnabled: true });
+  assert.deepEqual(returnedResults("chatgpt", requests[1]), [
+    {
+      id: "query",
+      result: {
+        ...truncated,
+        stdout: "[redacted: truncated output omitted after credential rotation]",
+        credentialsRedacted: true,
+      },
+    },
+  ]);
+});
+
+test("ChatGPT 完成流清理期间取消时，迟到工具调用不能污染重试历史", async () => {
+  const controller = new AbortController();
+  const requests: Record<string, unknown>[] = [];
+  const provider = new ChatGptCommandProvider(
+    { model: MODEL },
+    {
+      getAccessToken: () => Promise.resolve({ accessToken: KEY, accountId: "test-account" }),
+      fetch: (input, init) => {
+        if (new Request(input).url.endsWith("/models")) {
+          return Promise.resolve(
+            Response.json({
+              models: [{ slug: MODEL, display_name: "Usage test", visibility: "list" }],
+            }),
+          );
+        }
+        requests.push(snapshot(JSON.parse(init?.body as string)));
+        const stream =
+          requests.length === 1
+            ? new ReadableStream<Uint8Array<ArrayBuffer>>({
+                start(reader) {
+                  reader.enqueue(
+                    new TextEncoder().encode(
+                      callsWire("chatgpt", [call("cancelled-call")]) as string,
+                    ),
+                  );
+                },
+                cancel() {
+                  controller.abort();
+                },
+              })
+            : (finalWire("chatgpt") as string);
+        return Promise.resolve(
+          new Response(stream, { headers: { "content-type": "text/event-stream" } }),
+        );
+      },
+    },
+  );
+  const session = provider.createUsageSession(request(true));
+  await assert.rejects(
+    session.next([], { toolsEnabled: true }, controller.signal),
+    InteractionCancelledError,
+  );
+  await delay(0);
+  assert.equal(requests.length, 1);
+  assert.equal((await session.next([], { toolsEnabled: true })).kind, "final");
+  assert.equal(requests.length, 2);
+  assert.doesNotMatch(JSON.stringify(requests[1]), /cancelled-call/);
+});
+
 test("能力识别仅接受明确工具能力错误，拒绝认证、额度、网络、schema 和普通参数错误", () => {
   for (const error of [
     { status: 400, error: { code: "unsupported_parameter", param: "tools" } },

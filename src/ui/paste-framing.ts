@@ -14,7 +14,7 @@ export class PasteFramingFilter {
   private active = false;
   private pending = "";
   private flushedPrefix = 0;
-  // 失效前缀仍参与粘贴标记匹配，但不能再作为键盘输入交付。
+  // 失效前缀仍参与标记匹配，并带失效状态交给下层闭合按键序列。
   private invalidPrefixLength = 0;
   private collecting = false;
   private discardPaste = false;
@@ -23,12 +23,15 @@ export class PasteFramingFilter {
 
   private readonly onDiscard: (reason: PasteDiscardReason) => void;
   private readonly onBoundary: () => void;
+  private readonly frameInput: (text: string, active: boolean) => string;
   constructor(
     onDiscard: (reason: PasteDiscardReason) => void = () => {},
     onBoundary: () => void = () => {},
+    frameInput: (text: string, active: boolean) => string = (text, active) => (active ? text : ""),
   ) {
     this.onDiscard = onDiscard;
     this.onBoundary = onBoundary;
+    this.frameInput = frameInput;
   }
 
   private discard(reason: PasteDiscardReason): void {
@@ -70,7 +73,7 @@ export class PasteFramingFilter {
             !this.discardPaste &&
             !hasUnsafeTerminalControlCharacters(this.paste)
           ) {
-            output += PASTE_START + this.paste + PASTE_END;
+            output += this.frameInput(PASTE_START + this.paste + PASTE_END, true);
           }
           this.collecting = false;
           this.paste = "";
@@ -85,11 +88,14 @@ export class PasteFramingFilter {
         !PASTE_START.startsWith(this.pending) &&
         !PASTE_END.startsWith(this.pending)
       ) {
+        const character = String.fromCodePoint(this.pending.codePointAt(0)!);
         if (this.flushedPrefix > 0) {
-          this.flushedPrefix--;
-        } else if (this.active && this.invalidPrefixLength === 0) output += this.pending[0];
-        if (this.invalidPrefixLength > 0) this.invalidPrefixLength--;
-        this.pending = this.pending.slice(1);
+          this.flushedPrefix = Math.max(0, this.flushedPrefix - character.length);
+        } else {
+          output += this.frameInput(character, this.active && this.invalidPrefixLength === 0);
+        }
+        this.invalidPrefixLength = Math.max(0, this.invalidPrefixLength - character.length);
+        this.pending = this.pending.slice(character.length);
       }
       if (this.pending === PASTE_START) {
         this.onBoundary();
@@ -136,8 +142,10 @@ export class PasteFramingFilter {
   flushKeyboardPrefix(): string {
     // CSI 前缀继续由会话保管，不能提前交给 Ink 后在新页面拼成按键。
     if (this.collecting || this.pending.length > 1) return "";
-    const result =
-      this.active && this.invalidPrefixLength === 0 ? this.pending.slice(this.flushedPrefix) : "";
+    const result = this.frameInput(
+      this.pending.slice(this.flushedPrefix),
+      this.active && this.invalidPrefixLength === 0,
+    );
     // 刷新只影响键盘体验，仍保留完整标记匹配状态及跨边界丢弃语义。
     this.flushedPrefix = this.pending.length;
     return result;

@@ -110,6 +110,7 @@ export const ChatGptInitializationStep: React.FC<Props> = ({
   };
 
   const selectAccount = (account: ChatGptInitializationAccount | undefined) => {
+    session.suspendViewInput();
     startOperation(async (signal) => {
       if (service === undefined) throw new Error("ChatGPT sign-in is unavailable.");
       if (account?.signedIn && account.planUsageEnabled) {
@@ -163,12 +164,11 @@ export const ChatGptInitializationStep: React.FC<Props> = ({
 
   const ready = usePasteAwareInput({
     onInput: (input, key) => {
-      if (finishedRef.current || key.eventType === "release") return;
+      if (finishedRef.current || key.eventType === "release" || frameRows === 0) return;
       if (key.ctrl && input === "c") {
         finish(onCancel);
         return;
       }
-      if (frameRows === 0) return;
       if (key.escape) {
         finish(onBack);
         return;
@@ -208,7 +208,7 @@ export const ChatGptInitializationStep: React.FC<Props> = ({
       }
     },
     onPaste: session.reportIgnoredPaste,
-    isPasteActive: true,
+    isPasteActive: frameRows > 0,
   });
 
   if (!ready || frameRows === 0) return null;

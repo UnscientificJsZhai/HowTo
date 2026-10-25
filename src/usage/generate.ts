@@ -136,6 +136,7 @@ export async function generateWithUsageLookup(
         executable,
         lookup,
         danger: resolveUsageCommandDanger(commandName, executable, lookup.args, lookup),
+        knownCredentials: credentials(),
       },
       signal,
     );
@@ -153,7 +154,11 @@ export async function generateWithUsageLookup(
     } catch {
       return remember(createUsageLookupResult(call.arguments, "invalid_arguments"));
     }
-    interaction.onQueryRunning?.({ executable, args: edited.args });
+    interaction.onQueryRunning?.({
+      executable,
+      args: edited.args,
+      knownCredentials: credentials(),
+    });
     try {
       const result = await execute({
         requested: call.arguments,

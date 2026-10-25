@@ -221,6 +221,41 @@ void test("查询启动前拒绝未闭合粘贴，完整粘贴不撤权且保留
   }
 });
 
+void test("会话令牌在审批、编辑光标和运行预览的终端原始输出中均不可见", async (t) => {
+  const tokens = ["FAKE-access-token", "FAKE-refresh'private-suffix", "FAKE-id-token"];
+  const apiKey = "FAKE-api-credential";
+  const args = ["--wait", apiKey, ...tokens.map((token) => `token=${token}:end`)];
+  const query = lookup("private-query", args);
+  assert.equal(query.kind, "tool_calls");
+  if (query.kind !== "tool_calls") return;
+  query.calls[0].arguments = {
+    args,
+    purpose: `检查 ${tokens.join(" ")}`,
+    dangerous: false,
+    dangerReason: "",
+  };
+  const flow = await startFlow(t, [query], {
+    rows: 24,
+    columns: 160,
+    knownCredentials: [apiKey],
+    getSessionCredentials: () => tokens,
+  });
+  await flow.approval();
+  await waitFor(() => flow.text().includes("[REDACTED]"), "审批未显示脱敏标记");
+  await flow.send("\t");
+  await waitFor(() => flow.text().includes("编辑查询参数"), "未进入参数编辑");
+  for (let index = 0; index < 8; index++) await flow.send("\u001b[D");
+  await flow.send("\r");
+  await flow.send("\r");
+  await waitFor(() => flow.text().includes("查询运行中"), "查询运行状态未显示");
+  for (const secret of [apiKey, ...tokens, "private-suffix"]) {
+    assert.equal(flow.bytes().includes(Buffer.from(secret)), false);
+  }
+  await flow.releaseQuery();
+  await flow.selected();
+  await flow.finish();
+});
+
 function lookup(id: string, args: string[]): UsageSessionTurn {
   return {
     kind: "tool_calls",
@@ -237,7 +272,12 @@ function lookup(id: string, args: string[]): UsageSessionTurn {
 async function startFlow(
   t: TestContext,
   steps: Array<UsageSessionTurn | Error>,
-  dimensions: { rows?: number; columns?: number } = {},
+  dimensions: {
+    rows?: number;
+    columns?: number;
+    knownCredentials?: readonly string[];
+    getSessionCredentials?: () => readonly string[];
+  } = {},
 ) {
   const { runInteractiveCommand } = await modules;
   const directory = await mkdtemp(join(tmpdir(), "howto-usage-ui-"));
@@ -262,6 +302,7 @@ async function startFlow(
       createUsageSession: () => {
         sessions++;
         return {
+          getKnownCredentials: dimensions.getSessionCredentials,
           next: (replies, options) => {
             const index = turns.length;
             turns.push(replies);
@@ -281,6 +322,7 @@ async function startFlow(
       },
     },
     request: { ...testRequest(), useCommand: executable },
+    knownCredentials: dimensions.knownCredentials,
     execute: (command) => {
       executed.push(command);
       return Promise.resolve(0);

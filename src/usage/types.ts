@@ -60,6 +60,7 @@ export interface UsageApprovalRequest {
   executable: string;
   lookup: UsageLookupArguments;
   danger?: DangerousCommandMatch;
+  knownCredentials?: readonly string[];
 }
 
 export type UsageApprovalDecision = { kind: "approve"; args: string[] } | { kind: "reject" };
@@ -68,7 +69,13 @@ export interface UsageGenerationInteraction {
   approve(request: UsageApprovalRequest, signal: AbortSignal): Promise<UsageApprovalDecision>;
   getExecutionPolicy(): "execute" | "print";
   subscribeExecutionPolicy(listener: () => void): () => void;
-  onQueryRunning?(command: { executable: string; args: string[] } | null): void;
+  onQueryRunning?(
+    command: {
+      executable: string;
+      args: string[];
+      knownCredentials: readonly string[];
+    } | null,
+  ): void;
   onCapabilityFallback?(message: string): void;
   knownCredentials?: readonly string[];
 }

@@ -60,16 +60,20 @@ export class ChatGptCommandProvider implements CommandProvider {
       next: (replies, options, signal) =>
         runChatGptRequest(this.model, signal, this.dependencies, async (requestSignal) => {
           const previousCredentialCount = knownCredentials.size;
+          const observeCredentials = (values: readonly string[]) => {
+            if (requestSignal.aborted) return;
+            for (const value of values) knownCredentials.add(value);
+            // 观察时即记录旋转，后续取消不能让重试丢失截断输出保护。
+            credentialsChanged ||=
+              previousCredentialCount > 0 && knownCredentials.size > previousCredentialCount;
+          };
           const credentials = await (this.dependencies.getAccessToken ?? getChatGptAccessToken)({
             accountId: this.config.account,
             signal: requestSignal,
-            onCredentials: (values) => {
-              for (const value of values) knownCredentials.add(value);
-            },
+            onCredentials: observeCredentials,
           });
-          knownCredentials.add(credentials.accessToken);
-          credentialsChanged ||=
-            previousCredentialCount > 0 && knownCredentials.size > previousCredentialCount;
+          requestSignal.throwIfAborted();
+          observeCredentials([credentials.accessToken]);
           // 审批期间凭据可能已刷新；在序列化工具结果前再次按最新的整组令牌脱敏。
           for (const reply of tracker.accept(replies)) {
             toolResults.set(reply.callId, reply.result);
@@ -176,6 +180,7 @@ export class ChatGptCommandProvider implements CommandProvider {
             this.model,
             options.toolsEnabled,
           );
+          requestSignal.throwIfAborted();
           const calls: UsageToolCall[] = [];
           for (const item of output) {
             if (item.type === "function_call") {

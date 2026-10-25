@@ -13,7 +13,14 @@ test("符号链接的原调用名与真实程序任一风险均保留", () => {
   assert.ok(
     resolveUsageCommandDanger("npm", "/opt/npm-cli.js", ["uninstall", "-g", "pkg"], noAiRisk),
   );
-  assert.ok(resolveUsageCommandDanger("local-alias", "/bin/rm", ["-rf", "/"], noAiRisk));
+  assert.equal(
+    resolveUsageCommandDanger("local-alias", "/bin/rm", ["-rf", "/"], noAiRisk)?.rule,
+    "destructive-rm",
+  );
+  const resolvedDanger = resolveUsageCommandDanger("sh", "/bin/rm", ["-rf", "/"], noAiRisk);
+  assert.equal(resolvedDanger?.rule, "destructive-rm");
+  assert.match(resolvedDanger?.reason ?? "", /cannot be assessed locally/);
+  assert.match(resolvedDanger?.reason ?? "", /high-risk target/);
   assert.equal(
     resolveUsageCommandDanger("npm", "/opt/npm-cli.js", ["--help"], noAiRisk)?.rule,
     "indeterminate-shell-command",

@@ -882,6 +882,61 @@ void test("ChatGPT 首次授权等待期间 Ctrl+C 中止，迟到结果和 URL 
   assert.equal(view.output().slice(offset).includes("late-callback"), false);
 });
 
+void test("ChatGPT 账号读取、授权和模型加载在隐藏期间丢弃输入，恢复后仍可取消", async (t) => {
+  for (const phase of ["accounts", "login", "models"]) {
+    const accounts = deferred<ChatGptInitializationAccount[]>();
+    const login = deferred<ChatGptInitializationAccount>();
+    const models = deferred<ChatGptInitializationModel[]>();
+    let operationSignal: AbortSignal | undefined;
+    let cancellations = 0;
+    const view = await renderInitialization(
+      { columns: 80, rows: 12 },
+      () => assert.fail("隐藏输入不能提交初始化"),
+      () => {
+        cancellations++;
+      },
+      undefined,
+      chatgptService({
+        listAccounts: ({ signal }) => {
+          if (phase !== "accounts")
+            return Promise.resolve(phase === "models" ? [chatgptAccount()] : []);
+          operationSignal = signal;
+          return accounts.promise;
+        },
+        login: ({ signal }) => {
+          operationSignal = signal;
+          return login.promise;
+        },
+        listModels: ({ signal }) => {
+          operationSignal = signal;
+          return models.promise;
+        },
+      }),
+    );
+    t.after(() => close(view));
+    await send(view, "3");
+    if (phase !== "accounts") {
+      await waitFor(() => view.output().includes("ChatGPT account"), "账号选择尚未显示");
+      await send(view, "\r");
+    }
+    await waitFor(() => operationSignal !== undefined, "目标请求尚未开始");
+    await resizeAndWait(view, 1);
+    await send(view, "\u0003\r1");
+    await send(view, "\u001b[200~2\r\u001b[201~");
+    assert.equal(cancellations, 0);
+    assert.equal(operationSignal?.aborted, false);
+    accounts.resolve([]);
+    login.resolve(chatgptAccount());
+    models.resolve([{ slug: "model-a", displayName: "Model A" }]);
+    await delay(0);
+    await resizeAndWait(view, 12);
+    await send(view, "\u0003");
+    assert.equal(cancellations, 1);
+    assert.equal(operationSignal?.aborted, true);
+    await close(view);
+  }
+});
+
 void test("ChatGPT 账号读取与模型加载均可 Esc 返回，旧请求不覆盖新页面", async () => {
   for (const stage of ["accounts", "models"] as const) {
     const accounts = deferred<ChatGptInitializationAccount[]>();

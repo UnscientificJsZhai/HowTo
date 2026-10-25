@@ -29,6 +29,13 @@ interface Props {
 
 export const UsageApprovalView: React.FC<Props> = (props) => {
   const session = useInteractiveSession();
+  const viewProps = {
+    ...props,
+    knownCredentials: [
+      ...(props.knownCredentials ?? []),
+      ...(props.request.knownCredentials ?? []),
+    ],
+  };
   const [args, setArgs] = useState(props.request.lookup.args);
   const [editing, setEditing] = useState(false);
   const [revision, setRevision] = useState(0);
@@ -50,7 +57,7 @@ export const UsageApprovalView: React.FC<Props> = (props) => {
   };
   return editing ? (
     <UsageArgumentsEditor
-      {...props}
+      {...viewProps}
       args={args}
       onSave={(nextArgs) => {
         session.suspendViewInput();
@@ -62,7 +69,7 @@ export const UsageApprovalView: React.FC<Props> = (props) => {
     />
   ) : (
     <UsageReview
-      {...props}
+      {...viewProps}
       key={revision}
       request={{ ...props.request, danger }}
       args={args}
@@ -234,6 +241,8 @@ function UsageArgumentsEditor({
         );
       } else if (detailsRef.current && (key.return || key.escape)) {
         showDetails(false);
+      } else if (detailsRef.current) {
+        return;
       } else if (key.escape) {
         finished.current = true;
         onBack();
@@ -276,6 +285,10 @@ function UsageArgumentsEditor({
     },
     onPaste: (input) => {
       if (finished.current || availableRows <= 0) return;
+      if (detailsRef.current) {
+        session.reportIgnoredPaste();
+        return;
+      }
       const position = cursorRef.current;
       const current = valueRef.current;
       update(current.slice(0, position) + input + current.slice(position), position + input.length);
@@ -298,12 +311,10 @@ function UsageArgumentsEditor({
     );
   }
   // 等长遮罩保留光标位置；在切片前完成脱敏，避免光标切开凭据后暴露部分内容。
-  const safeValue = knownCredentials
-    .filter((credential) => credential !== "")
-    .reduce(
-      (text, credential) => text.split(credential).join("*".repeat(credential.length)),
-      value,
-    );
+  const safeValue = usageDisplayCredentials(knownCredentials).reduce(
+    (text, credential) => text.split(credential).join("*".repeat(credential.length)),
+    value,
+  );
   const programPreview = clippedProgram(safeProgram, Math.max(1, Math.floor(columns / 3)));
   const prefix = availableRows === 1 ? `${error ? "!" : ""}${programPreview}:` : "> ";
   const inputColumns = Math.max(1, columns - stringWidth(prefix));
@@ -376,10 +387,24 @@ function clippedProgram(value: string, columns: number): string {
     : `…${toTailPreview(value, Math.max(0, columns - 1))}`;
 }
 
-function safeUsageDisplay(value: string, credentials: readonly string[]): string {
-  const redacted = credentials
-    .filter((credential) => credential !== "")
-    .sort((left, right) => right.length - left.length)
-    .reduce((text, credential) => text.split(credential).join("[REDACTED]"), value);
+export function safeUsageDisplay(value: string, credentials: readonly string[]): string {
+  const redacted = usageDisplayCredentials(credentials).reduce(
+    (text, credential) => text.split(credential).join("[REDACTED]"),
+    value,
+  );
   return renderTerminalSafeText(redacted);
+}
+
+function usageDisplayCredentials(credentials: readonly string[]): string[] {
+  // shell 引用会展开单引号；同时匹配引用内部文本，覆盖嵌入参数的凭据。
+  return [
+    ...new Set(
+      credentials
+        .filter((credential) => credential !== "")
+        .flatMap((credential) => {
+          const quoted = formatLiteralArguments([credential]);
+          return [credential, quoted.startsWith("'") ? quoted.slice(1, -1) : quoted];
+        }),
+    ),
+  ].sort((left, right) => right.length - left.length);
 }
