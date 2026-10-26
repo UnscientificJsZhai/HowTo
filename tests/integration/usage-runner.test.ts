@@ -91,6 +91,12 @@ test("权限已撤销、末次同步检查撤销或事先取消时绝不启动�
   const revoked = await executeUsageLookup({ ...prepared, getExecutionPolicy: () => "print" });
   assert.equal(revoked.status, "permission_revoked");
   assert.equal(revoked.actualCommand, null);
+  const deniedAtCheck = await executeUsageLookup({
+    ...prepared,
+    checkExecutionPolicy: () => "print",
+  });
+  assert.equal(deniedAtCheck.status, "permission_revoked");
+  assert.equal(deniedAtCheck.actualCommand, null);
   let listener: (() => void) | undefined;
   let allowed = true;
   let checked = false;
@@ -135,7 +141,7 @@ test("启动前同步权限复查抛错时注销全部监听器且不执行查�
           listeners.delete(listener);
         };
       },
-      getExecutionPolicy(): never {
+      checkExecutionPolicy(): never {
         throw failure;
       },
     }),

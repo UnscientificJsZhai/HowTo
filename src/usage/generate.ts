@@ -167,6 +167,8 @@ export async function generateWithUsageLookup(
         args: edited.args,
         signal,
         getExecutionPolicy: () => interaction.getExecutionPolicy(),
+        checkExecutionPolicy: () =>
+          interaction.checkExecutionPolicy?.() ?? interaction.getExecutionPolicy(),
         subscribeExecutionPolicy: (listener) => interaction.subscribeExecutionPolicy(listener),
         knownCredentials: credentials(),
       });

@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const driver = String.raw`
 import errno, fcntl, json, os, pty, resource, select, signal, struct, sys, termios, time
 
-node, fixture, test_home, phase = sys.argv[1:]
+node, fixture, test_home, phase, exit_signal = sys.argv[1:]
 start_read, start_write = os.pipe()
 pid, fd = pty.fork()
 if pid == 0:
@@ -106,6 +106,8 @@ try:
         os.write(fd, b'\r')
         wait_for(b'Final command:')
         os.write(fd, b'\r')
+    elif exit_signal:
+        os.kill(pid, getattr(signal, exit_signal))
     else:
         os.write(fd, b'\x03')
 
@@ -127,10 +129,15 @@ try:
     assert b'\x1b[?25h' in output, 'cursor was not restored'
     after_disable = bytes(output).split(b'\x1b[?2004l', 1)[1].replace(b'\x1b[?25h', b'')
     assert b'\x1b[' not in after_disable, 'Ink wrote terminal controls after session cleanup'
-    expected = 0 if phase == 'paste' else 130
+    expected = -getattr(signal, exit_signal) if exit_signal else (0 if phase == 'paste' else 130)
     exit_code = os.waitstatus_to_exitcode(status)
-    assert os.WIFEXITED(status) and exit_code == expected, 'wrong exit: ' + repr(bytes(output[-3000:]))
-    assert ('FIXTURE_EXIT:' + str(expected)).encode() in output
+    assert exit_code == expected, 'wrong exit: ' + repr(bytes(output[-3000:]))
+    if exit_signal:
+        assert os.WIFSIGNALED(status), 'external signal termination semantics changed'
+        assert b'FIXTURE_EXIT:' not in output
+    else:
+        assert os.WIFEXITED(status)
+        assert ('FIXTURE_EXIT:' + str(expected)).encode() in output
     assert (b'COMMAND_EXECUTED' in output) == (phase == 'paste')
     assert b'COMMAND_PRINTED' not in output
     if query_pid is not None:
@@ -138,7 +145,7 @@ try:
         while not process_gone(query_pid) and time.monotonic() < deadline:
             time.sleep(0.02)
         assert process_gone(query_pid), 'query process survived cancellation'
-    print(json.dumps({'phase': phase, 'exitCode': exit_code, 'canonical': True, 'echo': True, 'pasteDisableCount': 1, 'queryCleaned': query_pid is not None}))
+    print(json.dumps({'phase': phase, 'signal': exit_signal, 'exitCode': exit_code, 'canonical': True, 'echo': True, 'pasteDisableCount': 1, 'queryCleaned': query_pid is not None}))
 finally:
     if status is None:
         try:
@@ -160,8 +167,18 @@ finally:
     os.close(fd)
 `;
 
-for (const phase of ["approval", "running", "paste"] as const) {
-  void test(`真实 PTY 查询 ${phase} ${phase === "paste" ? "粘贴后继续查询和执行" : "Ctrl+C 退出 130"}并恢复终端`, (t) => {
+const scenarios = [
+  ...(["approval", "running", "paste"] as const).map((phase) => ({ phase, exitSignal: "" })),
+  ...["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"].map((exitSignal) => ({
+    phase: "running" as const,
+    exitSignal,
+  })),
+];
+
+for (const { phase, exitSignal } of scenarios) {
+  const exitDescription =
+    exitSignal || (phase === "paste" ? "粘贴后继续查询和执行" : "Ctrl+C 退出 130");
+  void test(`真实 PTY 查询 ${phase} ${exitDescription} 清理查询进程并恢复终端`, (t) => {
     if (process.platform === "win32") {
       t.skip("此自动回归需要 POSIX 控制终端");
       return;
@@ -177,6 +194,7 @@ for (const phase of ["approval", "running", "paste"] as const) {
           fileURLToPath(new URL("./fixtures/pty-usage.js", import.meta.url)),
           testHome,
           phase,
+          exitSignal,
         ],
         {
           env: { PATH: "/usr/bin:/bin", HOME: testHome },

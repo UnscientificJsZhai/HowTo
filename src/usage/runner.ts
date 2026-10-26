@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { accessSync, constants, realpathSync, statSync } from "node:fs";
 import { delimiter, isAbsolute, resolve } from "node:path";
+import signalExit from "signal-exit";
 import { validateUsageArgumentList, validateUsageLookupArguments } from "./arguments.js";
 import { sanitizeUsageLookupResult, UsageOutputCapture } from "./output.js";
 import type { UsageLookupResult, UsageLookupStatus } from "./types.js";
@@ -12,6 +13,8 @@ export interface ExecuteUsageLookupOptions {
   args: string[];
   signal: AbortSignal;
   getExecutionPolicy: () => "execute" | "print";
+  /** 启动前同步检查输入；省略时沿用权限读取，不用于运行中的权限通知。 */
+  checkExecutionPolicy?: () => "execute" | "print";
   subscribeExecutionPolicy: (listener: () => void) => () => void;
   knownCredentials?: readonly string[];
   timeoutMs?: number;
@@ -83,12 +86,15 @@ export function executeUsageLookup(options: ExecuteUsageLookupOptions): Promise<
     let timeout: ReturnType<typeof setTimeout> | undefined = undefined;
     let cleanupTimeout: ReturnType<typeof setTimeout> | undefined;
     let unsubscribe = () => {};
+    let removeExitHook: (() => void) | undefined;
 
     const cleanupListeners = () => {
       if (timeout !== undefined) clearTimeout(timeout);
       if (cleanupTimeout !== undefined) clearTimeout(cleanupTimeout);
       options.signal.removeEventListener("abort", onAbort);
       unsubscribe();
+      removeExitHook?.();
+      removeExitHook = undefined;
     };
 
     const finish = () => {
@@ -154,7 +160,8 @@ export function executeUsageLookup(options: ExecuteUsageLookupOptions): Promise<
       unsubscribe = options.subscribeExecutionPolicy(onPolicyChange);
       if (options.signal.aborted) stop("cancelled");
       // 必须最后同步复查；从复查到 spawn 不经过 await，避免待处理输入使检查失败后仍启动。
-      if (options.getExecutionPolicy() === "print") stop("permission_revoked");
+      if ((options.checkExecutionPolicy?.() ?? options.getExecutionPolicy()) === "print")
+        stop("permission_revoked");
     } catch (error) {
       cleanupListeners();
       throw error;
@@ -165,6 +172,10 @@ export function executeUsageLookup(options: ExecuteUsageLookupOptions): Promise<
       return;
     }
     try {
+      // 进程退出不再运行 500ms 定时器；同步清理本查询组，保留父进程的原退出语义。
+      removeExitHook = signalExit(() => {
+        if (child?.pid !== undefined) signalProcessGroup(child.pid, "SIGKILL");
+      });
       child = spawn(options.executable, args, {
         // 保留原调用名，避免 realpath 后的 BusyBox 等多调用程序改变分派语义。
         argv0: options.argv0 ?? options.executable,

@@ -68,6 +68,8 @@ export type UsageApprovalDecision = { kind: "approve"; args: string[] } | { kind
 export interface UsageGenerationInteraction {
   approve(request: UsageApprovalRequest, signal: AbortSignal): Promise<UsageApprovalDecision>;
   getExecutionPolicy(): "execute" | "print";
+  /** 仅在查询启动前同步排空并检查输入；普通网络轮次与审批只读取权限。 */
+  checkExecutionPolicy?(): "execute" | "print";
   subscribeExecutionPolicy(listener: () => void): () => void;
   onQueryRunning?(
     command: {

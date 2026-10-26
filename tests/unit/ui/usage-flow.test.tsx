@@ -106,6 +106,41 @@ for (const phase of ["approval", "editing", "running"] as const) {
   });
 }
 
+for (const nextStep of ["final", "query"] as const) {
+  void test(`查询在分片粘贴之间结束时仍可进入后续 ${nextStep}，不提前取消或执行`, async (t) => {
+    const flow = await startFlow(t, [
+      lookup("first", ["--wait"]),
+      ...(nextStep === "query" ? [lookup("second", ["--help"])] : []),
+    ]);
+    // 回归时任务可能先于页面等待失败；交给下面的页面及结果断言报告。
+    void flow.result.catch(() => {});
+    await flow.approval();
+    await flow.send("\r");
+    await waitFor(() => existsSync(flow.log), "查询尚未运行");
+    await flow.send(PASTE_START + "IGNORED\rEXECUTE");
+    await flow.releaseQuery();
+
+    if (nextStep === "query") {
+      await waitFor(() => flow.text().includes("查看 second 用法"), "未进入后续查询审批");
+      assert.equal((await readFile(flow.log, "utf8")).trim().split("\n").length, 1);
+    } else {
+      await flow.selected();
+    }
+    assert.equal(flow.turns[1][0].result.status, "success");
+    assert.deepEqual(flow.executed, []);
+    await flow.send("\r" + PASTE_END);
+    assert.equal(flow.session.getExecutionPolicy(), "execute");
+    if (nextStep === "query") {
+      await flow.send("\r");
+      await flow.selected();
+      assert.equal(flow.turns[2][0].result.status, "success");
+    }
+    await flow.finish();
+    assert.deepEqual(flow.executed, [flow.finalCommand]);
+    assert.deepEqual(flow.printed, []);
+  });
+}
+
 for (const phase of ["approval", "editing", "running"] as const) {
   void test(`Ctrl+C 取消整个 ${phase} 查询任务`, async (t) => {
     const flow = await startFlow(t, [

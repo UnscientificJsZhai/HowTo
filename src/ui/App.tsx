@@ -113,7 +113,7 @@ export const App: React.FC<Props> = ({
     activeRequestControllerRef.current = controller;
 
     const approve = (approval: UsageApprovalRequest, signal: AbortSignal) => {
-      if (signal.aborted || session.checkExecutionPolicy() !== "execute") {
+      if (signal.aborted || session.getExecutionPolicy() !== "execute") {
         return Promise.resolve<UsageApprovalDecision>({ kind: "reject" });
       }
       return new Promise<UsageApprovalDecision>((resolve) => {
@@ -151,7 +151,8 @@ export const App: React.FC<Props> = ({
             request,
             {
               approve,
-              getExecutionPolicy: session.checkExecutionPolicy,
+              getExecutionPolicy: session.getExecutionPolicy,
+              checkExecutionPolicy: session.checkExecutionPolicy,
               subscribeExecutionPolicy: session.subscribeExecutionPolicy,
               knownCredentials: credentialsRef.current,
               onQueryRunning: (command) => {
