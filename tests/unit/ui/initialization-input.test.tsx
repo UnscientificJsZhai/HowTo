@@ -52,8 +52,9 @@ void test("initialization keeps rich provider and OpenAI field guidance at forty
   let frame = normalizeWhitespace(stripVTControlCharacters(view.output()));
   assert.ok(frame.includes("howto needs an AI provider before it can call AI."));
   assert.ok(frame.includes("? Choose AI provider"));
-  assert.ok(frame.includes("1. openai"));
-  assert.ok(frame.includes("2. gemini"));
+  assert.ok(frame.includes("1. OpenAI API"));
+  assert.ok(frame.includes("2. Gemini API"));
+  assert.ok(frame.includes("3. Sign in with ChatGPT"));
   assert.ok(
     frame.includes("Use Up/Down or 1/2/3 to choose, Enter to continue, Esc or Ctrl+C to cancel."),
   );
@@ -132,7 +133,7 @@ void test("initialization switches from intermediate to rich layout at the narro
     let frameLines = renderedUpdateLines(view, 0);
     assert.equal(frameLines.length, 4);
     assert.equal(frameLines.at(-1), "UD Ent 1/2/3 Esc ^C");
-    assert.ok(!renderedUpdate(view, 0).includes("1. openai"));
+    assert.ok(!renderedUpdate(view, 0).includes("1. OpenAI API"));
 
     const outputOffset = view.output().length;
     await resizeAndWait(view, 16);
@@ -141,8 +142,9 @@ void test("initialization switches from intermediate to rich layout at the narro
     assert.ok(frameLines.length <= 15);
     assert.ok(richProvider.includes("howto needs an AI provider before it can call AI."));
     assert.ok(richProvider.includes("? Choose AI provider"));
-    assert.ok(richProvider.includes("1. openai"));
-    assert.ok(richProvider.includes("2. gemini"));
+    assert.ok(richProvider.includes("1. OpenAI API"));
+    assert.ok(richProvider.includes("2. Gemini API"));
+    assert.ok(richProvider.includes("3. Sign in with ChatGPT"));
     assert.ok(
       richProvider.includes(
         "Use Up/Down or 1/2/3 to choose, Enter to continue, Esc or Ctrl+C to cancel.",
@@ -181,7 +183,7 @@ void test("initialization preserves provider and field state across compact inte
         await resizeAndWait(view, rows);
         const update = normalizeWhitespace(renderedUpdate(view, outputOffset));
         if (rows === 24) {
-          assert.ok(update.includes("1. openai"));
+          assert.ok(update.includes("1. OpenAI API"));
           assert.ok(update.includes("Use Up/Down or 1/2/3 to choose"));
         } else {
           assert.ok(update.includes("> OAI 2 G 3 ChatGPT"));
@@ -774,6 +776,8 @@ void test("ChatGPT 账号与动态模型选择在极限和紧凑终端保持可�
   for (const [columns, rows] of [
     [20, 2],
     [40, 4],
+    [20, 16],
+    [40, 24],
   ] as const) {
     let submitted: InitializationValues | undefined;
     let loginCalls = 0;

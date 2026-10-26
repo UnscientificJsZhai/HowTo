@@ -1,6 +1,6 @@
 import React, { useRef, useState, useLayoutEffect } from "react";
 import { Box, Text, type Key } from "ink";
-import type { AppConfig } from "../config.js";
+import type { AiProvider, AppConfig } from "../config.js";
 import type { ChatGptLoginOptions } from "../auth/chatgpt/types.js";
 import { getUserVisibleErrorMessage } from "../errors.js";
 import { usePhysicalStdoutRows } from "../ui/resize-safe-output.js";
@@ -30,6 +30,11 @@ interface Props {
 type SubmitStatus = "editing" | "saving" | "error" | "cancelled";
 
 const RICH_LAYOUT_MIN_ROWS = 15;
+const PROVIDER_LABELS: Record<AiProvider, string> = {
+  openai: "OpenAI API",
+  gemini: "Gemini API",
+  chatgpt: "Sign in with ChatGPT",
+};
 
 export const InitializationApp: React.FC<Props> = ({
   onSubmit,
@@ -274,14 +279,14 @@ const ProviderStep: React.FC<{ selectedIndex: number | null; frameRows: number }
     <Box flexDirection="column" marginY={1}>
       <Text>howto needs an AI provider before it can call AI.</Text>
       <Text color="green">? Choose AI provider</Text>
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column">
         {providers.map((provider, index) => {
           const isSelected = selectedIndex === index;
           return (
             <Box key={provider}>
               <Text color={isSelected ? "cyan" : undefined}>{isSelected ? "> " : "  "}</Text>
               <Text inverse={isSelected} bold={isSelected}>
-                {index + 1}. {provider}
+                {index + 1}. {PROVIDER_LABELS[provider]}
               </Text>
             </Box>
           );
