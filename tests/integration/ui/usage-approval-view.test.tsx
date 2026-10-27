@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
 import React from "react";
+
+import { PASTE_END, PASTE_START } from "../../../src/ui/paste-framing.js";
 import type { UsageApprovalRequest } from "../../../src/usage/types.js";
-import { importWithoutColor } from "./import-without-color.js";
-import { sessionHarness, waitFor } from "./session-test-helpers.js";
-import { PASTE_START, PASTE_END } from "../../../src/ui/paste-framing.js";
+import { importWithoutColor } from "../../helpers/import-without-color.js";
+import { sessionHarness, waitFor } from "../../helpers/interactive-session.js";
 
 const modules = importWithoutColor(async () => {
   const [{ render }, { UsageApprovalView }, { InteractiveSessionProvider }] = await Promise.all([

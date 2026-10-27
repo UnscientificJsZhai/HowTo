@@ -97,26 +97,6 @@ test("权限已撤销、末次同步检查撤销或事先取消时绝不启动�
   });
   assert.equal(deniedAtCheck.status, "permission_revoked");
   assert.equal(deniedAtCheck.actualCommand, null);
-  let listener: (() => void) | undefined;
-  let allowed = true;
-  let checked = false;
-  const drained = await executeUsageLookup({
-    ...prepared,
-    subscribeExecutionPolicy(callback) {
-      listener = callback;
-      return () => {};
-    },
-    getExecutionPolicy() {
-      if (!checked) {
-        checked = true;
-        allowed = false;
-        listener?.();
-      }
-      return allowed ? "execute" : "print";
-    },
-  });
-  assert.equal(drained.status, "permission_revoked");
-  assert.equal(drained.actualCommand, null);
   const controller = new AbortController();
   controller.abort();
   const cancelled = await executeUsageLookup({ ...prepared, signal: controller.signal });

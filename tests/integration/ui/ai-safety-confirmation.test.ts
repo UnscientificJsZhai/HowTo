@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
+
 import type { CommandCandidateContract, GenerateCommandsRequest } from "../../../src/ai/types.js";
 import { detectDangerousCommand } from "../../../src/safety/dangerous-command.js";
-import { PASTE_START, PASTE_END } from "../../../src/ui/paste-framing.js";
+import { PASTE_END, PASTE_START } from "../../../src/ui/paste-framing.js";
 import { InteractionCancelledError } from "../../../src/ui/tty.js";
-import { importWithoutColor } from "./import-without-color.js";
-import { sessionHarness, testCandidate, testRequest, waitFor } from "./session-test-helpers.js";
+import { importWithoutColor } from "../../helpers/import-without-color.js";
+import {
+  sessionHarness,
+  testCandidate,
+  testRequest,
+  waitFor,
+} from "../../helpers/interactive-session.js";
 
 const modules = importWithoutColor(() => import("../../../src/ui/run-interactive-command.js"));
 

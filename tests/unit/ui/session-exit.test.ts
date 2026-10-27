@@ -6,8 +6,8 @@ import {
   InteractiveSession,
   InteractiveSessionError,
 } from "../../../src/ui/interactive-session.js";
-import { PASTE_START, PASTE_END } from "../../../src/ui/paste-framing.js";
-import { SessionFakeTty } from "./session-test-helpers.js";
+import { PASTE_END, PASTE_START } from "../../../src/ui/paste-framing.js";
+import { SessionFakeTty } from "../../helpers/interactive-session.js";
 
 function exitHarness(t: TestContext) {
   const input = new SessionFakeTty();

@@ -1,23 +1,17 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
 import test from "node:test";
-
 import {
-  countTerminalRows,
   clearInitializationOutput,
+  countTerminalRows,
   createFileConfig,
   erasePreviousTerminalRows,
-  validateAndPersistInitializationConfig,
 } from "../../src/init/index.js";
 import {
   applyInitializationInput,
   createInitialInitializationState,
   type InitializationKeyInput,
 } from "../../src/init/state.js";
-import { ConfigError, DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL } from "../../src/config.js";
+import { DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL } from "../../src/config.js";
 
 test("initialization output clear erases the requested rows without clearing the full screen", () => {
   let output = "";
@@ -203,88 +197,6 @@ test("OpenAI empty base URL is not written to file config", () => {
   });
 });
 
-test("initialization validation failure preserves the existing config byte for byte", async () => {
-  const homeDirectory = await mkdtemp(join(tmpdir(), "howto-init-transaction-test-"));
-  const configPath = join(homeDirectory, ".howto", "config.json");
-  const originalConfig = '{"aiProvider":"gemini","geminiApiKey":"existing-secret"}\n';
-  await mkdir(dirname(configPath), { recursive: true });
-  await writeFile(configPath, originalConfig, "utf8");
-
-  await assert.rejects(
-    () =>
-      validateAndPersistInitializationConfig(
-        { provider: "openai", apiKey: "new-secret", model: "openai-model" },
-        { print: false, structuredOutput: "invalid" },
-        { HOME: homeDirectory },
-      ),
-    ConfigError,
-  );
-
-  assert.equal(await readFile(configPath, "utf8"), originalConfig);
-  assert.deepEqual(await readdir(dirname(configPath)), ["config.json"]);
-});
-
-test("initialization returns merged overrides but persists only submitted provider fields", async () => {
-  const homeDirectory = await mkdtemp(join(tmpdir(), "howto-init-override-test-"));
-
-  const config = await validateAndPersistInitializationConfig(
-    {
-      provider: "openai",
-      apiKey: "submitted-openai-secret",
-      model: "submitted-openai-model",
-      openaiBaseUrl: "https://submitted.example/v1",
-    },
-    { print: false, aiProvider: "gemini" },
-    {
-      HOME: homeDirectory,
-      HOWTO_GEMINI_API_KEY: "environment-gemini-secret",
-      HOWTO_GEMINI_MODEL: "environment-gemini-model",
-      HOWTO_STRUCTURED_OUTPUT: "false",
-    },
-  );
-
-  assert.deepEqual(config, {
-    aiProvider: "gemini",
-    gemini: {
-      apiKey: "environment-gemini-secret",
-      model: "environment-gemini-model",
-    },
-    openai: {
-      apiKey: "submitted-openai-secret",
-      model: "submitted-openai-model",
-      baseUrl: "https://submitted.example/v1",
-    },
-    chatgpt: { account: undefined, model: undefined },
-    structuredOutput: false,
-  });
-  assert.deepEqual(
-    JSON.parse(await readFile(join(homeDirectory, ".howto", "config.json"), "utf8")),
-    {
-      aiProvider: "openai",
-      openaiApiKey: "submitted-openai-secret",
-      openaiModel: "submitted-openai-model",
-      openaiApiUrl: "https://submitted.example/v1",
-    },
-  );
-  assert.deepEqual(await readdir(join(homeDirectory, ".howto")), ["config.json"]);
-});
-
-test("initialization rejects a relative HOME without creating a repository config directory", async () => {
-  const relativeHome = `howto-relative-init-${process.pid}-${Date.now()}`;
-
-  assert.equal(existsSync(relativeHome), false);
-  await assert.rejects(
-    () =>
-      validateAndPersistInitializationConfig(
-        { provider: "openai", apiKey: "new-secret", model: "openai-model" },
-        { print: false },
-        { HOME: relativeHome },
-      ),
-    ConfigError,
-  );
-  assert.equal(existsSync(relativeHome), false);
-});
-
 test("input step escape returns to provider selection", () => {
   const state = applyInitializationInput(createInitialInitializationState(), keypress("1")).state;
   const update = applyInitializationInput(state, keypress("", { escape: true }));
@@ -305,91 +217,6 @@ test("第三个 provider 使用 ChatGPT 异步初始化，不进入 API key 字�
     applyInitializationInput(selected.state, keypress("", { escape: true })).state,
     initial,
   );
-});
-
-test("ChatGPT 初始化保存选择并保留两个 API provider 与输出设置，覆盖不落盘", async () => {
-  const homeDirectory = await mkdtemp(join(tmpdir(), "howto-chatgpt-init-"));
-  const configPath = join(homeDirectory, ".howto", "config.json");
-  const previous = {
-    aiProvider: "openai",
-    openaiApiKey: "saved-openai-key",
-    openaiModel: "saved-openai-model",
-    openaiApiUrl: "https://saved.example/v1",
-    geminiApiKey: "saved-gemini-key",
-    geminiModel: "saved-gemini-model",
-    chatgptAccount: "previous-account",
-    chatgptModel: "previous-model",
-    structuredOutput: false,
-  };
-  await mkdir(dirname(configPath), { recursive: true });
-  await writeFile(configPath, JSON.stringify(previous));
-  const config = await validateAndPersistInitializationConfig(
-    { provider: "chatgpt", account: "selected-account", model: "selected-model" },
-    {
-      print: false,
-      chatgptAccount: "cli-account",
-      chatgptModel: "cli-model",
-      openaiApiKey: "cli-key",
-      structuredOutput: "true",
-    },
-    { HOME: homeDirectory, HOWTO_GEMINI_API_KEY: "env-key" },
-  );
-  assert.deepEqual(config.chatgpt, { account: "cli-account", model: "cli-model" });
-  assert.equal(config.openai.apiKey, "cli-key");
-  assert.equal(config.gemini.apiKey, "env-key");
-  assert.equal(config.structuredOutput, true);
-  assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
-    ...previous,
-    aiProvider: "chatgpt",
-    chatgptAccount: "selected-account",
-    chatgptModel: "selected-model",
-  });
-});
-
-test("重新初始化 API provider 保留 ChatGPT 选择并删除显式清空的旧 URL", async () => {
-  const homeDirectory = await mkdtemp(join(tmpdir(), "howto-api-init-"));
-  const configPath = join(homeDirectory, ".howto", "config.json");
-  await mkdir(dirname(configPath), { recursive: true });
-  await writeFile(
-    configPath,
-    JSON.stringify({
-      aiProvider: "chatgpt",
-      openaiApiUrl: "https://old.example/v1",
-      chatgptAccount: "saved-account",
-      chatgptModel: "saved-model",
-      structuredOutput: false,
-    }),
-  );
-  await validateAndPersistInitializationConfig(
-    { provider: "openai", apiKey: "", model: "api-model", openaiBaseUrl: "" },
-    { print: false },
-    { HOME: homeDirectory },
-  );
-  assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
-    aiProvider: "openai",
-    openaiApiKey: "",
-    openaiModel: "api-model",
-    chatgptAccount: "saved-account",
-    chatgptModel: "saved-model",
-    structuredOutput: false,
-  });
-});
-
-test("初始化不覆盖损坏的现有配置", async () => {
-  const homeDirectory = await mkdtemp(join(tmpdir(), "howto-broken-init-"));
-  const configPath = join(homeDirectory, ".howto", "config.json");
-  await mkdir(dirname(configPath), { recursive: true });
-  const previous = "{broken-config";
-  await writeFile(configPath, previous);
-  await assert.rejects(
-    validateAndPersistInitializationConfig(
-      { provider: "chatgpt", account: "selected-account", model: "selected-model" },
-      { print: false },
-      { HOME: homeDirectory },
-    ),
-    ConfigError,
-  );
-  assert.equal(await readFile(configPath, "utf8"), previous);
 });
 
 test("Ctrl+C cancels initialization", () => {

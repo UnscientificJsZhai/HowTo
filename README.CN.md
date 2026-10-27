@@ -282,8 +282,11 @@ npm run format:check
 - `src/validation/` - AI 响应和命令工具校验。
 - `src/safety/` - 危险命令规则。
 - `src/ui/` - 基于 Ink 的终端 UI。
-- `tests/unit/` - CLI 参数解析、配置、校验、Prompt 构建与 UI 状态的单元测试。
-- `tests/integration/` - 完整 CLI 进程、本地回环 HTTP Provider 及 PTY 终端会话的集成测试。
+- `tests/unit/` - 参数解析、配置合并、校验、Prompt、UI 纯逻辑与静态渲染，以及使用依赖替身的 provider 测试。
+- `tests/integration/` - 文件系统与凭据存储、真实 SDK 序列化、Ink 组件交互及完整 UI 流程、CLI 进程、本地回环 HTTP Provider 与 PTY 终端会话测试。
+- `tests/helpers/` - 两类测试共享的输入流、请求数据及渲染辅助工具。
+
+`npm test` 运行单元与集成测试；仅运行其中一类可使用 `npm run test:unit` 或 `npm run test:integration`。
 
 ### Linux 验证范围
 

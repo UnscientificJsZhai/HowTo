@@ -4,19 +4,19 @@ import { createServer, type RequestListener } from "node:http";
 import test, { type TestContext } from "node:test";
 
 import { ChatGptCommandProvider } from "../../src/ai/chatgpt.js";
-import { ChatGptError } from "../../src/auth/chatgpt/errors.js";
 import { AiProviderError } from "../../src/ai/errors.js";
+import { ChatGptError } from "../../src/auth/chatgpt/errors.js";
 import { InteractionCancelledError } from "../../src/ui/tty.js";
-import { testRequest } from "../unit/ui/session-test-helpers.js";
+import { testRequest } from "../helpers/interactive-session.js";
 import {
   CHATGPT_TEST_CATALOG,
   CHATGPT_TEST_MODEL,
   CHATGPT_TEST_SECRET,
   CHATGPT_TEST_TEXT,
   CHATGPT_TEST_TOKEN,
+  chatGptSubscriptionTestCompleted,
   chatGptTestCompleted,
   chatGptTestFrame,
-  chatGptSubscriptionTestCompleted,
 } from "./fixtures/chatgpt-test-data.js";
 
 async function loopbackProvider(

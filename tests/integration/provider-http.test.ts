@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
 import { once } from "node:events";
+import { createServer } from "node:http";
 import test from "node:test";
+
 import { OpenAiCommandProvider } from "../../src/ai/openai.js";
-import { testRequest } from "../unit/ui/session-test-helpers.js";
+import { testRequest } from "../helpers/interactive-session.js";
 
 test("真实 loopback HTTP: AbortSignal 中断请求", { timeout: 10000 }, async (t) => {
   let startedResolve!: () => void;

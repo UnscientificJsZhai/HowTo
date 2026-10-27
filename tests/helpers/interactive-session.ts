@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { PassThrough } from "node:stream";
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { stripVTControlCharacters } from "node:util";
-import type { CommandCandidateContract, GenerateCommandsRequest } from "../../../src/ai/types.js";
-import { createInteractiveSession } from "../../../src/ui/interactive-session.js";
+
+import type { CommandCandidateContract, GenerateCommandsRequest } from "../../src/ai/types.js";
+import { createInteractiveSession } from "../../src/ui/interactive-session.js";
 
 export class SessionFakeTty extends PassThrough {
   readonly isTTY = true;

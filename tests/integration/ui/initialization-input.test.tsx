@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { PassThrough } from "node:stream";
-import { setTimeout as delay } from "node:timers/promises";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { stripVTControlCharacters } from "node:util";
 import React from "react";
-import type { InteractiveSession } from "../../../src/ui/interactive-session.js";
+
 import type { AppConfig } from "../../../src/config.js";
 import type {
   ChatGptInitializationAccount,
@@ -12,7 +12,8 @@ import type {
   ChatGptInitializationService,
   InitializationValues,
 } from "../../../src/init/index.js";
-import { importWithoutColor } from "./import-without-color.js";
+import type { InteractiveSession } from "../../../src/ui/interactive-session.js";
+import { importWithoutColor } from "../../helpers/import-without-color.js";
 
 const uiModules = importWithoutColor(async () => {
   const [

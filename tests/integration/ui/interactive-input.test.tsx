@@ -1,17 +1,18 @@
 import assert from "node:assert/strict";
-import { setTimeout as delay } from "node:timers/promises";
 import { PassThrough } from "node:stream";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { stripVTControlCharacters } from "node:util";
 import React from "react";
-import type { InteractiveSession } from "../../../src/ui/interactive-session.js";
-import type { CommandCandidateContract } from "../../../src/ai/types.js";
+
 import { AiProviderError } from "../../../src/ai/errors.js";
+import type { CommandCandidateContract } from "../../../src/ai/types.js";
 import { parseCliArgs } from "../../../src/cli.js";
 import { toAppError } from "../../../src/errors.js";
 import { buildCommandGenerationPrompt, createProviderPromptRequest } from "../../../src/prompt.js";
+import type { InteractiveSession } from "../../../src/ui/interactive-session.js";
 import { InteractionCancelledError } from "../../../src/ui/tty.js";
-import { importWithoutColor } from "./import-without-color.js";
+import { importWithoutColor } from "../../helpers/import-without-color.js";
 
 const uiModules = importWithoutColor(async () => {
   const [

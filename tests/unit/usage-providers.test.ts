@@ -15,8 +15,11 @@ import type { UsageLookupResult, UsageToolCall, UsageToolReply } from "../../src
 import { InteractionCancelledError } from "../../src/ui/tty.js";
 
 const MODEL = "usage-test";
+
 const KEY = "howto-fake-provider-secret";
+
 const ARGS = { args: ["help"], purpose: "查看用法", dangerous: false, dangerReason: "" };
+
 const FINAL = JSON.stringify({
   commands: [
     {
@@ -30,10 +33,10 @@ const FINAL = JSON.stringify({
   ],
   failureReason: "",
 });
+
 const FAILURE = JSON.stringify({ commands: [], failureReason: "未能确认该程序用法。" });
+
 const KINDS = ["openai", "gemini", "chatgpt"] as const;
-type Step =
-  { value: unknown } | { error: unknown } | { httpStatus: number; body: unknown } | { hang: true };
 
 function request(structuredOutput: boolean): GenerateCommandsRequest {
   return {
@@ -246,69 +249,6 @@ function harness(
     options,
   };
 }
-
-test("OpenAI SDK 序列化保留推理上下文，含空字符串与工具关闭后的历史", async () => {
-  const assistantMessages = ["保留当前查询的推理上下文", ""].map((reasoning, index) => ({
-    role: "assistant",
-    content: null,
-    reasoning_content: reasoning,
-    tool_calls: [
-      {
-        id: `lookup-${index}`,
-        type: "function",
-        function: { name: "lookup_command_usage", arguments: JSON.stringify(ARGS) },
-      },
-    ],
-  }));
-  const requests: Record<string, unknown>[] = [];
-  const client = new OpenAI({
-    apiKey: KEY,
-    baseURL: "https://usage-provider.invalid/v1",
-    fetch: (_input, init) => {
-      assert.equal(typeof init?.body, "string");
-      requests.push(snapshot(JSON.parse(init?.body as string)));
-      const message = assistantMessages.at(requests.length - 1);
-      return Promise.resolve(
-        Response.json(message === undefined ? finalWire("openai") : { choices: [{ message }] }),
-      );
-    },
-  });
-  const provider = new OpenAiCommandProvider({ apiKey: KEY, model: MODEL }, { client });
-  const session = provider.createUsageSession(request(true));
-  assert.deepEqual(await session.next([], { toolsEnabled: true }), {
-    kind: "tool_calls",
-    calls: [call("lookup-0")],
-  });
-  const firstReply = { callId: "lookup-0", result: result() };
-  assert.deepEqual(await session.next([firstReply], { toolsEnabled: true }), {
-    kind: "tool_calls",
-    calls: [call("lookup-1")],
-  });
-  const secondReply = { callId: "lookup-1", result: result([], "rejected") };
-  assert.deepEqual(await session.next([secondReply], { toolsEnabled: false }), {
-    kind: "final",
-    rawText: FINAL,
-  });
-  assert.equal(requests.length, 3);
-  assert.equal(hasTools("openai", requests[1]), true);
-  assert.equal(hasTools("openai", requests[2]), false);
-  const initialHistory = nativeHistory("openai", requests[0]);
-  const expectedHistory = [
-    ...initialHistory,
-    assistantMessages[0],
-    { role: "tool", tool_call_id: firstReply.callId, content: JSON.stringify(firstReply.result) },
-  ];
-  assert.deepEqual(nativeHistory("openai", requests[1]), expectedHistory);
-  assert.deepEqual(nativeHistory("openai", requests[2]), [
-    ...expectedHistory,
-    assistantMessages[1],
-    {
-      role: "tool",
-      tool_call_id: secondReply.callId,
-      content: JSON.stringify(secondReply.result),
-    },
-  ]);
-});
 
 function nativeHistory(kind: AiProvider, parameters: Record<string, unknown>): unknown[] {
   const history =
@@ -905,3 +845,6 @@ test("能力识别仅接受明确工具能力错误，拒绝认证、额度、�
   ])
     assert.equal(isExplicitUsageToolsUnsupported(error), false, JSON.stringify(error));
 });
+
+type Step =
+  { value: unknown } | { error: unknown } | { httpStatus: number; body: unknown } | { hang: true };

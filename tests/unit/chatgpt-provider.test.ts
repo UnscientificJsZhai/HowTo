@@ -1,18 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-
-import { COMMAND_GENERATION_SCHEMA } from "../../src/ai/command-schema.js";
-import { ChatGptCommandProvider, buildChatGptResponseRequest } from "../../src/ai/chatgpt.js";
 import {
   type ChatGptDependencies,
   listChatGptModels,
   parseChatGptModels,
 } from "../../src/ai/chatgpt-models.js";
+import { ChatGptCommandProvider, buildChatGptResponseRequest } from "../../src/ai/chatgpt.js";
+import { COMMAND_GENERATION_SCHEMA } from "../../src/ai/command-schema.js";
 import { AiProviderError } from "../../src/ai/errors.js";
 import { ChatGptError } from "../../src/auth/chatgpt/errors.js";
 import { ConfigError } from "../../src/config.js";
 import { InteractionCancelledError } from "../../src/ui/tty.js";
-import { testRequest } from "./ui/session-test-helpers.js";
+import { testRequest } from "../helpers/interactive-session.js";
 
 const MODEL = "chatgpt-test";
 const TOKEN = "howto-fake-chatgpt-token";

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, renameSync, writeFileSync } from "node:fs";
+
 import type { UsageSessionTurn } from "../../../../src/usage/types.js";
 
 const phase = process.argv[2];
@@ -7,7 +8,8 @@ if (phase === "query-child") {
   // 此分支只使用 Node 内置模块，启动后立即握手；不读取终端或真实配置。
   process.on("SIGTERM", () => {});
   process.stdout.write("QUERY_PARTIAL_OUTPUT\n");
-  writeFileSync("query-pid", String(process.pid));
+  writeFileSync("query-pid.tmp", String(process.pid));
+  renameSync("query-pid.tmp", "query-pid");
   setInterval(() => {
     if (existsSync("query-release")) process.exit(0);
   }, 10);
@@ -23,7 +25,7 @@ if (phase === "query-child") {
     import("../../../../src/ui/interactive-session.js"),
     import("../../../../src/ui/run-interactive-command.js"),
     import("../../../../src/usage/arguments.js"),
-    import("../../../unit/ui/session-test-helpers.js"),
+    import("../../../helpers/interactive-session.js"),
   ]);
   const original = process.stdin;
   const originalEncoding = original.readableEncoding;
@@ -33,7 +35,6 @@ if (phase === "query-child") {
   let sessionCount = 0;
   let turns = 0;
   let executions = 0;
-  let prints = 0;
   const checkOriginal = () => {
     assert.equal(original.destroyed, false);
     assert.equal(original.isRaw, false);
@@ -74,7 +75,6 @@ if (phase === "query-child") {
               assert.equal(replies[0].result.status, "success");
               assert.equal(replies[0].result.stdout, "QUERY_PARTIAL_OUTPUT\n");
               assert.deepEqual(replies[0].result.actualCommand?.args, args);
-              writeFileSync("tool-result.json", JSON.stringify(replies[0].result));
               return Promise.resolve<UsageSessionTurn>({
                 kind: "final",
                 rawText: JSON.stringify({
@@ -94,13 +94,7 @@ if (phase === "query-child") {
         process.stdout.write("COMMAND_EXECUTED\n");
         return Promise.resolve(0);
       },
-      print: (command) => {
-        checkOriginal();
-        prints++;
-        assert.equal(command, finalCommand);
-        writeFileSync("printed", command);
-        process.stdout.write("COMMAND_PRINTED\n");
-      },
+      print: () => assert.fail("不应降级为仅打印命令"),
     });
   } catch (error) {
     process.exitCode = toAppError(error).exitCode;
@@ -111,7 +105,6 @@ if (phase === "query-child") {
   assert.equal(sessionCount, 1);
   assert.equal(turns, phase === "paste" ? 2 : 1);
   assert.equal(executions, phase === "paste" ? 1 : 0);
-  assert.equal(prints, 0);
   assert.equal(existsSync("query-pid"), phase !== "approval");
   process.stdout.write(`FIXTURE_EXIT:${process.exitCode}\n`);
 }

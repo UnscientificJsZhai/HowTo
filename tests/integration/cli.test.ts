@@ -8,8 +8,8 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { run } from "../../src/index.js";
 import { createChatGptStore } from "../../src/auth/chatgpt/storage.js";
+import { run } from "../../src/index.js";
 
 const CLI_ENTRYPOINT = fileURLToPath(new URL("../../src/index.js", import.meta.url));
 
@@ -673,3 +673,14 @@ async function closeServer(server: Server): Promise<void> {
 function isAddressInfo(address: AddressInfo | string | null): address is AddressInfo {
   return typeof address === "object" && address !== null;
 }
+
+test("--version 用法错误仅输出错误与 Usage，退出码为 2", async () => {
+  for (const args of [["--version=true"], ["--version", "--init"], ["question", "--version"]]) {
+    const { value, logs, errors } = await captureConsoleOutput(() => run(args));
+    assert.equal(value.exitCode, 2);
+    assert.deepEqual(logs, []);
+    assert.match(errors.join("\n"), /--version (?:does not accept a value|must be used alone)/);
+    assert.match(errors.join("\n"), /Usage: howto/);
+    assert.match(errors.join("\n"), /howto --version/);
+  }
+});

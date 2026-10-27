@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { CliParseError, parseCliArgs } from "../../src/cli.js";
-import { run } from "../../src/index.js";
 
 test("parseCliArgs parses use mode with global options before positionals", () => {
   assert.deepEqual(parseCliArgs(["--ai-provider", "gemini", "use", "git", "列出最近提交"]), {
@@ -335,37 +334,3 @@ test("ChatGPT 生成参数保留选项终止符与自然语言问题语义", () 
     assert.throws(() => parseCliArgs([option, "--print", "question"]), CliParseError);
   }
 });
-
-test("--version 用法错误仅输出错误与 Usage，退出码为 2", async () => {
-  for (const args of [["--version=true"], ["--version", "--init"], ["question", "--version"]]) {
-    const { value, logs, errors } = await captureConsoleOutput(() => run(args));
-    assert.equal(value.exitCode, 2);
-    assert.deepEqual(logs, []);
-    assert.match(errors.join("\n"), /--version (?:does not accept a value|must be used alone)/);
-    assert.match(errors.join("\n"), /Usage: howto/);
-    assert.match(errors.join("\n"), /howto --version/);
-  }
-});
-
-async function captureConsoleOutput<T>(
-  operation: () => Promise<T>,
-): Promise<{ value: T; logs: string[]; errors: string[] }> {
-  const logs: string[] = [];
-  const errors: string[] = [];
-  const originalLog = console.log;
-  const originalError = console.error;
-
-  console.log = (...values: unknown[]) => {
-    logs.push(values.join(" "));
-  };
-  console.error = (...values: unknown[]) => {
-    errors.push(values.join(" "));
-  };
-
-  try {
-    return { value: await operation(), logs, errors };
-  } finally {
-    console.log = originalLog;
-    console.error = originalError;
-  }
-}

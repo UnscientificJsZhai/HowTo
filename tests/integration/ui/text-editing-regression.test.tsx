@@ -3,17 +3,18 @@ import { test, type TestContext } from "node:test";
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { stripVTControlCharacters } from "node:util";
 import React from "react";
+
 import type { AppConfig } from "../../../src/config.js";
 import type { InitializationValues } from "../../../src/init/index.js";
-import { importWithoutColor } from "./import-without-color.js";
+import { InteractionCancelledError } from "../../../src/ui/tty.js";
+import { importWithoutColor } from "../../helpers/import-without-color.js";
 import {
   deferred,
   sessionHarness,
   testCandidate,
   testRequest,
   waitFor,
-} from "./session-test-helpers.js";
-import { InteractionCancelledError } from "../../../src/ui/tty.js";
+} from "../../helpers/interactive-session.js";
 
 const modules = importWithoutColor(async () => {
   const [

@@ -282,8 +282,11 @@ Useful paths:
 - `src/validation/` - AI response and command-tool validation.
 - `src/safety/` - dangerous command rules.
 - `src/ui/` - Ink-based terminal UI.
-- `tests/unit/` - unit tests for CLI argument parsing, configuration, validation, prompt building, and UI logic.
-- `tests/integration/` - integration tests for full CLI processes, loopback HTTP providers, and PTY sessions.
+- `tests/unit/` - argument parsing, configuration merging, validation, prompts, pure UI logic and static rendering, and providers with dependency stubs.
+- `tests/integration/` - filesystem and credential storage, real SDK serialization, Ink component interactions and complete UI flows, CLI processes, loopback HTTP providers, and PTY sessions.
+- `tests/helpers/` - input streams, request data, and rendering helpers shared by both suites.
+
+`npm test` runs both suites; use `npm run test:unit` or `npm run test:integration` to run one suite independently.
 
 ### Linux validation
 
