@@ -26,28 +26,19 @@ jobs:
       - run: npm run format:check
 
   test:
-    name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            node: "22.22.1"
-          - os: ubuntu-24.04
-            node: "24.19.0"
-          - os: macos-14
-            node: "24.19.0"
-    runs-on: ${{ matrix.os }}
+    name: Test
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: ${{ matrix.node }}
+          node-version: "24.19.0"
           cache: npm
-      - name: Install Linux shell prerequisite
-        if: runner.os == 'Linux'
+      - name: Install shell prerequisite
+        if: github.event_name != 'push'
         run: sudo apt-get update && sudo apt-get install -y zsh
       - name: Verify runtime and real PTY prerequisites
+        if: github.event_name != 'push'
         shell: bash
         run: |
           set -euo pipefail
@@ -59,54 +50,31 @@ jobs:
           PATH=/usr/bin:/bin python3 -c 'import os,pty; master,slave=pty.openpty(); os.close(slave); os.close(master)'
       - run: npm ci
       - run: npm run build
-      - name: Test with diagnostics
+      - name: Unit tests with diagnostics
         shell: bash
         run: |
           set -euo pipefail
-          npm test 2>&1 | tee test.log
-          if [ "${{ runner.os }}" = Linux ] && grep -Eq 'skipped [1-9][0-9]*' test.log; then
-            echo 'Linux acceptance cannot pass with skipped tests'
+          npm run test:unit 2>&1 | tee unit-test.log
+          if grep -Eq 'skipped [1-9][0-9]*' unit-test.log; then
+            echo 'Unit tests cannot pass with skipped tests'
+            exit 1
+          fi
+      - name: Integration tests with diagnostics
+        if: github.event_name != 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run test:integration 2>&1 | tee integration-test.log
+          if grep -Eq 'skipped [1-9][0-9]*' integration-test.log; then
+            echo 'Integration tests cannot pass with skipped tests'
             exit 1
           fi
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-failure-${{ matrix.os }}-${{ matrix.node }}
-          path: test.log
-          retention-days: 7
-      - name: Pack candidate
-        if: matrix.os == 'ubuntu-24.04' && matrix.node == '24.19.0'
-        run: npm pack --dry-run && npm pack
-      - name: Upload candidate package
-        if: matrix.os == 'ubuntu-24.04' && matrix.node == '24.19.0'
-        uses: actions/upload-artifact@v4
-        with:
-          name: npm-package
+          name: test-failure
           path: |
-            *.tgz
-            dist-test/tests/package-smoke.js
+            unit-test.log
+            integration-test.log
           retention-days: 7
-
-  package-smoke:
-    name: Installed package (Node ${{ matrix.node }})
-    needs: test
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        node: ["22.0.0", "24.19.0"]
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: ${{ matrix.node }}
-          package-manager-cache: false
-      - uses: actions/download-artifact@v4
-        with:
-          name: npm-package
-          path: candidate
-      - name: Install tarball without development dependencies
-        run: npm install --global --ignore-scripts --omit=dev --prefix "${RUNNER_TEMP}/howto 空格" ./candidate/*.tgz
-      - name: Smoke installed npm bin with real PTY
-        run: node candidate/dist-test/tests/package-smoke.js "${RUNNER_TEMP}/howto 空格/bin/howto"

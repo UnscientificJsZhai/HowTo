@@ -7,7 +7,7 @@ _Use AI to quickly find commands within the terminal._
 [![code style: prettier](https://img.shields.io/badge/code_style-prettier-ff69b4.svg)](https://github.com/prettier/prettier)
 [![License](https://img.shields.io/github/license/UnscientificJsZhai/HowTo)](LICENSE)
 
-English | [简体中文](README.CN.md)
+English | [简体中文](README.zh-hans-cn.md)
 
 [Features](#features) • [Install](#install) • [Usage](#usage) • [Configuration](#configuration) • [Development](#development) • [Troubleshooting](#troubleshooting)
 
@@ -292,9 +292,9 @@ Useful paths:
 
 The 1.0.2 local validation used Debian 13.6 x86_64 in a Cloud container, Node 22.22.1 / 24.19.0, and real kernel PTYs with dash (`/bin/sh`), bash 5.2.37 and zsh 5.9. Both Node versions passed 719 tests without skips, including 42 PTY cases; stability rounds and additional boundary evidence are recorded in the validation report. The installed package was checked separately on Node 22.0.0 with npm 10.5.1. Evidence, fixes and coverage limits are recorded in the validation report delivered separately with this task.
 
-The full POSIX suite requires Python 3 available on `/usr/bin:/bin`, sh/bash/zsh, an allocatable PTY, and a non-root user for permission checks. Some Linux process-group checks use a subprocess supervisor and are explicitly inapplicable to macOS. Tests use isolated temporary homes and fake providers; they do not require API keys. To verify a separately installed package, run `npm run test:package -- /absolute/path/to/bin/howto`; this compiles and runs `tests/package-smoke.ts`, uses a local HTTP fixture, and only executes a harmless print command after confirmation. CI uploads the compiled smoke entry alongside the candidate package so the minimum-Node package check requires no development dependencies.
+The full POSIX suite requires Python 3 available on `/usr/bin:/bin`, sh/bash/zsh, an allocatable PTY, and a non-root user for permission checks. Some Linux process-group checks use a subprocess supervisor and are explicitly inapplicable to macOS. Tests use isolated temporary homes and fake providers; they do not require API keys. To verify a separately installed package, run `npm run test:package -- /absolute/path/to/bin/howto`; this compiles and runs `tests/package-smoke.ts`, uses a local HTTP fixture, and only executes a harmless print command after confirmation.
 
-The CI configuration adds Ubuntu 24.04 with Node 22.22.1 / 24.19.0, macOS 14 regression, and installed-package checks on Node 22.0.0 / 24.19.0. These jobs were not run remotely in this local task. Alpine, native arm64, WSL, and real terminal-emulator visuals remain unverified; a PTY or a configured job is not evidence for those platforms. A separate environment passed bounded live Gemini native and OpenAI-compatible protocol smoke checks; native structured-output OFF, the default model, and the full live CLI remain unverified.
+Test CI runs only on Ubuntu 24.04 with Node 24.19.0. Pushes run unit tests; pull requests and manual runs execute both unit and integration tests. All runs also build the project and check lint and formatting. macOS runners, Node 22 jobs, and installed-package smoke jobs are excluded from CI; the local package smoke command remains available. Alpine, native arm64, WSL, and real terminal-emulator visuals remain unverified; a PTY or a configured job is not evidence for those platforms. A separate environment passed bounded live Gemini native and OpenAI-compatible protocol smoke checks; native structured-output OFF, the default model, and the full live CLI remain unverified.
 
 ## Troubleshooting
 

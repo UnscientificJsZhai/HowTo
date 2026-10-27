@@ -292,9 +292,9 @@ npm run format:check
 
 1.0.2 本地验证使用 Cloud 容器中的 Debian 13.6 x86_64、Node 22.22.1 / 24.19.0，以及 dash（`/bin/sh`）、bash 5.2.37、zsh 5.9 和真实内核 PTY。两个 Node 版本均通过 719 项测试且无跳过，其中 42 项为 PTY 用例；稳定性轮次和新增边界证据见验收报告。已安装发行包另以 Node 22.0.0 和 npm 10.5.1 验证。证据、修复及覆盖边界记录在随本次任务单独交付的验收报告中。
 
-完整 POSIX 测试需要 `/usr/bin:/bin` 中可找到的 Python 3、sh/bash/zsh、可分配的 PTY，以及用于权限检查的非 root 用户。部分 Linux 进程组测试使用监督子进程，明确不适用于 macOS。测试使用隔离临时主目录和假 provider，不需要 API Key。单独验证已安装包可运行 `npm run test:package -- /absolute/path/to/bin/howto`；该命令将 `tests/package-smoke.ts` 编译后运行，使用本地 HTTP fixture，确认后只执行无害打印命令。CI 随候选包上传编译后的验收入口，最低 Node 版本的包验收无需安装开发依赖。
+完整 POSIX 测试需要 `/usr/bin:/bin` 中可找到的 Python 3、sh/bash/zsh、可分配的 PTY，以及用于权限检查的非 root 用户。部分 Linux 进程组测试使用监督子进程，明确不适用于 macOS。测试使用隔离临时主目录和假 provider，不需要 API Key。单独验证已安装包可运行 `npm run test:package -- /absolute/path/to/bin/howto`；该命令将 `tests/package-smoke.ts` 编译后运行，使用本地 HTTP fixture，确认后只执行无害打印命令。
 
-CI 配置已增加 Ubuntu 24.04 的 Node 22.22.1 / 24.19.0、macOS 14 回归，以及 Node 22.0.0 / 24.19.0 已安装包检查。本地任务未运行这些远端 job。Alpine、原生 arm64、WSL、真实终端模拟器视觉体验仍未验收；PTY 或已配置的 job 不能替代这些平台的运行证据。独立新版环境已完成有限的 Gemini 原生及 OpenAI 兼容协议实网烟测；原生结构化 OFF、默认模型和完整 CLI 实网仍未验证。
+测试 CI 统一使用 Ubuntu 24.04 和 Node 24.19.0。推送仅运行单元测试，PR 和手动触发运行单元测试及集成测试；所有触发均保留构建、Lint 和格式检查。CI 不再使用 macOS Runner、Node 22 或独立的安装包烟测 job，本地包验收命令继续保留。Alpine、原生 arm64、WSL、真实终端模拟器视觉体验仍未验收；PTY 或已配置的 job 不能替代这些平台的运行证据。独立新版环境已完成有限的 Gemini 原生及 OpenAI 兼容协议实网烟测；原生结构化 OFF、默认模型和完整 CLI 实网仍未验证。
 
 ## 故障排查
 
