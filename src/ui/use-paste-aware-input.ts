@@ -1,5 +1,6 @@
 import { usePaste, type Key } from "ink";
 import { useKeyboardInput } from "./use-keyboard-input.js";
+import { useOptionalInteractiveSession } from "./InteractiveSessionProvider.js";
 
 interface Options {
   onInput: (input: string, key: Key) => void;
@@ -14,11 +15,16 @@ export function usePasteAwareInput({
   isInputActive = true,
   isPasteActive = true,
 }: Options): boolean {
-  // 原始会话按顺序交付完整粘贴；此 hook 不承担恢复或授予执行权限的职责。
+  const session = useOptionalInteractiveSession();
+  // 粘贴只交给接收时的逻辑页面或字段，不因 React 切页重新绑定接收者。
   const ready = useKeyboardInput(onInput, { isActive: isInputActive });
   usePaste(
     (input) => {
-      if (ready) onPaste(input);
+      if (!ready || (session && !session.isInputCurrent())) {
+        session?.reportStalePaste();
+        return;
+      }
+      onPaste(input);
     },
     { isActive: isPasteActive },
   );

@@ -41,6 +41,7 @@ test("loadConfig uses model defaults after provider is configured", () => {
       model: DEFAULT_OPENAI_MODEL,
       baseUrl: undefined,
     },
+    chatgpt: { account: undefined, model: undefined },
     structuredOutput: true,
   });
 });
@@ -71,6 +72,7 @@ test("loadConfig lets CLI options override environment values", () => {
         model: DEFAULT_OPENAI_MODEL,
         baseUrl: undefined,
       },
+      chatgpt: { account: undefined, model: undefined },
       structuredOutput: true,
     },
   );
@@ -106,6 +108,7 @@ test("loadConfig applies priority CLI over env over config file over defaults", 
         model: "cli-openai-model",
         baseUrl: "https://file.example/v1",
       },
+      chatgpt: { account: undefined, model: undefined },
       structuredOutput: true,
     },
   );
@@ -125,6 +128,7 @@ test("loadConfig lets config file override defaults", () => {
         model: "file-model",
         baseUrl: undefined,
       },
+      chatgpt: { account: undefined, model: undefined },
       structuredOutput: true,
     },
   );
@@ -187,4 +191,52 @@ test("loadConfig rejects invalid structuredOutput values", () => {
     () => loadConfig({ print: false, aiProvider: "openai" }, {}, { structuredOutput: "yes" }),
     ConfigError,
   );
+});
+
+test("ChatGPT 配置按 CLI、环境、文件顺序选择账号和模型，无需 API key", () => {
+  const fileConfig = {
+    aiProvider: "chatgpt",
+    chatgptAccount: "file-account",
+    chatgptModel: "file-model",
+    openaiApiKey: "saved-api-key",
+    geminiApiKey: "saved-gemini-key",
+  };
+  const environment = {
+    HOWTO_CHATGPT_ACCOUNT: "environment-account",
+    HOWTO_CHATGPT_MODEL: "environment-model",
+  };
+  const config = loadConfig(
+    { print: true, chatgptAccount: "cli-account", chatgptModel: "cli-model" },
+    environment,
+    fileConfig,
+  );
+  assert.equal(config.aiProvider, "chatgpt");
+  assert.deepEqual(config.chatgpt, { account: "cli-account", model: "cli-model" });
+  assert.equal(config.openai.apiKey, "saved-api-key");
+  assert.equal(config.gemini.apiKey, "saved-gemini-key");
+  assert.deepEqual(loadConfig({ print: false }, environment, fileConfig).chatgpt, {
+    account: "environment-account",
+    model: "environment-model",
+  });
+  assert.deepEqual(loadConfig({ print: false }, {}, fileConfig).chatgpt, {
+    account: "file-account",
+    model: "file-model",
+  });
+  assert.equal(
+    loadConfig({ print: false, aiProvider: "chatgpt", chatgptModel: "available-model" }, {}).openai
+      .apiKey,
+    "",
+  );
+});
+
+test("ChatGPT 未选模型时给出明确初始化提示，不回退到 API 模型默认值", () => {
+  for (const chatgptModel of [undefined, "", " \t "]) {
+    assert.throws(
+      () => loadConfig({ print: true, aiProvider: "chatgpt", chatgptModel }, {}),
+      (error: unknown) =>
+        error instanceof ConfigError &&
+        error.message.includes("howto --init") &&
+        error.message.includes("howto --chatgpt-models"),
+    );
+  }
 });

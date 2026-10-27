@@ -7,7 +7,7 @@ _Use AI to quickly find commands within the terminal._
 [![code style: prettier](https://img.shields.io/badge/code_style-prettier-ff69b4.svg)](https://github.com/prettier/prettier)
 [![License](https://img.shields.io/github/license/UnscientificJsZhai/HowTo)](LICENSE)
 
-English | [简体中文](README.CN.md)
+English | [简体中文](README.zh-hans-cn.md)
 
 [Features](#features) • [Install](#install) • [Usage](#usage) • [Configuration](#configuration) • [Development](#development) • [Troubleshooting](#troubleshooting)
 
@@ -22,7 +22,7 @@ English | [简体中文](README.CN.md)
 - **Tool-constrained mode** - use `howto use <command>` to require candidates around a specific CLI tool.
 - **Interactive review flow** - select a candidate, resolve placeholders, and confirm the final command before execution.
 - **Non-interactive print mode** - use `--print` to output candidates without TTY interaction or command execution.
-- **OpenAI and Gemini support** - configure either provider from CLI flags, environment variables, or `~/.howto/config.json`.
+- **ChatGPT, OpenAI, and Gemini support** - sign in with ChatGPT to use an eligible plan, or keep using API keys and OpenAI-compatible services.
 - **Local validation first** - AI JSON output, placeholder references, `use <command>` candidates, and obvious dangerous commands are checked locally.
 
 ## Install
@@ -61,6 +61,22 @@ howto --init
 
 The initializer writes a user-level config file at `~/.howto/config.json`.
 
+Choose **Continue with ChatGPT** to sign in through the system browser, select a saved account or add one, and choose a model from that account's live catalog. The official open-source Sign in with ChatGPT flow uses a local callback on `127.0.0.1`. It requires neither a client secret nor a Codex installation. Existing API key settings are preserved when switching providers.
+
+For account management outside initialization:
+
+```bash
+howto --chatgpt-login
+howto --chatgpt-status
+howto --chatgpt-models --chatgpt-account <account-id>
+howto --chatgpt-login --chatgpt-account <account-id>
+howto --chatgpt-logout --chatgpt-account <account-id>
+```
+
+Login without `--chatgpt-account` adds a registration; with an account ID it renews that registration. Login alone does not change the selected provider or model. Run `howto --init` to save those choices. Ordinary generation and `--print` never start browser authorization. ChatGPT uses the account's current visible model slugs; it never silently switches models or falls back to API key billing.
+
+ChatGPT credentials are stored separately in `~/.howto/chatgpt/` (private directory, owner-only files), with serialized refresh and logout across processes. Tokens are never put in `config.json`. If a refresh response is lost, sign in again rather than replaying a potentially consumed refresh token. Logout retains the registration for later sign-in and reports when remote revocation was not confirmed. Review app usage and permissions in [ChatGPT Settings](https://chatgpt.com/settings/usage). Eligibility and available models depend on the account; see the [official open-source flow](https://developers.openai.com/siwc/token-sharing-open-source).
+
 Initialization and placeholder input delete complete characters on Backspace, including emoji and combining sequences. Alt/Meta shortcuts are not inserted into configuration fields as text.
 Key release events never confirm, cancel, navigate, or delete; pressing and releasing Enter once cannot skip the final confirmation.
 Keyboard text and Enter are processed in order even when the terminal delivers them together. Once a step finishes, remaining keys in that batch cannot skip the next confirmation screen. Newlines inside paste remain data.
@@ -71,13 +87,13 @@ Keyboard text and Enter are processed in order even when the terminal delivers t
 Ask for a command:
 
 ```bash
-howto "find files modified in the last 7 days" .
+howto find files modified in the last 7 days under .
 ```
 
 Limit candidates to a specific tool:
 
 ```bash
-howto use git "show commits from last week"
+howto use git show commits from last week
 ```
 
 `use` checks the first actual tool exactly after environment assignments and supported `sudo`/`env` options. For example, `sudo -u root git status` satisfies `use git`, while `sudo -u git id` does not. Unknown wrapper options, missing option values, dynamic executable prefixes, and complex shell structures are rejected. This constraint applies to the first command segment, not subsequent segments.
@@ -87,24 +103,47 @@ Declared placeholders may appear after the first tool, as in `git log -n {{count
 Print command candidates without entering the interactive UI:
 
 ```bash
-howto --print "list the largest files" /var/log
+howto --print list the largest files under /var/log
 ```
+
+### ChatGPT login over SSH
+
+On your computer with a browser, connect to the server with a loopback port forward:
+
+```bash
+ssh -o ExitOnForwardFailure=yes -L 127.0.0.1:1455:127.0.0.1:1455 user@server
+```
+
+In that remote shell, start login:
+
+```bash
+howto --chatgpt-login --no-browser --callback-port 1455
+```
+
+Open the printed authorization URL in your local browser. Keep both the SSH connection and HowTo running until login completes. Replace `user@server` with your SSH destination. The browser redirects to its own `127.0.0.1`; the tunnel forwards that callback to HowTo on the server. No public callback listener is needed. The server still needs outbound HTTPS access to OpenAI's authentication and API services.
+
+To sign in and save your provider/model choices in one interactive session, run `howto --init --no-browser --callback-port 1455` instead, then choose **Continue with ChatGPT**. Initialization requires a TTY; the standalone login command does not.
+
+Both options are optional and apply only to `--chatgpt-login` or `--init`, only for the current invocation. `--no-browser` skips the browser launcher entirely and prints a link even when renewing an existing account. `--callback-port` accepts a decimal integer from `1` to `65535`; without it, HowTo chooses an available port and prints forwarding instructions for that port. These options are not saved in configuration and do not affect API key providers.
+
+If either end cannot bind the chosen port, choose another available port and use it on both ends of the tunnel and in `--callback-port`. HowTo does not silently change an explicitly requested port. If already connected over SSH, use the printed `ssh -N ...` command in another local terminal before opening the URL. Login waits up to 10 minutes; Ctrl+C cancels it and releases the callback listener. Once authenticated, ordinary requests and token refreshes need no browser. This flow still requires browser approval on your local computer; it does not use device codes or accept pasted callback URLs.
 
 ## Usage
 
 ```text
-howto [options] [use <command>] <question> [<argument>...]
-howto --init
+howto [options] [use <command>] <question...>
+howto --init [--no-browser] [--callback-port <port>]
 howto --version
+howto --chatgpt-login [--chatgpt-account <id>] [--no-browser] [--callback-port <port>]
 ```
 
 Examples:
 
 ```bash
-howto "find package.json under the current directory"
-howto use find "find a filename" package.json
-howto "explain this option" -- --force
-howto --ai-provider openai --print "show listening ports"
+howto find package.json under the current directory
+howto use find find report.txt under /tmp
+howto explain this option -- --force
+howto --ai-provider openai --print show listening ports
 ```
 
 Options:
@@ -112,7 +151,10 @@ Options:
 - `--init` - start interactive provider setup and save `~/.howto/config.json`.
 - `--version` - use alone to print the current package version and exit successfully; requires no configuration or TTY and makes no AI request.
 - `--print` - print validated command candidates and exit without executing.
-- `--ai-provider <openai|gemini>` - select the AI provider.
+- `--ai-provider <openai|gemini|chatgpt>` - select the AI provider.
+- `--chatgpt-account <id>` / `--chatgpt-model <slug>` - choose a local registration and an available ChatGPT model.
+- `--no-browser` - skip the ChatGPT browser launcher and print the authorization URL; only with `--chatgpt-login` or `--init`.
+- `--callback-port <port>` - use a specific ChatGPT loopback callback port (`1`–`65535`, random available port by default); only with `--chatgpt-login` or `--init`.
 - `--gemini-api-key <key>` - provide a Gemini API key.
 - `--gemini-model <model>` - override the Gemini model.
 - `--openai-api-url <url>` - use a custom OpenAI-compatible base URL.
@@ -122,17 +164,25 @@ Options:
 
 ### Argument Parsing
 
-`question` is one shell argument. Quote it when it contains spaces:
+All question fragments are joined with one ASCII space. In `use` mode, the first positional token is `use`, the next is the tool name, and all remaining fragments form the question. Global options may appear anywhere before `--`; unknown long options are rejected. Everything after `--` is positional text.
 
-```bash
-howto "find recently changed files" /tmp
-```
+| Input                                       | Final question               |
+| ------------------------------------------- | ---------------------------- |
+| `howto list files changed today`            | `list files changed today`   |
+| `howto "list files" /tmp`                   | `list files /tmp`            |
+| `howto use find find report.txt under /tmp` | `find report.txt under /tmp` |
+| `howto list files --print`                  | `list files` (print mode)    |
+| `howto explain -- --force`                  | `explain --force`            |
+| `howto find files "/tmp/my files"`          | `find files /tmp/my files`   |
+| `howto "" "   "`                            | Usage error                  |
 
-Everything after the question is passed to the AI as `argument[]`. Use `--` when an argument starts with `--`:
+Whitespace and line breaks inside each fragment are preserved. Missing or entirely whitespace questions exit with code `2` and Usage before configuration loading or AI requests. The question itself is never trimmed, and quotes or fragment boundaries are not reconstructed or sent separately.
 
-```bash
-howto "explain this flag" -- --force
-```
+The model infers paths, filenames, counts, and options from the complete question. Clear values become command parameters; required values that are missing or ambiguous become placeholders for the existing fill-and-confirm flow.
+
+Quoted questions remain valid. Older “question + extra parameters” invocations now form one question, with no separate parameter grouping. Original shell argument boundaries cannot be recovered after joining, so paths containing spaces are interpreted from the question's meaning; describe their purpose clearly.
+
+Unquoted input is convenient for ordinary question text. Your shell still processes variables, wildcards, redirections, and other special syntax before howto receives it; quote or escape these when you need literal text. Existing management actions and repeated-option rules are unchanged; no configuration migration is needed.
 
 ## Configuration
 
@@ -147,12 +197,14 @@ The config path uses `HOME` when it is an absolute path. If `HOME` is missing or
 
 For each setting, the first configured source in that order wins:
 
-- `--ai-provider` / `HOWTO_AI_PROVIDER` / `aiProvider` - `openai` or `gemini`; no default.
+- `--ai-provider` / `HOWTO_AI_PROVIDER` / `aiProvider` - `openai`, `gemini`, or `chatgpt`; no default.
+- `--chatgpt-account` / `HOWTO_CHATGPT_ACCOUNT` / `chatgptAccount` - local ChatGPT registration ID; required when more than one account is saved.
+- `--chatgpt-model` / `HOWTO_CHATGPT_MODEL` / `chatgptModel` - visible model slug from `--chatgpt-models`; no static default.
 - `--gemini-api-key` / `HOWTO_GEMINI_API_KEY` / `geminiApiKey` - Gemini API key; required for Gemini.
 - `--gemini-model` / `HOWTO_GEMINI_MODEL` / `geminiModel` - Gemini model; default `gemini-3.5-flash-lite`.
 - `--openai-api-url` / `HOWTO_OPENAI_API_URL` / `openaiApiUrl` - OpenAI-compatible base URL; defaults to `https://api.openai.com/v1`.
 - `--openai-api-key` / `HOWTO_OPENAI_API_KEY` / `openaiApiKey` - OpenAI API key; defaults to an empty string for local services.
-- `--openai-model` / `HOWTO_OPENAI_MODEL` / `openaiModel` - OpenAI model; default `gpt-5.4-mini`.
+- `--openai-model` / `HOWTO_OPENAI_MODEL` / `openaiModel` - OpenAI model; default `gpt-6-luna`.
 - `--structured-output` / `HOWTO_STRUCTURED_OUTPUT` / `structuredOutput` - use provider schema structured output; default `true`.
 
 howto sets the request endpoint and Gemini API mode explicitly. `OPENAI_BASE_URL`, `GOOGLE_GEMINI_BASE_URL`, `GOOGLE_VERTEX_BASE_URL`, and the Google SDK's Vertex/Enterprise environment switches do not override them. Gemini uses the official `generativelanguage.googleapis.com` `v1beta` API. Use the HOWTO settings above for a custom OpenAI endpoint.
@@ -163,7 +215,7 @@ Example:
 
 ```bash
 HOWTO_AI_PROVIDER=openai \
-HOWTO_OPENAI_MODEL=gpt-5.4-mini \
+HOWTO_OPENAI_MODEL=gpt-6-luna \
 howto --print "show current branch"
 ```
 
@@ -198,9 +250,11 @@ Homebrew uninstall aliases such as `rm/uninstal`, and yum/dnf upgrade or removal
 
 Linux checks also cover system package changes through apk, pacman, and zypper, and OpenRC service or runlevel changes, such as `apk upgrade`, `pacman -Syu`, `zypper dup`, `rc-service sshd stop`, and `rc-update del sshd`. Common queries and apk/zypper metadata refreshes keep ordinary confirmation; unsupported options, dynamic arguments, and additional service commands conservatively require `EXECUTE`. Query arguments are also checked: `zypper repos --export …`, which writes to a file, still requires additional confirmation.
 
-If howto detects bracketed paste during an interactive run, including automatic initialization, that run permanently switches to printing the final command for manual execution. At final confirmation, Enter prints the command without running it, and the terminal shows an explanation. Returning to selection or resizing the terminal does not restore execution. Keyboard-only runs keep the usual Enter or `EXECUTE` confirmation.
+Pasting does not disable command execution or `use` lookups. API key, placeholder, and query argument fields accept complete paste blocks; CR/LF remain data and never submit a field. Submitting a field discards remaining keys and pastes from that input batch. Selection, query approval, and final confirmation screens ignore paste. Type `EXECUTE` on the keyboard for dangerous commands; execution still requires a separate confirmation.
 
-Paste spanning a hidden terminal view is discarded as a whole. These rules apply to recognized bracketed-paste input; the terminal protocol cannot authenticate arbitrary pasted keystrokes or embedded end markers. The execution restriction applies to howto's own command launch.
+Paste containing unsupported control characters (including Tab), or spanning a field, screen, or hidden view, is discarded with an explanation. Each paste is limited to 256 KiB. An unfinished paste cancels the interaction after 5 seconds without new data or 30 seconds in total, restores the terminal, and exits with status 1 without executing a command.
+
+These rules cover complete, valid bracketed paste. The terminal protocol cannot authenticate embedded end markers or delayed bytes after them, or reliably distinguish unframed paste from typing. Screen isolation does not guarantee that arbitrary forged protocol input cannot trigger execution.
 
 > [!WARNING]
 > A command that passes local checks and is not flagged by AI is not guaranteed to be safe. These checks add confirmation requirements; they do not provide a complete safety proof or guarantee AI assessment accuracy.
@@ -228,16 +282,19 @@ Useful paths:
 - `src/validation/` - AI response and command-tool validation.
 - `src/safety/` - dangerous command rules.
 - `src/ui/` - Ink-based terminal UI.
-- `tests/unit/` - unit tests for CLI argument parsing, configuration, validation, prompt building, and UI logic.
-- `tests/integration/` - integration tests for full CLI processes, loopback HTTP providers, and PTY sessions.
+- `tests/unit/` - argument parsing, configuration merging, validation, prompts, pure UI logic and static rendering, and providers with dependency stubs.
+- `tests/integration/` - filesystem and credential storage, real SDK serialization, Ink component interactions and complete UI flows, CLI processes, loopback HTTP providers, and PTY sessions.
+- `tests/helpers/` - input streams, request data, and rendering helpers shared by both suites.
+
+`npm test` runs both suites; use `npm run test:unit` or `npm run test:integration` to run one suite independently.
 
 ### Linux validation
 
 The 1.0.2 local validation used Debian 13.6 x86_64 in a Cloud container, Node 22.22.1 / 24.19.0, and real kernel PTYs with dash (`/bin/sh`), bash 5.2.37 and zsh 5.9. Both Node versions passed 719 tests without skips, including 42 PTY cases; stability rounds and additional boundary evidence are recorded in the validation report. The installed package was checked separately on Node 22.0.0 with npm 10.5.1. Evidence, fixes and coverage limits are recorded in the validation report delivered separately with this task.
 
-The full POSIX suite requires Python 3 available on `/usr/bin:/bin`, sh/bash/zsh, an allocatable PTY, and a non-root user for permission checks. Some Linux process-group checks use a subprocess supervisor and are explicitly inapplicable to macOS. Tests use isolated temporary homes and fake providers; they do not require API keys. To verify a separately installed package, run `npm run test:package -- /absolute/path/to/bin/howto`; this compiles and runs `tests/package-smoke.ts`, uses a local HTTP fixture, and only executes a harmless print command after confirmation. CI uploads the compiled smoke entry alongside the candidate package so the minimum-Node package check requires no development dependencies.
+The full POSIX suite requires Python 3 available on `/usr/bin:/bin`, sh/bash/zsh, an allocatable PTY, and a non-root user for permission checks. Some Linux process-group checks use a subprocess supervisor and are explicitly inapplicable to macOS. Tests use isolated temporary homes and fake providers; they do not require API keys. To verify a separately installed package, run `npm run test:package -- /absolute/path/to/bin/howto`; this compiles and runs `tests/package-smoke.ts`, uses a local HTTP fixture, and only executes a harmless print command after confirmation.
 
-The CI configuration adds Ubuntu 24.04 with Node 22.22.1 / 24.19.0, macOS 14 regression, and installed-package checks on Node 22.0.0 / 24.19.0. These jobs were not run remotely in this local task. Alpine, native arm64, WSL, and real terminal-emulator visuals remain unverified; a PTY or a configured job is not evidence for those platforms. A separate environment passed bounded live Gemini native and OpenAI-compatible protocol smoke checks; native structured-output OFF, the default model, and the full live CLI remain unverified.
+Test CI runs only on Ubuntu 24.04 with Node 24.19.0. Pushes run unit tests; pull requests and manual runs execute both unit and integration tests. All runs also build the project and check lint and formatting. macOS runners, Node 22 jobs, and installed-package smoke jobs are excluded from CI; the local package smoke command remains available. Alpine, native arm64, WSL, and real terminal-emulator visuals remain unverified; a PTY or a configured job is not evidence for those platforms. A separate environment passed bounded live Gemini native and OpenAI-compatible protocol smoke checks; native structured-output OFF, the default model, and the full live CLI remain unverified.
 
 ## Troubleshooting
 

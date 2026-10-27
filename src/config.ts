@@ -1,7 +1,7 @@
 import type { GlobalOptions } from "./cli.js";
 import type { FileConfig } from "./config-file.js";
 
-export type AiProvider = "openai" | "gemini";
+export type AiProvider = "openai" | "gemini" | "chatgpt";
 
 export interface AppConfig {
   aiProvider: AiProvider;
@@ -14,6 +14,10 @@ export interface AppConfig {
     model: string;
     baseUrl?: string;
   };
+  chatgpt: {
+    account?: string;
+    model?: string;
+  };
   structuredOutput: boolean;
 }
 
@@ -24,6 +28,8 @@ export interface ConfigEnvironment {
   HOWTO_OPENAI_API_URL?: string;
   HOWTO_OPENAI_API_KEY?: string;
   HOWTO_OPENAI_MODEL?: string;
+  HOWTO_CHATGPT_ACCOUNT?: string;
+  HOWTO_CHATGPT_MODEL?: string;
   HOWTO_STRUCTURED_OUTPUT?: string;
 }
 
@@ -34,7 +40,7 @@ export class ConfigError extends Error {
   }
 }
 
-const DEFAULT_OPENAI_MODEL = "gpt-5.4-mini";
+const DEFAULT_OPENAI_MODEL = "gpt-6-luna";
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 
 export { DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL };
@@ -93,6 +99,18 @@ export function loadConfig(
         fileConfig.openaiApiUrl,
       ),
     },
+    chatgpt: {
+      account: pickConfigValue(
+        options.chatgptAccount,
+        env.HOWTO_CHATGPT_ACCOUNT,
+        fileConfig.chatgptAccount,
+      ),
+      model: pickConfigValue(
+        options.chatgptModel,
+        env.HOWTO_CHATGPT_MODEL,
+        fileConfig.chatgptModel,
+      ),
+    },
     structuredOutput: parseStructuredOutput(
       pickConfigValue(
         options.structuredOutput,
@@ -104,6 +122,12 @@ export function loadConfig(
 
   if (config.aiProvider === "gemini" && isBlank(config.gemini.apiKey)) {
     throw new ConfigError("Gemini provider requires --gemini-api-key or HOWTO_GEMINI_API_KEY");
+  }
+
+  if (config.aiProvider === "chatgpt" && isBlank(config.chatgpt.model)) {
+    throw new ConfigError(
+      "ChatGPT model is not configured. Run howto --init or howto --chatgpt-models, then set --chatgpt-model or HOWTO_CHATGPT_MODEL.",
+    );
   }
 
   return config;
@@ -128,11 +152,11 @@ function pickConfigValue(
 }
 
 function parseAiProvider(value: string): AiProvider {
-  if (value === "openai" || value === "gemini") {
+  if (value === "openai" || value === "gemini" || value === "chatgpt") {
     return value;
   }
 
-  throw new ConfigError("invalid AI provider; expected openai or gemini");
+  throw new ConfigError("invalid AI provider; expected openai, gemini, or chatgpt");
 }
 
 function isBlank(value: string | undefined): boolean {

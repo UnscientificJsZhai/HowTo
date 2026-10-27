@@ -6,6 +6,7 @@ import { InteractionCancelledError, InteractiveTtyError } from "./ui/tty.js";
 import { PlaceholderResolutionError } from "./ui/placeholder-logic.js";
 import { sanitizeUserVisibleErrorMessage } from "./user-visible-error.js";
 import { UnsupportedEnvironmentError } from "./shell/execution-environment.js";
+import { ChatGptError } from "./auth/chatgpt/errors.js";
 
 export { sanitizeUserVisibleErrorMessage };
 
@@ -30,6 +31,10 @@ export class AppError extends Error {
 export function toAppError(error: unknown): AppError {
   if (error instanceof AppError) {
     return new AppError(sanitizeUserVisibleErrorMessage(error.message), error.exitCode);
+  }
+
+  if (error instanceof ChatGptError) {
+    return new AppError(error.message, error.exitCode);
   }
 
   if (error instanceof CliParseError) {

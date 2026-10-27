@@ -1,12 +1,14 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useLayoutEffect } from "react";
 import { Box, Text, type Key } from "ink";
-import type { AppConfig } from "../config.js";
+import type { AiProvider, AppConfig } from "../config.js";
+import type { ChatGptLoginOptions } from "../auth/chatgpt/types.js";
 import { getUserVisibleErrorMessage } from "../errors.js";
 import { usePhysicalStdoutRows } from "../ui/resize-safe-output.js";
 import { toSingleLinePreview } from "../ui/single-line-preview.js";
 import { useInteractiveSession } from "../ui/InteractiveSessionProvider.js";
 import { usePasteAwareInput } from "../ui/use-paste-aware-input.js";
-import type { InitializationValues } from "./index.js";
+import type { ChatGptInitializationService, InitializationValues } from "./index.js";
+import { ChatGptInitializationStep } from "./ChatGptInitializationStep.js";
 import {
   applyInitializationInput,
   createInitialInitializationState,
@@ -21,13 +23,27 @@ interface Props {
   onComplete: (config: AppConfig) => void;
   onCancel: () => void;
   onError: (error: Error) => void;
+  chatgptService?: ChatGptInitializationService;
+  chatgptLoginOptions?: ChatGptLoginOptions;
 }
 
 type SubmitStatus = "editing" | "saving" | "error" | "cancelled";
 
 const RICH_LAYOUT_MIN_ROWS = 15;
+const PROVIDER_LABELS: Record<AiProvider, string> = {
+  openai: "OpenAI API",
+  gemini: "Gemini API",
+  chatgpt: "Sign in with ChatGPT",
+};
 
-export const InitializationApp: React.FC<Props> = ({ onSubmit, onComplete, onCancel, onError }) => {
+export const InitializationApp: React.FC<Props> = ({
+  onSubmit,
+  onComplete,
+  onCancel,
+  onError,
+  chatgptService,
+  chatgptLoginOptions,
+}) => {
   const session = useInteractiveSession();
   const rows = usePhysicalStdoutRows();
   const [state, setState] = useState<InitializationState>(createInitialInitializationState);
@@ -36,6 +52,33 @@ export const InitializationApp: React.FC<Props> = ({ onSubmit, onComplete, onCan
   const submitStatusRef = useRef(submitStatus);
   const [errorMessage, setErrorMessage] = useState("");
   const frameRows = Math.max(0, rows - 1);
+  const inputField = state.step === "input" ? `${state.provider}:${state.fieldIndex}` : state.step;
+  useLayoutEffect(() => session.beginView(), [session, inputField]);
+
+  const cancel = () => {
+    session.suspendViewInput();
+    submitStatusRef.current = "cancelled";
+    setSubmitStatus("cancelled");
+    onCancel();
+  };
+
+  const submit = (values: InitializationValues) => {
+    if (submitStatusRef.current !== "editing") return;
+    session.suspendViewInput();
+    submitStatusRef.current = "saving";
+    setSubmitStatus("saving");
+    onSubmit(values)
+      .then((config) => {
+        onComplete(config);
+      })
+      .catch((error: unknown) => {
+        const appError = normalizeError(error);
+        setErrorMessage(getUserVisibleErrorMessage(appError));
+        submitStatusRef.current = "error";
+        setSubmitStatus("error");
+        onError(appError);
+      });
+  };
 
   const handleInput = (event: InitializationInput) => {
     if (frameRows === 0) {
@@ -46,33 +89,27 @@ export const InitializationApp: React.FC<Props> = ({ onSubmit, onComplete, onCan
       return;
     }
 
-    const update = applyInitializationInput(stateRef.current, event);
+    const previous = stateRef.current;
+    const update = applyInitializationInput(previous, event);
+    if (
+      update.state.step !== previous.step ||
+      (update.state.step === "input" &&
+        previous.step === "input" &&
+        (update.state.fieldIndex !== previous.fieldIndex ||
+          update.state.provider !== previous.provider))
+    )
+      session.suspendViewInput();
+    if (event.type === "paste" && previous.step !== "input") session.reportIgnoredPaste();
     stateRef.current = update.state;
     setState(update.state);
 
     if (update.cancelled) {
-      session.suspendViewInput();
-      submitStatusRef.current = "cancelled";
-      setSubmitStatus("cancelled");
-      onCancel();
+      cancel();
       return;
     }
 
     if (update.completedValues !== undefined) {
-      session.suspendViewInput();
-      submitStatusRef.current = "saving";
-      setSubmitStatus("saving");
-      onSubmit(update.completedValues)
-        .then((config) => {
-          onComplete(config);
-        })
-        .catch((error: unknown) => {
-          const appError = normalizeError(error);
-          setErrorMessage(getUserVisibleErrorMessage(appError));
-          submitStatusRef.current = "error";
-          setSubmitStatus("error");
-          onError(appError);
-        });
+      submit(update.completedValues);
     }
   };
 
@@ -83,8 +120,8 @@ export const InitializationApp: React.FC<Props> = ({ onSubmit, onComplete, onCan
     onPaste: (input) => {
       handleInput({ type: "paste", input });
     },
-    isInputActive: frameRows === 0 || submitStatus === "editing",
-    isPasteActive: frameRows > 0 && submitStatus === "editing",
+    isInputActive: state.step !== "chatgpt" && (frameRows === 0 || submitStatus === "editing"),
+    isPasteActive: state.step !== "chatgpt" && frameRows > 0 && submitStatus === "editing",
   });
 
   let content: React.ReactNode;
@@ -114,6 +151,21 @@ export const InitializationApp: React.FC<Props> = ({ onSubmit, onComplete, onCan
     );
   } else if (state.step === "provider") {
     content = <ProviderStep selectedIndex={state.selectedIndex} frameRows={frameRows} />;
+  } else if (state.step === "chatgpt") {
+    content = (
+      <ChatGptInitializationStep
+        service={chatgptService}
+        loginOptions={chatgptLoginOptions}
+        frameRows={frameRows}
+        onComplete={submit}
+        onBack={() => {
+          const nextState = createInitialInitializationState();
+          stateRef.current = nextState;
+          setState(nextState);
+        }}
+        onCancel={cancel}
+      />
+    );
   } else {
     content = <InputStep state={state} frameRows={frameRows} />;
   }
@@ -176,20 +228,23 @@ const ProviderStep: React.FC<{ selectedIndex: number | null; frameRows: number }
 }) => {
   const providers = getProviderOptions();
   const selectedProvider = selectedIndex === null ? undefined : providers[selectedIndex];
-  const providerSelectionLine =
-    selectedProvider === "openai"
-      ? "> openai 2 gemini"
-      : selectedProvider === "gemini"
-        ? "1 openai > gemini"
-        : "1 openai 2 gemini";
+  const providerSelectionLine = ["OAI", "G", "ChatGPT"]
+    .map((name, index) => `${selectedIndex === index ? ">" : index + 1} ${name}`)
+    .join(" ");
 
   if (frameRows < RICH_LAYOUT_MIN_ROWS) {
     if (frameRows === 1) {
       const compactSelection =
-        selectedProvider === "openai" ? "O" : selectedProvider === "gemini" ? "G" : "-";
+        selectedProvider === "openai"
+          ? "O"
+          : selectedProvider === "gemini"
+            ? "G"
+            : selectedProvider === "chatgpt"
+              ? "C"
+              : "-";
       return (
         <Box height={1} maxHeight={1} overflowX="hidden" overflowY="hidden">
-          <Text>{`O/G:${compactSelection} UD Ent 1/2 Esc`}</Text>
+          <Text>{`O/G/C:${compactSelection} 123 Ent Esc`}</Text>
         </Box>
       );
     }
@@ -205,7 +260,7 @@ const ProviderStep: React.FC<{ selectedIndex: number | null; frameRows: number }
         >
           {frameRows === 3 && <Text color="green">? Choose provider</Text>}
           <ClippedLine>{providerSelectionLine}</ClippedLine>
-          <Text dimColor>UD Enter 1/2 Esc</Text>
+          <Text dimColor>UD Ent 1/2/3 Esc ^C</Text>
         </Box>
       );
     }
@@ -215,7 +270,7 @@ const ProviderStep: React.FC<{ selectedIndex: number | null; frameRows: number }
         <ClippedLine>howto needs an AI provider before it can call AI.</ClippedLine>
         <ClippedLine color="green">? Choose provider</ClippedLine>
         <ClippedLine>{providerSelectionLine}</ClippedLine>
-        <ClippedLine dimColor>UD Enter 1/2 Esc</ClippedLine>
+        <ClippedLine dimColor>UD Ent 1/2/3 Esc ^C</ClippedLine>
       </Box>
     );
   }
@@ -223,18 +278,15 @@ const ProviderStep: React.FC<{ selectedIndex: number | null; frameRows: number }
   return (
     <Box flexDirection="column" marginY={1}>
       <Text>howto needs an AI provider before it can call AI.</Text>
-      <Box height={1}>
-        <Text> </Text>
-      </Box>
       <Text color="green">? Choose AI provider</Text>
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column">
         {providers.map((provider, index) => {
           const isSelected = selectedIndex === index;
           return (
             <Box key={provider}>
               <Text color={isSelected ? "cyan" : undefined}>{isSelected ? "> " : "  "}</Text>
               <Text inverse={isSelected} bold={isSelected}>
-                {index + 1}. {provider}
+                {index + 1}. {PROVIDER_LABELS[provider]}
               </Text>
             </Box>
           );
@@ -242,7 +294,7 @@ const ProviderStep: React.FC<{ selectedIndex: number | null; frameRows: number }
       </Box>
       <Box flexShrink={0} marginTop={1}>
         <Text dimColor>
-          Use Up/Down or 1/2 to choose, Enter to continue, Esc or Ctrl+C to cancel.
+          Use Up/Down or 1/2/3 to choose, Enter to continue, Esc or Ctrl+C to cancel.
         </Text>
       </Box>
     </Box>

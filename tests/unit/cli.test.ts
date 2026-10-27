@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { CliParseError, parseCliArgs } from "../../src/cli.js";
-import { run } from "../../src/index.js";
 
 test("parseCliArgs parses use mode with global options before positionals", () => {
   assert.deepEqual(parseCliArgs(["--ai-provider", "gemini", "use", "git", "列出最近提交"]), {
@@ -12,7 +11,6 @@ test("parseCliArgs parses use mode with global options before positionals", () =
     },
     useCommand: "git",
     question: "列出最近提交",
-    arguments: [],
   });
 });
 
@@ -23,22 +21,131 @@ test("parseCliArgs parses global options after positionals", () => {
     },
     useCommand: "git",
     question: "列出最近提交",
-    arguments: [],
   });
 });
 
-test("parseCliArgs keeps tokens after option terminator as arguments", () => {
+test("parseCliArgs keeps tokens after option terminator in the question", () => {
   assert.deepEqual(parseCliArgs(["解释这个参数", "--", "--force"]), {
     options: {
       print: false,
     },
-    question: "解释这个参数",
-    arguments: ["--force"],
+    question: "解释这个参数 --force",
   });
 });
 
-test("parseCliArgs rejects incomplete use mode", () => {
-  assert.throws(() => parseCliArgs(["use", "git"]), CliParseError);
+for (const { input, question } of [
+  { input: ["list", "files", "changed", "today"], question: "list files changed today" },
+  { input: ["list files", "/tmp"], question: "list files /tmp" },
+  { input: ["find", "files", "/tmp/my files"], question: "find files /tmp/my files" },
+  { input: ["  list\t files\n", "\runder  /tmp  "], question: "  list\t files\n \runder  /tmp  " },
+  { input: ["", "list", "", "files", ""], question: " list  files " },
+  { input: ["show", "'quoted'", '"text"', "a\\b"], question: "show 'quoted' \"text\" a\\b" },
+  {
+    input: ["explain", "--", "--force", "--print", "--", "-n"],
+    question: "explain --force --print -- -n",
+  },
+]) {
+  for (const useMode of [false, true]) {
+    test(`parseCliArgs joins ${useMode ? "use" : "ordinary"} question fragments: ${JSON.stringify(input)}`, () => {
+      assert.deepEqual(parseCliArgs(useMode ? ["use", "find", ...input] : input), {
+        options: { print: false },
+        ...(useMode ? { useCommand: "find" } : {}),
+        question,
+      });
+    });
+  }
+}
+
+test("parseCliArgs excludes interspersed options and values from the complete question", () => {
+  assert.deepEqual(
+    parseCliArgs([
+      "list",
+      "--ai-provider",
+      "gemini",
+      "files",
+      "--print",
+      "changed",
+      "--structured-output=false",
+      "today",
+    ]),
+    {
+      options: { print: true, aiProvider: "gemini", structuredOutput: "false" },
+      question: "list files changed today",
+    },
+  );
+  assert.deepEqual(
+    parseCliArgs([
+      "--print",
+      "use",
+      "--ai-provider=gemini",
+      "find",
+      "find",
+      "--gemini-model",
+      "model",
+      "report.txt",
+      "under",
+      "/tmp",
+    ]),
+    {
+      options: { print: true, aiProvider: "gemini", geminiModel: "model" },
+      useCommand: "find",
+      question: "find report.txt under /tmp",
+    },
+  );
+});
+
+test("parseCliArgs treats only the first positional use as the mode selector", () => {
+  assert.equal(parseCliArgs(["explain", "use", "find"]).question, "explain use find");
+  assert.deepEqual(parseCliArgs(["--", "use", "find", "list", "files"]), {
+    options: { print: false },
+    useCommand: "find",
+    question: "list files",
+  });
+});
+
+test("parseCliArgs rejects missing or whitespace-only questions in both modes", () => {
+  for (const args of [
+    [],
+    ["--print"],
+    ["use"],
+    ["use", "find"],
+    [""],
+    ["", "   "],
+    ["\t\r\n", "\u00a0"],
+    ["use", "find", ""],
+    ["use", "find", " ", "\n\t"],
+    ["--print", "", "--", " "],
+  ]) {
+    assert.throws(() => parseCliArgs(args), CliParseError, JSON.stringify(args));
+  }
+});
+
+test("parseCliArgs preserves unknown-option errors and repeated-option behavior", () => {
+  for (const args of [
+    ["list", "files", "--unknown"],
+    ["use", "find", "files", "--unknown=value"],
+    ["--help"],
+  ]) {
+    assert.throws(() => parseCliArgs(args), /unknown option/);
+  }
+  assert.deepEqual(
+    parseCliArgs([
+      "--print",
+      "list",
+      "--ai-provider=gemini",
+      "files",
+      "--ai-provider",
+      "openai",
+      "--print",
+    ]),
+    {
+      options: { print: true, aiProvider: "openai" },
+      question: "list files",
+    },
+  );
+  assert.deepEqual(parseCliArgs(["--init", "--init"]), {
+    options: { print: false, init: true },
+  });
 });
 
 test("parseCliArgs rejects missing option value", () => {
@@ -52,7 +159,6 @@ test("parseCliArgs parses structured-output option", () => {
       structuredOutput: "true",
     },
     question: "question",
-    arguments: [],
   });
 
   assert.deepEqual(parseCliArgs(["--structured-output=false", "question"]), {
@@ -61,7 +167,6 @@ test("parseCliArgs parses structured-output option", () => {
       structuredOutput: "false",
     },
     question: "question",
-    arguments: [],
   });
 });
 
@@ -75,19 +180,19 @@ test("parseCliArgs parses init without question", () => {
       print: false,
       init: true,
     },
-    arguments: [],
   });
 });
 
 test("parseCliArgs rejects init with print or question", () => {
   assert.throws(() => parseCliArgs(["--init", "--print"]), CliParseError);
   assert.throws(() => parseCliArgs(["--init", "question"]), CliParseError);
+  assert.throws(() => parseCliArgs(["--init", "", " "]), CliParseError);
+  assert.throws(() => parseCliArgs(["use", "find", "list", "files", "--init"]), CliParseError);
 });
 
 test("parseCliArgs 解析独立的 --version，无需 question", () => {
   assert.deepEqual(parseCliArgs(["--version"]), {
     options: { print: false, version: true },
-    arguments: [],
   });
 });
 
@@ -102,6 +207,7 @@ test("parseCliArgs 拒绝 --version 附带值或与其他参数混用", () => {
     ["--version", "--ai-provider", "openai"],
     ["--openai-model=model", "--version"],
     ["--version", "question"],
+    ["--version", "", " "],
     ["question", "--version"],
     ["--version", "use", "git", "question"],
     ["--version", "--version"],
@@ -117,45 +223,114 @@ test("parseCliArgs 将 -- 后的 --version 保留为位置参数", () => {
   assert.deepEqual(parseCliArgs(["--", "--version"]), {
     options: { print: false },
     question: "--version",
-    arguments: [],
   });
   assert.deepEqual(parseCliArgs(["解释这个参数", "--", "--version"]), {
     options: { print: false },
-    question: "解释这个参数",
-    arguments: ["--version"],
+    question: "解释这个参数 --version",
   });
 });
 
-test("--version 用法错误仅输出错误与 Usage，退出码为 2", async () => {
-  for (const args of [["--version=true"], ["--version", "--init"], ["question", "--version"]]) {
-    const { value, logs, errors } = await captureConsoleOutput(() => run(args));
-    assert.equal(value.exitCode, 2);
-    assert.deepEqual(logs, []);
-    assert.match(errors.join("\n"), /--version (?:does not accept a value|must be used alone)/);
-    assert.match(errors.join("\n"), /Usage: howto/);
-    assert.match(errors.join("\n"), /howto --version/);
+test("ChatGPT 独立动作无需问题，并支持显式账号", () => {
+  for (const action of ["login", "logout", "status", "models"] as const) {
+    assert.deepEqual(parseCliArgs([`--chatgpt-${action}`]), {
+      options: { print: false, chatgptAction: action },
+    });
+    assert.deepEqual(parseCliArgs(["--chatgpt-account=work", `--chatgpt-${action}`]), {
+      options: { print: false, chatgptAction: action, chatgptAccount: "work" },
+    });
   }
 });
 
-async function captureConsoleOutput<T>(
-  operation: () => Promise<T>,
-): Promise<{ value: T; logs: string[]; errors: string[] }> {
-  const logs: string[] = [];
-  const errors: string[] = [];
-  const originalLog = console.log;
-  const originalError = console.error;
+test("ChatGPT 独立动作拒绝互斥动作、问题及生成参数", () => {
+  const invalidArguments = [
+    ["--chatgpt-login", "--chatgpt-logout"],
+    ["--chatgpt-status", "--chatgpt-status"],
+    ["--chatgpt-login=true"],
+    ["--chatgpt-models="],
+    ["--chatgpt-login", "--print"],
+    ["--chatgpt-login", "--init"],
+    ["--chatgpt-login", "--version"],
+    ["--chatgpt-login", "--ai-provider=chatgpt"],
+    ["--chatgpt-models", "--chatgpt-model=model"],
+    ["--chatgpt-status", "question"],
+    ["--chatgpt-status", "", " "],
+    ["--chatgpt-status", "use", "git", "question"],
+    ["--chatgpt-logout", "--", "question"],
+  ];
+  for (const args of invalidArguments) assert.throws(() => parseCliArgs(args), CliParseError);
+});
 
-  console.log = (...values: unknown[]) => {
-    logs.push(values.join(" "));
-  };
-  console.error = (...values: unknown[]) => {
-    errors.push(values.join(" "));
-  };
-
-  try {
-    return { value: await operation(), logs, errors };
-  } finally {
-    console.log = originalLog;
-    console.error = originalError;
+test("ChatGPT 登录与初始化接受独立的浏览器和回调端口选项", () => {
+  for (const [action, expectedAction] of [
+    ["--chatgpt-login", { chatgptAction: "login" }],
+    ["--init", { init: true }],
+  ] as const) {
+    assert.deepEqual(parseCliArgs([action, "--no-browser", "--callback-port", "1455"]), {
+      options: { print: false, ...expectedAction, noBrowser: true, callbackPort: 1455 },
+    });
+    assert.deepEqual(parseCliArgs(["--no-browser", action]), {
+      options: { print: false, noBrowser: true, ...expectedAction },
+    });
   }
-}
+  for (const port of [1, 65535]) {
+    assert.equal(
+      parseCliArgs(["--chatgpt-login", `--callback-port=${port}`]).options.callbackPort,
+      port,
+    );
+  }
+});
+
+test("登录回调端口拒绝非十进制整数和越界值", () => {
+  for (const value of ["", "0", "-1", "65536", "1.5", "1e3", "0x500", "+1455", " 1455", "1455\n"]) {
+    assert.throws(() => parseCliArgs(["--chatgpt-login", `--callback-port=${value}`]), {
+      name: "CliParseError",
+      message: "--callback-port must be an integer from 1 to 65535",
+    });
+  }
+});
+
+test("远程登录选项不进入生成或其他账号动作", () => {
+  for (const extra of [["--no-browser"], ["--callback-port=1455"]]) {
+    for (const args of [
+      ["list files"],
+      ["--chatgpt-status"],
+      ["--chatgpt-models"],
+      ["--chatgpt-logout"],
+      ["--chatgpt-status", "--init"],
+    ]) {
+      assert.throws(
+        () => parseCliArgs([...args, ...extra]),
+        /--no-browser and --callback-port require --chatgpt-login or --init/,
+      );
+    }
+  }
+});
+
+test("ChatGPT 生成参数保留选项终止符与自然语言问题语义", () => {
+  assert.deepEqual(
+    parseCliArgs([
+      "--ai-provider=chatgpt",
+      "--chatgpt-account",
+      "work",
+      "--chatgpt-model=available-model",
+      "--print",
+      "login",
+      "--",
+      "--chatgpt-login",
+    ]),
+    {
+      options: {
+        print: true,
+        aiProvider: "chatgpt",
+        chatgptAccount: "work",
+        chatgptModel: "available-model",
+      },
+      question: "login --chatgpt-login",
+    },
+  );
+  assert.equal(parseCliArgs(["--", "--chatgpt-login"]).question, "--chatgpt-login");
+  for (const option of ["--chatgpt-account", "--chatgpt-model"]) {
+    assert.throws(() => parseCliArgs([option]), CliParseError);
+    assert.throws(() => parseCliArgs([option, "--print", "question"]), CliParseError);
+  }
+});

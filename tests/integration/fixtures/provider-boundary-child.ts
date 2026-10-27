@@ -48,7 +48,6 @@ if (envelopeMode === "throwing-getter") {
 }
 const request: GenerateCommandsRequest = {
   question: "list files",
-  arguments: [],
   structuredOutput: true,
   outputContract: "contract",
   safetyConstraints: "safety",

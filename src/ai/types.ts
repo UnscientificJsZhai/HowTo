@@ -18,7 +18,6 @@ export interface CommandGenerationContract {
 
 export interface CommandGenerationRequest {
   question: string;
-  arguments: string[];
   useCommand?: string;
   structuredOutput: boolean;
 }
@@ -38,8 +37,10 @@ export interface GenerateCommandsResult {
 }
 
 export interface CommandProvider {
+  createUsageSession?(request: GenerateCommandsRequest): UsageGenerationSession;
   generateCommands(
     request: GenerateCommandsRequest,
     signal?: AbortSignal,
   ): Promise<GenerateCommandsResult>;
 }
+import type { UsageGenerationSession } from "../usage/types.js";

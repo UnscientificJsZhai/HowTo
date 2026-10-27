@@ -1,11 +1,17 @@
-import React, { createContext, useContext, useEffect, useSyncExternalStore } from "react";
+import React, { createContext, useContext, useEffect, useLayoutEffect } from "react";
+import { useStderr } from "ink";
 import type { InteractiveSession } from "./interactive-session.js";
 
 const SessionContext = createContext<InteractiveSession | undefined>(undefined);
 export const InteractiveSessionProvider: React.FC<
   React.PropsWithChildren<{ session: InteractiveSession }>
 > = ({ session, children }) => {
-  useEffect(() => session.beginView(), [session]);
+  const { write } = useStderr();
+  useLayoutEffect(() => session.beginView(), [session]);
+  useEffect(
+    () => session.subscribeInputNotice((message) => write(`提示：${message}\n`)),
+    [session, write],
+  );
   return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>;
 };
 
@@ -15,14 +21,6 @@ export function useInteractiveSession(): InteractiveSession {
   return session;
 }
 
-const subscribeWithoutSession = () => () => {};
-const keyboardPolicy = () => "execute" as const;
-export function useExecutionPolicy() {
-  const session = useContext(SessionContext);
-  const policy = useSyncExternalStore(
-    session?.subscribeExecutionPolicy ?? subscribeWithoutSession,
-    session?.getExecutionPolicy ?? keyboardPolicy,
-    keyboardPolicy,
-  );
-  return { policy, getPolicy: session?.getExecutionPolicy ?? keyboardPolicy };
+export function useOptionalInteractiveSession(): InteractiveSession | undefined {
+  return useContext(SessionContext);
 }

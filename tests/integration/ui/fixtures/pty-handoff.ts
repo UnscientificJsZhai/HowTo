@@ -13,7 +13,12 @@ const session = createInteractiveSession({ input: original, output: process.stdo
 const body =
   "test -t 0 || exit 31; printf 'REVIEW_%s\\n' CHILD_READY; IFS= read -r review_value; printf 'REVIEW_CHILD_%s:%s\\n' LINE \"$review_value\"";
 // 新模式只增加有方言歧义的 fd 前缀，确认后仍只运行原有的无害读取与打印。
-const command = process.argv[2] === "fd-continuation" ? `2\\\n>/dev/null ${body}` : body;
+const pasteFields = process.argv[2] === "paste-fields";
+const command = pasteFields
+  ? `first='{{first}}'; second='{{second}}'; test "$first" = 'value\r\none' || exit 41; test "$second" = 'value-two' || exit 42; printf 'PASTE_VALUES_%s\\n' VERIFIED; ${body}`
+  : process.argv[2] === "fd-continuation"
+    ? `2\\\n>/dev/null ${body}`
+    : body;
 
 let executionCount = 0;
 try {
@@ -30,7 +35,12 @@ try {
                 command,
                 dangerous: false,
                 dangerReason: "",
-                placeholders: [],
+                placeholders: pasteFields
+                  ? [
+                      { name: "first", description: "PASTE_FIELD_ONE" },
+                      { name: "second", description: "PASTE_FIELD_TWO" },
+                    ]
+                  : [],
               },
             ],
           }),
@@ -38,7 +48,6 @@ try {
     },
     request: {
       question: "测试交接",
-      arguments: [],
       structuredOutput: true,
       outputContract: "",
       safetyConstraints: "",

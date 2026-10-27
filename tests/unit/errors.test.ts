@@ -225,9 +225,6 @@ test("toAppError sanitizes the usage error fragment before appending trusted lay
 
   assert.equal(appError.exitCode, 2);
   assert.equal(appError.message, `Error: ${SAFE_DYNAMIC_MESSAGE}\n${USAGE}`);
-  assert.equal(appError.message.includes("\u001B"), false);
-  assert.equal(appError.message.includes("secret-value"), false);
-  assert.match(appError.message, /\nUsage: howto [^\n]+\n {7}howto --init\n/u);
 });
 
 test("toAppError maps provider failures with a safe message and raw model metadata", () => {

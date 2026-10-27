@@ -13,6 +13,7 @@ export async function runInteractiveCommand({
   session,
   provider,
   request,
+  knownCredentials,
   execute = executeCommand,
   print = (command) => {
     console.error(MANUAL_EXECUTION_NOTICE);
@@ -22,6 +23,7 @@ export async function runInteractiveCommand({
   session: InteractiveSession;
   provider: CommandProvider;
   request: GenerateCommandsRequest;
+  knownCredentials?: readonly string[];
   execute?: (command: string) => Promise<number>;
   print?: (command: string) => void;
 }): Promise<number> {
@@ -32,6 +34,7 @@ export async function runInteractiveCommand({
       <App
         provider={provider}
         request={request}
+        knownCredentials={knownCredentials}
         onSuccess={(command) => {
           finalCommand = command;
           session.suspendViewInput();

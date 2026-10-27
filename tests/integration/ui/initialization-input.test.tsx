@@ -1,13 +1,19 @@
 import assert from "node:assert/strict";
 import { PassThrough } from "node:stream";
-import { setTimeout as delay } from "node:timers/promises";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { stripVTControlCharacters } from "node:util";
 import React from "react";
-import type { InteractiveSession } from "../../../src/ui/interactive-session.js";
+
 import type { AppConfig } from "../../../src/config.js";
-import type { InitializationValues } from "../../../src/init/index.js";
-import { importWithoutColor } from "./import-without-color.js";
+import type {
+  ChatGptInitializationAccount,
+  ChatGptInitializationModel,
+  ChatGptInitializationService,
+  InitializationValues,
+} from "../../../src/init/index.js";
+import type { InteractiveSession } from "../../../src/ui/interactive-session.js";
+import { importWithoutColor } from "../../helpers/import-without-color.js";
 
 const uiModules = importWithoutColor(async () => {
   const [
@@ -47,10 +53,11 @@ void test("initialization keeps rich provider and OpenAI field guidance at forty
   let frame = normalizeWhitespace(stripVTControlCharacters(view.output()));
   assert.ok(frame.includes("howto needs an AI provider before it can call AI."));
   assert.ok(frame.includes("? Choose AI provider"));
-  assert.ok(frame.includes("1. openai"));
-  assert.ok(frame.includes("2. gemini"));
+  assert.ok(frame.includes("1. OpenAI API"));
+  assert.ok(frame.includes("2. Gemini API"));
+  assert.ok(frame.includes("3. Sign in with ChatGPT"));
   assert.ok(
-    frame.includes("Use Up/Down or 1/2 to choose, Enter to continue, Esc or Ctrl+C to cancel."),
+    frame.includes("Use Up/Down or 1/2/3 to choose, Enter to continue, Esc or Ctrl+C to cancel."),
   );
 
   const outputOffset = view.output().length;
@@ -74,8 +81,8 @@ void test("initialization keeps provider and input priorities visible at five ro
       assert.equal(frameLines.length, 4);
       assert.ok(frameLines[0]?.startsWith("howto needs"));
       assert.equal(frameLines[1], "? Choose provider");
-      assert.equal(frameLines[2], "1 openai 2 gemini");
-      assert.equal(frameLines[3], "UD Enter 1/2 Esc");
+      assert.equal(frameLines[2], "1 OAI 2 G 3 ChatGPT");
+      assert.equal(frameLines[3], "UD Ent 1/2/3 Esc ^C");
 
       let outputOffset = view.output().length;
       await send(view, "\r");
@@ -126,8 +133,8 @@ void test("initialization switches from intermediate to rich layout at the narro
   try {
     let frameLines = renderedUpdateLines(view, 0);
     assert.equal(frameLines.length, 4);
-    assert.equal(frameLines.at(-1), "UD Enter 1/2 Esc");
-    assert.ok(!renderedUpdate(view, 0).includes("1. openai"));
+    assert.equal(frameLines.at(-1), "UD Ent 1/2/3 Esc ^C");
+    assert.ok(!renderedUpdate(view, 0).includes("1. OpenAI API"));
 
     const outputOffset = view.output().length;
     await resizeAndWait(view, 16);
@@ -136,11 +143,12 @@ void test("initialization switches from intermediate to rich layout at the narro
     assert.ok(frameLines.length <= 15);
     assert.ok(richProvider.includes("howto needs an AI provider before it can call AI."));
     assert.ok(richProvider.includes("? Choose AI provider"));
-    assert.ok(richProvider.includes("1. openai"));
-    assert.ok(richProvider.includes("2. gemini"));
+    assert.ok(richProvider.includes("1. OpenAI API"));
+    assert.ok(richProvider.includes("2. Gemini API"));
+    assert.ok(richProvider.includes("3. Sign in with ChatGPT"));
     assert.ok(
       richProvider.includes(
-        "Use Up/Down or 1/2 to choose, Enter to continue, Esc or Ctrl+C to cancel.",
+        "Use Up/Down or 1/2/3 to choose, Enter to continue, Esc or Ctrl+C to cancel.",
       ),
     );
 
@@ -176,11 +184,11 @@ void test("initialization preserves provider and field state across compact inte
         await resizeAndWait(view, rows);
         const update = normalizeWhitespace(renderedUpdate(view, outputOffset));
         if (rows === 24) {
-          assert.ok(update.includes("1. openai"));
-          assert.ok(update.includes("Use Up/Down or 1/2 to choose"));
+          assert.ok(update.includes("1. OpenAI API"));
+          assert.ok(update.includes("Use Up/Down or 1/2/3 to choose"));
         } else {
-          assert.ok(update.includes("> openai 2 gemini"));
-          assert.ok(update.includes("UD Enter 1/2 Esc"));
+          assert.ok(update.includes("> OAI 2 G 3 ChatGPT"));
+          assert.ok(update.includes("UD Ent 1/2/3 Esc ^C"));
         }
       }
 
@@ -208,7 +216,7 @@ void test("initialization preserves provider and field state across compact inte
       assert.deepEqual(submittedValues, {
         provider: "openai",
         apiKey: "Ab",
-        model: "gpt-5.4-mini",
+        model: "gpt-6-luna",
         openaiBaseUrl: undefined,
       });
       assertNoFullscreenClear(view.output());
@@ -231,18 +239,18 @@ void test("initialization keeps provider selection and the current field visible
   outputOffset = view.output().length;
   await send(view, "\u001B[B");
   updateOutput = stripVTControlCharacters(view.output().slice(outputOffset));
-  assert.ok(updateOutput.includes("> openai 2 gemini"));
-  assert.ok(updateOutput.includes("UD Enter 1/2 Esc"));
+  assert.ok(updateOutput.includes("> OAI 2 G 3 ChatGPT"));
+  assert.ok(updateOutput.includes("UD Ent 1/2/3 Esc ^C"));
 
   outputOffset = view.output().length;
   await send(view, "\u001B[B");
   updateOutput = stripVTControlCharacters(view.output().slice(outputOffset));
-  assert.ok(updateOutput.includes("1 openai > gemini"));
+  assert.ok(updateOutput.includes("1 OAI > G 3 ChatGPT"));
 
   outputOffset = view.output().length;
   await send(view, "\u001B[A");
   updateOutput = stripVTControlCharacters(view.output().slice(outputOffset));
-  assert.ok(updateOutput.includes("> openai 2 gemini"));
+  assert.ok(updateOutput.includes("> OAI 2 G 3 ChatGPT"));
 
   outputOffset = view.output().length;
   await send(view, "\r");
@@ -271,14 +279,14 @@ void test("initialization keeps provider and field controls visible across three
 
   assert.equal(
     stripVTControlCharacters(view.output()).trimEnd(),
-    "1 openai 2 gemini\nUD Enter 1/2 Esc",
+    "1 OAI 2 G 3 ChatGPT\nUD Ent 1/2/3 Esc ^C",
   );
 
   let outputOffset = view.output().length;
   await send(view, "\u001B[B");
   let updateOutput = stripVTControlCharacters(view.output().slice(outputOffset));
-  assert.ok(updateOutput.includes("> openai 2 gemini"));
-  assert.ok(updateOutput.includes("UD Enter 1/2 Esc"));
+  assert.ok(updateOutput.includes("> OAI 2 G 3 ChatGPT"));
+  assert.ok(updateOutput.includes("UD Ent 1/2/3 Esc ^C"));
 
   outputOffset = view.output().length;
   await send(view, "\r");
@@ -290,12 +298,12 @@ void test("initialization keeps provider and field controls visible across three
   outputOffset = view.output().length;
   await resizeAndWait(view, 2);
   updateOutput = stripVTControlCharacters(view.output().slice(outputOffset));
-  assert.ok(updateOutput.includes("O/G:- UD Ent 1/2 Esc"));
+  assert.ok(updateOutput.includes("O/G/C:- 123 Ent Esc"));
 
   outputOffset = view.output().length;
   await send(view, "\u001B[B");
   updateOutput = stripVTControlCharacters(view.output().slice(outputOffset));
-  assert.ok(updateOutput.includes("O/G:O UD Ent 1/2 Esc"));
+  assert.ok(updateOutput.includes("O/G/C:O 123 Ent Esc"));
 
   outputOffset = view.output().length;
   await send(view, "\r");
@@ -359,7 +367,7 @@ void test("initialization keeps rich long values visible and submits their origi
     await send(view, "\r");
     frame = renderedUpdate(view, outputOffset);
     assert.ok(frame.includes("> Model:"));
-    assert.ok(frame.includes("Default: gpt-5.4"));
+    assert.ok(frame.includes("Default: gpt-6"));
 
     outputOffset = view.output().length;
     await send(view, `\u001B[200~${model}\u001B[201~`);
@@ -483,15 +491,18 @@ void test("初始化不将 provider 粘贴当选择，并记录不可恢复的�
   });
   t.after(() => close(view));
   await send(view, "\u001B[200~1\r\u001B[201~");
-  assert.equal(view.session.getExecutionPolicy(), "print");
+  assert.equal(view.session.getExecutionPolicy(), "execute");
   assert.equal(view.output().includes("Configure openai"), false);
   await send(view, "1");
   await send(view, "\u001B[200~FAKE-key\u001B[201~\r");
   await send(view, "\r");
   await send(view, "\r");
   await waitFor(() => submittedValues !== undefined, "初始化未完成");
-  assert.equal(submittedValues?.apiKey, "FAKE-key");
-  assert.equal(view.session.getExecutionPolicy(), "print");
+  assert.equal(
+    submittedValues?.provider !== "chatgpt" ? submittedValues?.apiKey : undefined,
+    "FAKE-key",
+  );
+  assert.equal(view.session.getExecutionPolicy(), "execute");
 });
 
 void test("initialization prioritizes validation, values, and defaults without changing pasted input", async (t) => {
@@ -718,7 +729,7 @@ void test("initialization preserves provider and field input across one-row and 
   assert.deepEqual(submittedValues, {
     provider: "openai",
     apiKey: "abcd",
-    model: "gpt-5.4-mini",
+    model: "gpt-6-luna",
     openaiBaseUrl: undefined,
   });
   assert.equal(cancellations, 0);
@@ -760,6 +771,336 @@ void test("initialization consumes hidden saving input without cancelling or rep
   assert.equal(cancellations, 0);
   assert.equal(view.stdin.readableLength, 0);
   assert.match(stripVTControlCharacters(view.output()), /Error: saving failed/);
+});
+
+void test("ChatGPT 账号与动态模型选择在极限和紧凑终端保持可操作", async () => {
+  for (const [columns, rows] of [
+    [20, 2],
+    [40, 4],
+    [20, 16],
+    [40, 24],
+  ] as const) {
+    let submitted: InitializationValues | undefined;
+    let loginCalls = 0;
+    let modelAccount: string | undefined;
+    const view = await renderInitialization(
+      { columns, rows },
+      (values) => {
+        submitted = values;
+        return Promise.resolve(testConfig());
+      },
+      undefined,
+      undefined,
+      chatgptService({
+        login: () => {
+          loginCalls++;
+          return Promise.resolve(chatgptAccount());
+        },
+        listModels: ({ accountId }) => {
+          modelAccount = accountId;
+          return Promise.resolve([
+            { slug: "model-a", displayName: "Model A" },
+            { slug: "model-b", displayName: "Model B" },
+          ]);
+        },
+      }),
+    );
+    try {
+      await send(view, "3");
+      await waitFor(() => view.output().includes("Main"), "账号选择未显示");
+      await send(view, "\r");
+      await waitFor(() => view.output().includes("Model A"), "模型选择未显示");
+      await send(view, "\u001B[B");
+      await resizeAndWait(view, rows === 2 ? 3 : 2);
+      const offset = view.output().length;
+      await resizeAndWait(view, rows);
+      const lines = renderedUpdateLines(view, offset);
+      assert.ok(lines.length <= rows - 1, `${columns}x${rows}: ${lines.join("|")}`);
+      assert.ok(lines.some((line) => line.includes("Model B")));
+      assert.ok(lines.at(-1)?.includes("Esc"));
+      await send(view, "\r");
+      await waitFor(() => submitted !== undefined, "ChatGPT 初始化未提交");
+      assert.deepEqual(submitted, {
+        provider: "chatgpt",
+        account: "account-main",
+        model: "model-b",
+      });
+      assert.equal(modelAccount, "account-main");
+      assert.equal(loginCalls, 0);
+      assertNoFullscreenClear(view.output());
+    } finally {
+      await close(view);
+    }
+  }
+});
+
+void test("ChatGPT 首次授权等待期间 Ctrl+C 中止，迟到结果和 URL 不继续初始化", async (t) => {
+  const pendingLogin = deferred<ChatGptInitializationAccount>();
+  let loginOptions: Parameters<ChatGptInitializationService["login"]>[0] | undefined;
+  let cancellations = 0;
+  let modelCalls = 0;
+  let submissions = 0;
+  const view = await renderInitialization(
+    { columns: 80, rows: 12 },
+    () => {
+      submissions++;
+      return Promise.resolve(testConfig());
+    },
+    () => {
+      cancellations++;
+    },
+    undefined,
+    chatgptService({
+      listAccounts: () => Promise.resolve([]),
+      login: (options) => {
+        loginOptions = options;
+        options.onAuthorizationUrl("https://auth.openai.com/authorize?state=fake-state");
+        options.onAuthorizationUrl("https://auth.openai.com/authorize?state=fake-state");
+        return pendingLogin.promise;
+      },
+      listModels: () => {
+        modelCalls++;
+        return Promise.resolve([{ slug: "model", displayName: "Model" }]);
+      },
+    }),
+  );
+  t.after(() => close(view));
+  await send(view, "3");
+  await waitFor(() => view.output().includes("Continue with ChatGPT"), "登录入口未显示");
+  await send(view, "\r");
+  await waitFor(() => loginOptions !== undefined, "授权尚未开始");
+  assert.equal(
+    view.output().split("https://auth.openai.com/authorize?state=fake-state\n").length - 1,
+    1,
+  );
+  assert.ok(view.output().includes("Esc back ^C cancel"));
+  await send(view, "\u0003");
+  assert.equal(cancellations, 1);
+  assert.equal(loginOptions?.signal.aborted, true);
+  const offset = view.output().length;
+  loginOptions?.onAuthorizationUrl("https://auth.openai.com/late-callback");
+  pendingLogin.resolve(chatgptAccount());
+  await delay(10);
+  await view.instance.waitUntilRenderFlush();
+  assert.equal(modelCalls, 0);
+  assert.equal(submissions, 0);
+  assert.equal(view.output().slice(offset).includes("late-callback"), false);
+});
+
+void test("ChatGPT 账号读取、授权和模型加载在隐藏期间丢弃输入，恢复后仍可取消", async (t) => {
+  for (const phase of ["accounts", "login", "models"]) {
+    const accounts = deferred<ChatGptInitializationAccount[]>();
+    const login = deferred<ChatGptInitializationAccount>();
+    const models = deferred<ChatGptInitializationModel[]>();
+    let operationSignal: AbortSignal | undefined;
+    let cancellations = 0;
+    const view = await renderInitialization(
+      { columns: 80, rows: 12 },
+      () => assert.fail("隐藏输入不能提交初始化"),
+      () => {
+        cancellations++;
+      },
+      undefined,
+      chatgptService({
+        listAccounts: ({ signal }) => {
+          if (phase !== "accounts")
+            return Promise.resolve(phase === "models" ? [chatgptAccount()] : []);
+          operationSignal = signal;
+          return accounts.promise;
+        },
+        login: ({ signal }) => {
+          operationSignal = signal;
+          return login.promise;
+        },
+        listModels: ({ signal }) => {
+          operationSignal = signal;
+          return models.promise;
+        },
+      }),
+    );
+    t.after(() => close(view));
+    await send(view, "3");
+    if (phase !== "accounts") {
+      await waitFor(() => view.output().includes("ChatGPT account"), "账号选择尚未显示");
+      await send(view, "\r");
+    }
+    await waitFor(() => operationSignal !== undefined, "目标请求尚未开始");
+    await resizeAndWait(view, 1);
+    await send(view, "\u0003\r1");
+    await send(view, "\u001b[200~2\r\u001b[201~");
+    assert.equal(cancellations, 0);
+    assert.equal(operationSignal?.aborted, false);
+    accounts.resolve([]);
+    login.resolve(chatgptAccount());
+    models.resolve([{ slug: "model-a", displayName: "Model A" }]);
+    await delay(0);
+    await resizeAndWait(view, 12);
+    await send(view, "\u0003");
+    assert.equal(cancellations, 1);
+    assert.equal(operationSignal?.aborted, true);
+    await close(view);
+  }
+});
+
+void test("ChatGPT 账号读取与模型加载均可 Esc 返回，旧请求不覆盖新页面", async () => {
+  for (const stage of ["accounts", "models"] as const) {
+    const accounts = deferred<ChatGptInitializationAccount[]>();
+    const models = deferred<ChatGptInitializationModel[]>();
+    let signal: AbortSignal | undefined;
+    let submissions = 0;
+    const view = await renderInitialization(
+      { columns: 40, rows: 5 },
+      () => {
+        submissions++;
+        return Promise.resolve(testConfig());
+      },
+      undefined,
+      undefined,
+      chatgptService({
+        listAccounts: (options) => {
+          if (stage === "accounts") {
+            signal = options.signal;
+            return accounts.promise;
+          }
+          return Promise.resolve([chatgptAccount()]);
+        },
+        listModels: (options) => {
+          signal = options.signal;
+          return models.promise;
+        },
+      }),
+    );
+    try {
+      await send(view, "3");
+      if (stage === "models") {
+        await waitFor(() => view.output().includes("Main"), "账号选择未显示");
+        await send(view, "\r");
+      }
+      await waitFor(() => signal !== undefined, "异步阶段尚未开始");
+      await sendEscape(view);
+      assert.equal(signal?.aborted, true);
+      const offset = view.output().length;
+      accounts.resolve([chatgptAccount()]);
+      models.resolve([{ slug: "late-model", displayName: "LATE_MODEL_SENTINEL" }]);
+      await delay(10);
+      await view.instance.waitUntilRenderFlush();
+      assert.equal(view.output().slice(offset).includes("LATE_MODEL_SENTINEL"), false);
+      await send(view, "1");
+      assert.ok(view.output().includes("Configure openai"));
+      assert.equal(submissions, 0);
+    } finally {
+      await close(view);
+    }
+  }
+});
+
+void test("ChatGPT 无额度授权账号重新登录，成功后仅提交返回的账号与模型", async (t) => {
+  let loginAccount: string | undefined;
+  let submitted: InitializationValues | undefined;
+  const view = await renderInitialization(
+    { columns: 80, rows: 12 },
+    (values) => {
+      submitted = values;
+      return Promise.resolve(testConfig());
+    },
+    undefined,
+    undefined,
+    chatgptService({
+      listAccounts: () => Promise.resolve([{ ...chatgptAccount(), planUsageEnabled: false }]),
+      login: ({ accountId, onAuthorizationUrl }) => {
+        loginAccount = accountId;
+        onAuthorizationUrl("https://auth.openai.com/authorize?id_token_hint=FAKE_ID_TOKEN");
+        return Promise.resolve({ ...chatgptAccount(), id: "new-account" });
+      },
+    }),
+  );
+  t.after(() => close(view));
+  await send(view, "3");
+  await waitFor(() => view.output().includes("Main (sign in)"), "重新授权选项未显示");
+  await send(view, "\r");
+  await waitFor(() => view.output().includes("Model A"), "模型未显示");
+  await send(view, "\r");
+  await waitFor(() => submitted !== undefined, "选择未提交");
+  assert.equal(loginAccount, "account-main");
+  assert.deepEqual(submitted, { provider: "chatgpt", account: "new-account", model: "model-a" });
+  assert.equal(view.output().includes("FAKE_ID_TOKEN"), false);
+});
+
+void test("ChatGPT 模型空列表和请求失败可重试，服务文本不能注入终端控制字符", async () => {
+  for (const result of ["empty", "failure"] as const) {
+    let attempts = 0;
+    let submissions = 0;
+    const view = await renderInitialization(
+      { columns: 80, rows: 12 },
+      () => {
+        submissions++;
+        return Promise.resolve(testConfig());
+      },
+      undefined,
+      undefined,
+      chatgptService({
+        listAccounts: () =>
+          Promise.resolve([{ ...chatgptAccount(), label: "Main\u001B[2J\r\nname" }]),
+        listModels: () => {
+          attempts++;
+          if (attempts === 1) {
+            return result === "empty"
+              ? Promise.resolve([])
+              : Promise.reject(new Error("model request failed\u001B[2J api_key=fake-secret"));
+          }
+          return Promise.resolve([{ slug: "model-safe", displayName: "Safe\u001B[2J\nModel" }]);
+        },
+      }),
+    );
+    try {
+      await send(view, "3");
+      await waitFor(() => view.output().includes("Main"), "账号未显示");
+      await send(view, "\r");
+      await waitFor(() => view.output().includes("Ent retry"), "失败后未提供重试");
+      assert.equal(submissions, 0);
+      await send(view, "\r");
+      await view.instance.waitUntilRenderFlush();
+      await send(view, "\r");
+      await waitFor(() => view.output().includes("Safe"), "重试后模型未显示");
+      assert.equal(attempts, 2);
+      assertNoFullscreenClear(view.output());
+      assert.equal(view.output().includes("fake-secret"), false);
+    } finally {
+      await close(view);
+    }
+  }
+});
+
+void test("ChatGPT 选择页消费粘贴内容，不把数字与换行当账号或模型确认", async (t) => {
+  let modelCalls = 0;
+  let submissions = 0;
+  const view = await renderInitialization(
+    { columns: 40, rows: 5 },
+    () => {
+      submissions++;
+      return Promise.resolve(testConfig());
+    },
+    undefined,
+    undefined,
+    chatgptService({
+      listModels: () => {
+        modelCalls++;
+        return Promise.resolve([{ slug: "model-a", displayName: "Model A" }]);
+      },
+    }),
+  );
+  t.after(() => close(view));
+  await send(view, "3");
+  await waitFor(() => view.output().includes("Main"), "账号未显示");
+  await send(view, "\u001B[200~1\r\u001B[201~");
+  assert.equal(modelCalls, 0);
+  assert.equal(view.session.getExecutionPolicy(), "execute");
+  await send(view, "\r");
+  await waitFor(() => view.output().includes("Model A"), "模型未显示");
+  await send(view, "\u001B[200~1\r\u001B[201~");
+  assert.equal(submissions, 0);
+  await send(view, "\r");
+  await waitFor(() => submissions === 1, "显式确认未提交模型选择");
 });
 
 class FakeTty extends PassThrough {
@@ -817,6 +1158,7 @@ async function renderInitialization(
     Promise.resolve(testConfig()),
   onCancel: () => void = () => {},
   onError: (error: Error) => void = () => {},
+  chatgptService?: ChatGptInitializationService,
 ): Promise<RenderedInitialization> {
   const {
     render,
@@ -855,6 +1197,7 @@ async function renderInitialization(
         onComplete={() => {}}
         onCancel={onCancel}
         onError={onError}
+        chatgptService={chatgptService}
       />
       <PhysicalRowsObserver />
     </InteractiveSessionProvider>,
@@ -981,6 +1324,30 @@ function testConfig(): AppConfig {
     aiProvider: "openai",
     gemini: { model: "gemini-3.5-flash-lite" },
     openai: { apiKey: "", model: "gpt-5.4-mini" },
+    chatgpt: {},
     structuredOutput: true,
   };
+}
+
+function chatgptAccount(): ChatGptInitializationAccount {
+  return { id: "account-main", label: "Main", signedIn: true, planUsageEnabled: true };
+}
+
+function chatgptService(
+  overrides: Partial<ChatGptInitializationService> = {},
+): ChatGptInitializationService {
+  return {
+    listAccounts: () => Promise.resolve([chatgptAccount()]),
+    login: () => Promise.resolve(chatgptAccount()),
+    listModels: () => Promise.resolve([{ slug: "model-a", displayName: "Model A" }]),
+    ...overrides,
+  };
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }

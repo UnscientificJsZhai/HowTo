@@ -30,13 +30,14 @@ export interface InitializationFieldState {
 
 export interface InitializationInputState {
   step: "input";
-  provider: AiProvider;
+  provider: Exclude<AiProvider, "chatgpt">;
   fieldIndex: number;
   fields: InitializationFieldState[];
   errorMessage?: string;
 }
 
-export type InitializationState = ProviderSelectionState | InitializationInputState;
+export type InitializationState =
+  ProviderSelectionState | InitializationInputState | { step: "chatgpt" };
 
 export interface InitializationUpdate {
   state: InitializationState;
@@ -44,7 +45,7 @@ export interface InitializationUpdate {
   cancelled?: boolean;
 }
 
-const PROVIDERS: readonly AiProvider[] = ["openai", "gemini"];
+const PROVIDERS: readonly AiProvider[] = ["openai", "gemini", "chatgpt"];
 
 export function createInitialInitializationState(): InitializationState {
   return {
@@ -79,6 +80,10 @@ export function applyInitializationInput(
     return applyProviderInput(state, event);
   }
 
+  if (state.step === "chatgpt") {
+    return { state: event.key.escape ? createInitialInitializationState() : state };
+  }
+
   return applyFieldInput(state, event);
 }
 
@@ -95,7 +100,7 @@ function applyProviderInput(
     : null;
   if (numericSelection !== null) {
     return {
-      state: createInputState(PROVIDERS[numericSelection]),
+      state: createProviderState(PROVIDERS[numericSelection]),
     };
   }
 
@@ -123,7 +128,7 @@ function applyProviderInput(
 
   if (event.key.return && state.selectedIndex !== null) {
     return {
-      state: createInputState(PROVIDERS[state.selectedIndex]),
+      state: createProviderState(PROVIDERS[state.selectedIndex]),
     };
   }
 
@@ -137,6 +142,10 @@ function getNumericProviderSelection(input: string): number | null {
 
   if (input === "2") {
     return 1;
+  }
+
+  if (input === "3") {
+    return 2;
   }
 
   return null;
@@ -188,7 +197,12 @@ function applyFieldInput(
   return { state };
 }
 
-function createInputState(provider: AiProvider): InitializationInputState {
+function createProviderState(provider: AiProvider): InitializationState {
+  if (provider === "chatgpt") return { step: "chatgpt" };
+  return createInputState(provider);
+}
+
+function createInputState(provider: Exclude<AiProvider, "chatgpt">): InitializationInputState {
   return {
     step: "input",
     provider,

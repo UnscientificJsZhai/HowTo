@@ -73,7 +73,7 @@ try:
             wait_for(b'PLACEHOLDER_SENTINEL' if phase == 'placeholder' else b'Final command:')
         if phase in ('paste', 'resize-paste'):
             os.write(fd, b'\x1b[200~pasted\x1b[201~')
-            wait_for('仅输出:'.encode())
+            wait_for('当前页面忽略粘贴'.encode())
     if phase in ('resize-paste', 'tiny'):
         for rows, columns in ([(1, 12), (0, 12), (2, 8), (5, 20), (24, 100)] if phase == 'resize-paste' else [(1, 12)]):
             cursor = len(output)
@@ -92,18 +92,20 @@ try:
                 raise AssertionError('resize not observed: ' + expected_size)
             assert not os.path.exists(os.path.join(test_home, 'executed'))
             if rows == 24:
-                wait_for('仅输出:'.encode(), cursor)
+                wait_for(b'Final command:', cursor)
     assert os.tcgetpgrp(fd) == pid, 'Node does not own the controlling terminal'
     assert termios.tcgetattr(fd)[3] & mask == 0, 'session did not acquire raw mode'
     assert output.count(b'\x1b[?2004h') == 1, 'paste mode must be enabled once'
     assert b'\x1b[?2004l' not in output, 'paste mode released before exit'
 
-    if action.startswith('SIG'):
+    if action == 'paste-timeout':
+        os.write(fd, b'\x1b[200~unfinished\r\x03')
+    elif action.startswith('SIG'):
         os.kill(pid, getattr(signal, action))
     else:
         os.write(fd, {'ctrl-c': b'\x03', 'escape': b'\x1b', 'complete': b'\r'}[action])
 
-    deadline = time.monotonic() + 5
+    deadline = time.monotonic() + (8 if action == 'paste-timeout' else 5)
     while status is None and time.monotonic() < deadline:
         exited, exit_status = os.waitpid(pid, os.WNOHANG)
         if exited == pid:
@@ -131,11 +133,13 @@ try:
         assert os.WTERMSIG(status) == getattr(signal, action), 'Node changed the exit signal'
         assert b'FIXTURE_EXIT:' not in output, 'signal unexpectedly completed the normal path'
     else:
-        expected = 0 if action == 'complete' else 130
+        expected = 0 if action == 'complete' else 1 if action == 'paste-timeout' else 130
         assert os.WIFEXITED(status) and exit_code == expected, 'wrong normal exit: ' + repr(bytes(output[-3000:]))
         assert ('FIXTURE_EXIT:' + str(expected)).encode() in output
-    assert (b'COMMAND_EXECUTED' in output) == (action == 'complete' and phase in ('confirm', 'raw-confirm'))
-    assert (b'COMMAND_PRINTED' in output) == (action == 'complete' and phase in ('paste', 'resize-paste'))
+    assert (b'COMMAND_EXECUTED' in output) == (action == 'complete')
+    assert b'COMMAND_PRINTED' not in output
+    if action == 'paste-timeout':
+        assert '粘贴或按键序列未在时限内结束'.encode() in output, 'missing incomplete paste error'
     print(json.dumps({'phase': phase, 'action': action, 'exitCode': exit_code, 'canonical': bool(restored_flags & termios.ICANON), 'echo': bool(restored_flags & termios.ECHO), 'pasteDisableCount': 1}))
 finally:
     if status is None:
@@ -154,6 +158,7 @@ for (const [phase, action] of [
   ["confirm", "complete"],
   ["paste", "complete"],
   ["resize-paste", "complete"],
+  ["incomplete", "paste-timeout"],
 ] as const) {
   void test(`真实 PTY ${phase} / ${action} 恢复终端并保留退出语义`, (t) => {
     if (process.platform === "win32") {
@@ -187,14 +192,8 @@ for (const [phase, action] of [
       }
       assert.ifError(result.error);
       assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`);
-      assert.equal(
-        existsSync(join(testHome, "executed")),
-        action === "complete" && phase === "confirm",
-      );
-      assert.equal(
-        existsSync(join(testHome, "printed")),
-        action === "complete" && (phase === "paste" || phase === "resize-paste"),
-      );
+      assert.equal(existsSync(join(testHome, "executed")), action === "complete");
+      assert.equal(existsSync(join(testHome, "printed")), false);
       t.diagnostic(
         `Node ${process.versions.node} / libuv ${process.versions.uv}: ${result.stdout.trim()}`,
       );

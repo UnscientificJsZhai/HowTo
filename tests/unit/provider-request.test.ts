@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type OpenAI from "openai";
+import type { GoogleGenAI } from "@google/genai";
 
 import { COMMAND_GENERATION_SCHEMA } from "../../src/ai/command-schema.js";
 import { buildGeminiGenerateContentRequest, GeminiCommandProvider } from "../../src/ai/gemini.js";
@@ -13,7 +15,6 @@ import type { GenerateCommandsRequest } from "../../src/ai/types.js";
 function createRequest(structuredOutput: boolean): GenerateCommandsRequest {
   return {
     question: "list files",
-    arguments: [],
     structuredOutput,
     outputContract: "contract",
     safetyConstraints: "safety",
@@ -22,15 +23,14 @@ function createRequest(structuredOutput: boolean): GenerateCommandsRequest {
   };
 }
 
-test("buildOpenAiChatCompletionRequest uses strict json schema in structured mode", () => {
-  const request = buildOpenAiChatCompletionRequest("gpt-test", createRequest(true));
-
-  assert.equal(request.model, "gpt-test");
-  assert.deepEqual(request.messages, [
+test("buildOpenAiChatCompletionRequest 在结构化模式使用 strict json schema，兼容模式保持 json_object", () => {
+  const structured = buildOpenAiChatCompletionRequest("gpt-test", createRequest(true));
+  assert.equal(structured.model, "gpt-test");
+  assert.deepEqual(structured.messages, [
     { role: "system", content: "system prompt" },
     { role: "user", content: "user prompt" },
   ]);
-  assert.deepEqual(request.response_format, {
+  assert.deepEqual(structured.response_format, {
     type: "json_schema",
     json_schema: {
       name: "command_generation",
@@ -39,12 +39,9 @@ test("buildOpenAiChatCompletionRequest uses strict json schema in structured mod
       strict: true,
     },
   });
-});
 
-test("buildOpenAiChatCompletionRequest keeps json_object in compatibility mode", () => {
-  const request = buildOpenAiChatCompletionRequest("gpt-test", createRequest(false));
-
-  assert.deepEqual(request.response_format, { type: "json_object" });
+  const compatibility = buildOpenAiChatCompletionRequest("gpt-test", createRequest(false));
+  assert.deepEqual(compatibility.response_format, { type: "json_object" });
 });
 
 test("OpenAI client options omit authorization when API key is empty", () => {
@@ -73,12 +70,8 @@ test("OpenAI client options preserve non-empty API key", () => {
 });
 
 test("OpenAI 仅在有取消信号时传递 Signal 并关闭 SDK 自动重试", async () => {
-  const provider = new OpenAiCommandProvider({
-    apiKey: "openai-key",
-    model: "gpt-test",
-  });
   const calls: unknown[][] = [];
-  Reflect.set(provider, "client", {
+  const fakeClient = {
     chat: {
       completions: {
         create: (...args: unknown[]) => {
@@ -87,7 +80,14 @@ test("OpenAI 仅在有取消信号时传递 Signal 并关闭 SDK 自动重试", 
         },
       },
     },
-  });
+  } as unknown as OpenAI;
+  const provider = new OpenAiCommandProvider(
+    {
+      apiKey: "openai-key",
+      model: "gpt-test",
+    },
+    { client: fakeClient },
+  );
   const controller = new AbortController();
 
   await provider.generateCommands(createRequest(true), controller.signal);
@@ -99,41 +99,40 @@ test("OpenAI 仅在有取消信号时传递 Signal 并关闭 SDK 自动重试", 
   assert.equal(calls[1].length, 1);
 });
 
-test("buildGeminiGenerateContentRequest uses response schema in structured mode", () => {
-  const request = buildGeminiGenerateContentRequest("gemini-test", createRequest(true));
-
-  assert.equal(request.model, "gemini-test");
-  assert.equal(request.contents, "user prompt");
-  assert.deepEqual(request.config, {
+test("buildGeminiGenerateContentRequest 在结构化模式使用 response schema，兼容模式保持无 schema 的 JSON", () => {
+  const structured = buildGeminiGenerateContentRequest("gemini-test", createRequest(true));
+  assert.equal(structured.model, "gemini-test");
+  assert.equal(structured.contents, "user prompt");
+  assert.deepEqual(structured.config, {
     systemInstruction: "system prompt",
     responseMimeType: "application/json",
     responseJsonSchema: COMMAND_GENERATION_SCHEMA,
   });
-});
 
-test("buildGeminiGenerateContentRequest keeps JSON mode without schema in compatibility mode", () => {
-  const request = buildGeminiGenerateContentRequest("gemini-test", createRequest(false));
-
-  assert.deepEqual(request.config, {
+  const compatibility = buildGeminiGenerateContentRequest("gemini-test", createRequest(false));
+  assert.deepEqual(compatibility.config, {
     systemInstruction: "system prompt",
     responseMimeType: "application/json",
   });
 });
 
 test("Gemini provider maps the supplied signal to config.abortSignal only when present", async () => {
-  const provider = new GeminiCommandProvider({
-    apiKey: "gemini-key",
-    model: "gemini-test",
-  });
   const requests: unknown[] = [];
-  Reflect.set(provider, "client", {
+  const fakeClient = {
     models: {
       generateContent: (request: unknown) => {
         requests.push(request);
         return Promise.resolve({ candidates: [{ content: { parts: [{ text: "generated" }] } }] });
       },
     },
-  });
+  } as unknown as GoogleGenAI;
+  const provider = new GeminiCommandProvider(
+    {
+      apiKey: "gemini-key",
+      model: "gemini-test",
+    },
+    { client: fakeClient },
+  );
   const controller = new AbortController();
 
   await provider.generateCommands(createRequest(true), controller.signal);

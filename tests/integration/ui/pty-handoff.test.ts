@@ -48,8 +48,18 @@ def wait_for(marker):
 try:
     wait_for(b'Select a command')
     os.write(fd, b'\r')
+    if mode == 'paste-fields':
+        wait_for(b'PASTE_FIELD_ONE')
+        os.write(fd, b'\x1b[200~value\r\none\x1b[201~\r\r\x1b[200~LEAK\x1b[201~')
+        wait_for(b'PASTE_FIELD_TWO')
+        assert b'Final command:' not in output, 'same batch skipped the second field'
+        assert b'LEAK' not in output, 'old paste entered the next field'
+        os.write(fd, b'\x1b[200~value-two\x1b[201~\r\r')
     wait_for(b'Final command:')
-    os.write(fd, b'\r')
+    assert b'REVIEW_CHILD_READY\r\n' not in output, 'same batch executed the command'
+    os.write(fd, b'EXECUTE\r' if mode == 'paste-fields' else b'\r')
+    if mode == 'paste-fields':
+        wait_for(b'PASTE_VALUES_VERIFIED\r\n')
     wait_for(b'REVIEW_CHILD_READY\r\n')
     os.write(fd, b'verified\n')
     wait_for(b'REVIEW_CHILD_LINE:verified\r\n')
@@ -78,7 +88,7 @@ finally:
     os.close(fd)
 `;
 
-for (const mode of ["normal", "raw"]) {
+for (const mode of ["normal", "raw", "paste-fields"]) {
   void test(`真实 PTY ${mode} 模式完整交付子命令首行，原 stdin 可复用且自然退出`, (t) => {
     if (process.platform === "win32") {
       t.skip("此自动回归需要 POSIX PTY；Windows Console/ConPTY 需独立验收");

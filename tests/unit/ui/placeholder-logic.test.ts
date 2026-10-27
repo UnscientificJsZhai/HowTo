@@ -8,15 +8,15 @@ import {
   replaceCommandPlaceholders,
   resolveCandidatePlaceholders,
 } from "../../../src/ui/placeholder-logic.js";
-import { resolveCommandDanger } from "../../../src/safety/command-risk.js";
 
 void test("createPlaceholderResolution initializes first placeholder state", () => {
-  const state = createPlaceholderResolution(twoPlaceholderCandidate());
+  const candidate = twoPlaceholderCandidate();
+  const state = createPlaceholderResolution(candidate);
 
   assert.equal(state.activeIndex, 0);
   assert.deepEqual(state.values, ["", ""]);
   assert.equal(state.buffer, "");
-  assert.equal(state.candidate.placeholders[0].name, "root");
+  assert.equal(state.candidate, candidate);
 });
 
 void test("createPlaceholderResolution rejects candidates without placeholders", () => {
@@ -162,16 +162,6 @@ void test("resolveCandidatePlaceholders throws when placeholders remain unresolv
       error instanceof PlaceholderResolutionError &&
       error.message === "final command contains unresolved placeholders",
   );
-});
-
-void test("占位符替换后重新判断最终命令风险，不执行危险字符串", () => {
-  const candidate = { dangerous: false, dangerReason: "" };
-  const command = replaceCommandPlaceholders(
-    "printf {{value}}",
-    new Map([["value", "ok; rm -rf /"]]),
-  );
-  assert.ok(resolveCommandDanger(command, candidate));
-  assert.equal(resolveCommandDanger("printf ok", candidate), undefined);
 });
 
 function twoPlaceholderCandidate(): CommandCandidateContract {

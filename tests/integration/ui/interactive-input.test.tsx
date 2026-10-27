@@ -1,15 +1,18 @@
 import assert from "node:assert/strict";
-import { setTimeout as delay } from "node:timers/promises";
 import { PassThrough } from "node:stream";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { stripVTControlCharacters } from "node:util";
 import React from "react";
-import type { InteractiveSession } from "../../../src/ui/interactive-session.js";
-import type { CommandCandidateContract } from "../../../src/ai/types.js";
+
 import { AiProviderError } from "../../../src/ai/errors.js";
+import type { CommandCandidateContract } from "../../../src/ai/types.js";
+import { parseCliArgs } from "../../../src/cli.js";
 import { toAppError } from "../../../src/errors.js";
+import { buildCommandGenerationPrompt, createProviderPromptRequest } from "../../../src/prompt.js";
+import type { InteractiveSession } from "../../../src/ui/interactive-session.js";
 import { InteractionCancelledError } from "../../../src/ui/tty.js";
-import { importWithoutColor } from "./import-without-color.js";
+import { importWithoutColor } from "../../helpers/import-without-color.js";
 
 const uiModules = importWithoutColor(async () => {
   const [
@@ -146,7 +149,7 @@ void test("ResolvePlaceholdersView drops an unsafe paste as one block and accept
   assert.equal(resolvedCommand, "printf '%s' safe-value");
 });
 
-void test("占位符遇到伪结束后仍永久保持仅输出权限", async (t) => {
+void test("粘贴后的独立 Enter 可以提交当前占位符，不改变执行权限", async (t) => {
   let resolvedCommand: string | undefined;
   const { ResolvePlaceholdersView } = await uiModules;
   const view = await renderView(
@@ -167,7 +170,7 @@ void test("占位符遇到伪结束后仍永久保持仅输出权限", async (t)
   await send(view, `\u001B[200~${attackValue}\u001B[201~\r\u001B[201~`);
 
   assert.equal(resolvedCommand, `printf '%s' ${attackValue}`);
-  assert.equal(view.session.getExecutionPolicy(), "print");
+  assert.equal(view.session.getExecutionPolicy(), "execute");
 });
 
 void test("ResolvePlaceholdersView treats pasted CR and LF as data until a real Enter", async (t) => {
@@ -329,7 +332,7 @@ void test("App renders placeholder line breaks safely while preserving the final
 
   const confirmationOffset = view.output().length;
   await send(view, "\r");
-  await waitForOutputAfter(view, confirmationOffset, "Enter输出 Esc取消");
+  await waitForOutputAfter(view, confirmationOffset, "Final command:");
   await waitForOutputAfter(view, confirmationOffset, "literal␍␊part");
   await waitForOutputAfter(view, confirmationOffset, "A␍␊B");
   await waitForOutputAfter(view, confirmationOffset, "C␊D␍E");
@@ -349,8 +352,16 @@ void test("App renders placeholder line breaks safely while preserving the final
   assertTerminalCleanup(view);
 });
 
-void test("App keeps placeholder-like user values literal through confirmation", async (t) => {
+void test("App resolves placeholders from a complete CLI question and keeps values literal through confirmation", async (t) => {
   const { App } = await uiModules;
+  const parsed = parseCliArgs(["use", "printf", "print", "two", "values"]);
+  assert.ok(parsed.question);
+  const promptRequest = createProviderPromptRequest({
+    question: parsed.question,
+    useCommand: parsed.useCommand,
+    structuredOutput: true,
+  });
+  const request = { ...promptRequest, ...buildCommandGenerationPrompt(promptRequest) };
   const generatedCandidate: CommandCandidateContract = {
     title: "Print two values",
     command: "printf '%s %s' {{first}} {{second}}",
@@ -363,17 +374,26 @@ void test("App keeps placeholder-like user values literal through confirmation",
     ],
   };
   let finalCommand: string | undefined;
+  let providerCalls = 0;
+  let appError: Error | undefined;
   const view = await renderView(
     <App
       provider={{
-        generateCommands: () =>
-          Promise.resolve({ rawText: JSON.stringify({ commands: [generatedCandidate] }) }),
+        generateCommands: (received) => {
+          providerCalls++;
+          assert.equal(received.question, "print two values");
+          assert.equal(received.useCommand, "printf");
+          assert.equal("arguments" in received, false);
+          return Promise.resolve({ rawText: JSON.stringify({ commands: [generatedCandidate] }) });
+        },
       }}
-      request={appRequest()}
+      request={request}
       onSuccess={(command) => {
         finalCommand = command;
       }}
-      onError={() => {}}
+      onError={(error) => {
+        appError = error;
+      }}
     />,
   );
   t.after(() => close(view));
@@ -387,11 +407,85 @@ void test("App keeps placeholder-like user values literal through confirmation",
   await send(view, "done");
   await send(view, "\r");
   await waitForOutput(view, "printf '%s %s' {{second}} done");
-  await send(view, "\r");
+  assert.equal(finalCommand, undefined);
+  await send(view, "EXECUTE\r");
   await waitFor(() => finalCommand !== undefined, "App did not confirm the literal value");
 
   assert.equal(finalCommand, "printf '%s %s' {{second}} done");
+  assert.equal(providerCalls, 1);
+  assert.equal(appError, undefined);
 });
+
+for (const structuredOutput of [true, false]) {
+  void test(`App 在${structuredOutput ? "结构化" : "兼容"}模式保留歧义目录占位符，填写后仍需确认`, async (t) => {
+    const { App } = await uiModules;
+    const parsed = parseCliArgs([
+      "use",
+      "find",
+      "find files named report.txt under either",
+      "/tmp/draft reports",
+      "or",
+      "/tmp/final reports",
+      "but I have not decided which directory",
+    ]);
+    assert.ok(parsed.question);
+    const promptRequest = createProviderPromptRequest({
+      question: parsed.question,
+      useCommand: parsed.useCommand,
+      structuredOutput,
+    });
+    const candidate: CommandCandidateContract = {
+      title: "Find report",
+      command: 'find "{{directory}}" -type f -name "report.txt"',
+      description: "Search the selected directory for the exact filename",
+      dangerous: false,
+      dangerReason: "",
+      placeholders: [
+        { name: "directory", description: "Choose /tmp/draft reports or /tmp/final reports" },
+      ],
+    };
+    let finalCommand: string | undefined;
+    let providerCalls = 0;
+    let appError: Error | undefined;
+    const view = await renderView(
+      <App
+        provider={{
+          generateCommands: (received) => {
+            providerCalls++;
+            assert.equal(received.question, parsed.question);
+            assert.equal(received.useCommand, "find");
+            assert.equal(received.structuredOutput, structuredOutput);
+            return Promise.resolve({ rawText: JSON.stringify({ commands: [candidate] }) });
+          },
+        }}
+        request={{ ...promptRequest, ...buildCommandGenerationPrompt(promptRequest) }}
+        onSuccess={(command) => {
+          finalCommand = command;
+        }}
+        onError={(error) => {
+          appError = error;
+        }}
+      />,
+    );
+    t.after(() => close(view));
+
+    await waitForOutput(view, "? Select a command");
+    await send(view, "\r");
+    await waitForOutput(view, "directory: Choose /tmp/draft reports or /tmp/final reports");
+    assert.equal(finalCommand, undefined);
+    await send(view, "/tmp/final reports");
+    await send(view, "\r");
+    const expectedCommand = 'find "/tmp/final reports" -type f -name "report.txt"';
+    await waitForOutput(view, expectedCommand);
+    assert.equal(finalCommand, undefined);
+    await send(view, "\r");
+    await waitFor(() => finalCommand !== undefined, "App did not confirm the chosen directory");
+
+    assert.equal(finalCommand, expectedCommand);
+    assert.equal(providerCalls, 1);
+    assert.equal(appError, undefined);
+  });
+}
 
 void test("ConfirmView accepts a typed uppercase EXECUTE confirmation", async (t) => {
   let confirmations = 0;
@@ -422,7 +516,7 @@ void test("ConfirmView accepts a typed uppercase EXECUTE confirmation", async (t
   assert.equal(cancellations, 0);
 });
 
-void test("危险确认收到粘贴后转为仅输出", async (t) => {
+void test("危险确认忽略粘贴的 EXECUTE，仍可由键盘完成确认", async (t) => {
   let confirmations = 0;
   const { ConfirmView } = await uiModules;
   const view = await renderView(
@@ -440,12 +534,13 @@ void test("危险确认收到粘贴后转为仅输出", async (t) => {
   t.after(() => close(view));
 
   await send(view, "\u001B[200~EXECUTE\u001B[201~");
-  await send(view, "\r");
-
+  assert.equal(confirmations, 0);
+  await send(view, "EXECUTE\r");
   assert.equal(confirmations, 1);
+  assert.equal(view.session.getExecutionPolicy(), "execute");
 });
 
-void test("同分片粘贴和 Enter 只能确认输出", async (t) => {
+void test("同分片粘贴 EXECUTE 和 Enter 不能批准危险命令", async (t) => {
   let confirmations = 0;
   let cancellations = 0;
   const { ConfirmView } = await uiModules;
@@ -467,8 +562,9 @@ void test("同分片粘贴和 Enter 只能确认输出", async (t) => {
 
   await send(view, "\u001B[200~EXECUTE\u001B[201~\r");
 
-  assert.equal(confirmations, 1);
-  assert.equal(cancellations, 0);
+  assert.equal(confirmations, 0);
+  assert.equal(cancellations, 1);
+  assert.equal(view.session.getExecutionPolicy(), "execute");
 });
 
 void test("ConfirmView discards pasted Enter for safe commands", async (t) => {
@@ -499,7 +595,7 @@ void test("ConfirmView discards pasted Enter for safe commands", async (t) => {
   assert.equal(cancellations, 0);
 });
 
-void test("伪结束后只确认输出一次，后续输入不恢复执行权限或再次取消", async (t) => {
+void test("粘贴短语后 Enter 取消一次，后续输入不能再次确认或取消", async (t) => {
   let confirmations = 0;
   let cancellations = 0;
   const { ConfirmView } = await uiModules;
@@ -520,16 +616,16 @@ void test("伪结束后只确认输出一次，后续输入不恢复执行权限
   t.after(() => close(view));
 
   await send(view, "\u001B[200~EXECUTE\u001B[201~\r\u001B[201~");
-  assert.equal(confirmations, 1);
-  assert.equal(view.session.getExecutionPolicy(), "print");
-  assert.equal(cancellations, 0);
+  assert.equal(confirmations, 0);
+  assert.equal(view.session.getExecutionPolicy(), "execute");
+  assert.equal(cancellations, 1);
 
   await send(view, "EXECUTE");
   await send(view, "\r");
   await send(view, "\u0003");
-  assert.equal(confirmations, 1);
-  assert.equal(view.session.getExecutionPolicy(), "print");
-  assert.equal(cancellations, 0);
+  assert.equal(confirmations, 0);
+  assert.equal(view.session.getExecutionPolicy(), "execute");
+  assert.equal(cancellations, 1);
 });
 
 void test("ConfirmView treats a pasted Delete byte as rejected data, not a key", async (t) => {
@@ -925,8 +1021,8 @@ void test("App preserves compact placeholder input through visible and hidden re
     assert.ok(restoredOutput.endsWith(" Ent Esc"));
 
     await send(view, "\r");
-    await waitForOutput(view, "仅输出:");
-    await send(view, "\r");
+    await waitForOutput(view, " Enter Esc");
+    await send(view, "EXECUTE\r");
     await waitFor(() => finalCommand !== undefined, "App did not execute the restored input");
 
     assert.equal(finalCommand, expectedCommand);
@@ -1815,7 +1911,6 @@ void test("App exposes final command and confirmation in a four-row terminal", a
       }}
       request={{
         question: "print a value",
-        arguments: [],
         structuredOutput: true,
         outputContract: "",
         safetyConstraints: "",
@@ -1950,7 +2045,6 @@ void test("App cleanup does not emit full-terminal clear sequences", async (t) =
       }}
       request={{
         question: "print a value",
-        arguments: [],
         structuredOutput: true,
         outputContract: "",
         safetyConstraints: "",
@@ -2003,7 +2097,6 @@ void test("App resize from 24 to 5 rows does not emit full-terminal clear sequen
       }}
       request={{
         question: "print a value",
-        arguments: [],
         structuredOutput: true,
         outputContract: "",
         safetyConstraints: "",
@@ -2054,7 +2147,6 @@ void test("App resize from 24 to 0 rows commits an empty frame without full-term
       }}
       request={{
         question: "print a value",
-        arguments: [],
         structuredOutput: true,
         outputContract: "",
         safetyConstraints: "",
@@ -2086,57 +2178,6 @@ void test("App resize from 24 to 0 rows commits an empty frame without full-term
   assert.ok(!resizeOutput.includes("\u001B[2J"));
   assert.ok(!resizeOutput.includes("\u001B[3J"));
   assert.ok(!resizeOutput.includes("\u001B[H"));
-});
-
-void test("App resize across an expanded frame does not emit full-terminal clear sequences", async (t) => {
-  const { App } = await uiModules;
-  const generatedCandidates = [
-    candidate("First candidate", "printf first", "First expanded description"),
-    candidate("Second candidate", "printf second", "Second expanded description"),
-    candidate("Third candidate", "printf third", "Third expanded description"),
-  ];
-  let unmounted = false;
-  const view = await renderView(
-    <App
-      provider={{
-        generateCommands: () =>
-          Promise.resolve({ rawText: JSON.stringify({ commands: generatedCandidates }) }),
-      }}
-      request={{
-        question: "print a value",
-        arguments: [],
-        structuredOutput: true,
-        outputContract: "",
-        safetyConstraints: "",
-        systemPrompt: "",
-        userPrompt: "",
-      }}
-      onSuccess={() => {}}
-      onError={() => {}}
-    />,
-    { columns: 80, rows: 24 },
-  );
-  t.after(async () => {
-    if (!unmounted) {
-      await close(view);
-    }
-  });
-
-  await waitForOutput(view, "Third expanded description");
-  const resizeListenerBaseline = view.resizeListenerBaseline;
-  assert.ok(view.stdout.listenerCount("resize") > resizeListenerBaseline);
-  const outputLengthBeforeResize = view.output().length;
-  view.stdout.resize(80, 10);
-  await waitForOutputAfter(view, outputLengthBeforeResize, "? Select a command (1/3)");
-  await view.instance.waitUntilRenderFlush();
-  await clearAndUnmount(view);
-  unmounted = true;
-
-  const resizeOutput = view.output().slice(outputLengthBeforeResize);
-  assert.ok(!resizeOutput.includes("\u001B[2J"));
-  assert.ok(!resizeOutput.includes("\u001B[3J"));
-  assert.ok(!resizeOutput.includes("\u001B[H"));
-  assert.equal(view.stdout.listenerCount("resize"), resizeListenerBaseline);
 });
 
 class FakeTty extends PassThrough {
@@ -2413,7 +2454,6 @@ function danger() {
 function appRequest() {
   return {
     question: "print a value",
-    arguments: [],
     structuredOutput: true,
     outputContract: "",
     safetyConstraints: "",

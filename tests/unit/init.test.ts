@@ -1,23 +1,17 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
 import test from "node:test";
-
 import {
-  countTerminalRows,
   clearInitializationOutput,
+  countTerminalRows,
   createFileConfig,
   erasePreviousTerminalRows,
-  validateAndPersistInitializationConfig,
 } from "../../src/init/index.js";
 import {
   applyInitializationInput,
   createInitialInitializationState,
   type InitializationKeyInput,
 } from "../../src/init/state.js";
-import { ConfigError, DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL } from "../../src/config.js";
+import { DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL } from "../../src/config.js";
 
 test("initialization output clear erases the requested rows without clearing the full screen", () => {
   let output = "";
@@ -203,92 +197,26 @@ test("OpenAI empty base URL is not written to file config", () => {
   });
 });
 
-test("initialization validation failure preserves the existing config byte for byte", async () => {
-  const homeDirectory = await mkdtemp(join(tmpdir(), "howto-init-transaction-test-"));
-  const configPath = join(homeDirectory, ".howto", "config.json");
-  const originalConfig = '{"aiProvider":"gemini","geminiApiKey":"existing-secret"}\n';
-  await mkdir(dirname(configPath), { recursive: true });
-  await writeFile(configPath, originalConfig, "utf8");
-
-  await assert.rejects(
-    () =>
-      validateAndPersistInitializationConfig(
-        { provider: "openai", apiKey: "new-secret", model: "openai-model" },
-        { print: false, aiProvider: "gemini" },
-        { HOME: homeDirectory },
-      ),
-    ConfigError,
-  );
-
-  assert.equal(await readFile(configPath, "utf8"), originalConfig);
-  assert.deepEqual(await readdir(dirname(configPath)), ["config.json"]);
-});
-
-test("initialization returns merged overrides but persists only submitted provider fields", async () => {
-  const homeDirectory = await mkdtemp(join(tmpdir(), "howto-init-override-test-"));
-
-  const config = await validateAndPersistInitializationConfig(
-    {
-      provider: "openai",
-      apiKey: "submitted-openai-secret",
-      model: "submitted-openai-model",
-      openaiBaseUrl: "https://submitted.example/v1",
-    },
-    { print: false, aiProvider: "gemini" },
-    {
-      HOME: homeDirectory,
-      HOWTO_GEMINI_API_KEY: "environment-gemini-secret",
-      HOWTO_GEMINI_MODEL: "environment-gemini-model",
-      HOWTO_STRUCTURED_OUTPUT: "false",
-    },
-  );
-
-  assert.deepEqual(config, {
-    aiProvider: "gemini",
-    gemini: {
-      apiKey: "environment-gemini-secret",
-      model: "environment-gemini-model",
-    },
-    openai: {
-      apiKey: "submitted-openai-secret",
-      model: "submitted-openai-model",
-      baseUrl: "https://submitted.example/v1",
-    },
-    structuredOutput: false,
-  });
-  assert.deepEqual(
-    JSON.parse(await readFile(join(homeDirectory, ".howto", "config.json"), "utf8")),
-    {
-      aiProvider: "openai",
-      openaiApiKey: "submitted-openai-secret",
-      openaiModel: "submitted-openai-model",
-      openaiApiUrl: "https://submitted.example/v1",
-    },
-  );
-  assert.deepEqual(await readdir(join(homeDirectory, ".howto")), ["config.json"]);
-});
-
-test("initialization rejects a relative HOME without creating a repository config directory", async () => {
-  const relativeHome = `howto-relative-init-${process.pid}-${Date.now()}`;
-
-  assert.equal(existsSync(relativeHome), false);
-  await assert.rejects(
-    () =>
-      validateAndPersistInitializationConfig(
-        { provider: "openai", apiKey: "new-secret", model: "openai-model" },
-        { print: false },
-        { HOME: relativeHome },
-      ),
-    ConfigError,
-  );
-  assert.equal(existsSync(relativeHome), false);
-});
-
 test("input step escape returns to provider selection", () => {
   const state = applyInitializationInput(createInitialInitializationState(), keypress("1")).state;
   const update = applyInitializationInput(state, keypress("", { escape: true }));
 
   assert.deepEqual(update.state, createInitialInitializationState());
+});
+
+test("第三个 provider 使用 ChatGPT 异步初始化，不进入 API key 字段", () => {
+  const initial = createInitialInitializationState();
+  const selected = applyInitializationInput(initial, keypress("3"));
+  assert.deepEqual(selected, { state: { step: "chatgpt" } });
+  const arrowSelected = applyInitializationInput(initial, keypress("", { upArrow: true }));
+  assert.deepEqual(
+    applyInitializationInput(arrowSelected.state, keypress("", { return: true })),
+    selected,
+  );
+  assert.deepEqual(
+    applyInitializationInput(selected.state, keypress("", { escape: true })).state,
+    initial,
+  );
 });
 
 test("Ctrl+C cancels initialization", () => {

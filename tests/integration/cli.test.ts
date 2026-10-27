@@ -8,9 +8,235 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { createChatGptStore } from "../../src/auth/chatgpt/storage.js";
 import { run } from "../../src/index.js";
 
 const CLI_ENTRYPOINT = fileURLToPath(new URL("../../src/index.js", import.meta.url));
+
+for (const structuredOutput of [true, false]) {
+  test(`完整 question 进入真实 CLI 请求，${structuredOutput ? "结构化" : "兼容"}模式只打印占位符候选`, async () => {
+    const requests: string[] = [];
+    const candidate = {
+      title: "查找文件",
+      command: "find . -name '{{filename}}'",
+      description: "填写文件名后查找",
+      dangerous: false,
+      dangerReason: "",
+      placeholders: [{ name: "filename", description: "文件名" }],
+    };
+    const server = createServer((request, response) => {
+      let body = "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk: string) => {
+        body += chunk;
+      });
+      request.on("end", () => {
+        requests.push(body);
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            choices: [{ message: { content: JSON.stringify({ commands: [candidate] }) } }],
+          }),
+        );
+      });
+    });
+    const homeDirectory = await mkdtemp(join(tmpdir(), "howto-question-test-"));
+    try {
+      const localUrl = await listenOnLoopback(server);
+      for (const { args, question, useCommand } of [
+        {
+          args: [
+            "list",
+            "files",
+            "--print",
+            "changed",
+            "--openai-model=MODEL_OPTION_SENTINEL",
+            "today",
+          ],
+          question: "list files changed today",
+          useCommand: undefined,
+        },
+        {
+          args: [
+            "--print",
+            "use",
+            "find",
+            "find",
+            "report.txt",
+            "--openai-model=MODEL_OPTION_SENTINEL",
+            "under",
+            "/tmp/my files",
+          ],
+          question: "find report.txt under /tmp/my files",
+          useCommand: "find",
+        },
+        {
+          args: [
+            "--print",
+            "--openai-model=MODEL_OPTION_SENTINEL",
+            "  explain\tthis\n",
+            "option",
+            "--",
+            "--force",
+            "--print",
+            "  ",
+          ],
+          question: "  explain\tthis\n option --force --print   ",
+          useCommand: undefined,
+        },
+      ]) {
+        const result = await runCliProcess(
+          [
+            "--ai-provider",
+            "openai",
+            "--openai-api-url",
+            localUrl,
+            "--openai-api-key=KEY_OPTION_SENTINEL",
+            `--structured-output=${structuredOutput}`,
+            ...args,
+          ],
+          { HOME: homeDirectory, PATH: process.env.PATH },
+        );
+        assert.equal(result.exitCode, 0, result.stderr.toString());
+        assert.equal(result.stdout.toString(), `${candidate.command}\n`);
+        assert.equal(result.stderr.length, 0);
+        const payload = JSON.parse(requests.at(-1) ?? "null") as {
+          model: string;
+          messages: { role: string; content: string }[];
+          response_format: { type: string };
+        };
+        const userPrompt = payload.messages.find((message) => message.role === "user")?.content;
+        assert.ok(userPrompt);
+        assert.equal(userPrompt.split("\n")[1], `question: ${JSON.stringify(question)}`);
+        assert.equal(userPrompt.includes("argument:"), false);
+        assert.equal(userPrompt.includes("useCommand:"), useCommand !== undefined);
+        if (useCommand !== undefined)
+          assert.ok(userPrompt.includes(`useCommand: ${JSON.stringify(useCommand)}`));
+        for (const message of payload.messages) {
+          for (const excluded of [
+            "KEY_OPTION_SENTINEL",
+            "MODEL_OPTION_SENTINEL",
+            "--ai-provider",
+            "--structured-output",
+            localUrl,
+          ]) {
+            assert.equal(message.content.includes(excluded), false, excluded);
+          }
+        }
+        assert.equal(payload.model, "MODEL_OPTION_SENTINEL");
+        assert.equal(
+          payload.response_format.type,
+          structuredOutput ? "json_schema" : "json_object",
+        );
+      }
+      assert.equal(requests.length, 3);
+      assert.deepEqual(await readdir(homeDirectory), []);
+    } finally {
+      await closeServer(server);
+      await rm(homeDirectory, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const corruptConfig of [false, true]) {
+  test(`空白和缺失问题在${corruptConfig ? "损坏" : "有效"}配置加载及 AI 请求之前拒绝`, async () => {
+    let requests = 0;
+    const server = createServer((request, response) => {
+      requests++;
+      request.resume();
+      response.writeHead(400);
+      response.end();
+    });
+    const homeDirectory = await mkdtemp(join(tmpdir(), "howto-empty-question-test-"));
+    try {
+      const localUrl = await listenOnLoopback(server);
+      await mkdir(join(homeDirectory, ".howto"));
+      const configPath = join(homeDirectory, ".howto", "config.json");
+      const configContent = corruptConfig
+        ? "{invalid JSON"
+        : JSON.stringify({
+            aiProvider: "openai",
+            openaiApiUrl: localUrl,
+            openaiApiKey: "",
+            openaiModel: "fake-model",
+          });
+      await writeFile(configPath, configContent, "utf8");
+      for (const args of [
+        [],
+        ["--print"],
+        ["--print", "", "   "],
+        ["\t\r\n", "\u00a0"],
+        ["use"],
+        ["use", "find"],
+        ["--print", "use", "find", ""],
+        ["use", "find", " ", "\n\t"],
+      ]) {
+        const result = await runCliProcess(args, { HOME: homeDirectory, PATH: process.env.PATH });
+        assert.equal(result.exitCode, 2, JSON.stringify(args));
+        assert.equal(result.stdout.length, 0);
+        assert.match(
+          result.stderr.toString(),
+          /missing question|question must not be blank|use mode requires/,
+        );
+        assert.match(result.stderr.toString(), /Usage: howto/);
+        assert.doesNotMatch(
+          result.stderr.toString(),
+          /Configuration error|AI provider request failed|TTY/,
+        );
+      }
+      assert.equal(requests, 0);
+      assert.equal(await readFile(configPath, "utf8"), configContent);
+    } finally {
+      await closeServer(server);
+      await rm(homeDirectory, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const configContent of ["{invalid JSON", '{"openaiModel":12}']) {
+  test("独立 ChatGPT 状态及显式账号管理不被损坏的普通配置阻断", async () => {
+    const homeDirectory = await mkdtemp(join(tmpdir(), "howto-account-command-"));
+    try {
+      const store = createChatGptStore(homeDirectory);
+      await store.withLock((transaction) =>
+        transaction.save({
+          version: 1,
+          accounts: [
+            {
+              id: "account-test",
+              label: "Test account",
+              clientId: "oaiapp_test",
+              issuer: "https://auth.openai.com",
+              generation: 0,
+            },
+          ],
+        }),
+      );
+      const path = join(homeDirectory, ".howto", "config.json");
+      await writeFile(path, configContent, "utf8");
+      const env = { HOME: homeDirectory, PATH: process.env.PATH, SHELL: "/unsupported-shell" };
+      const status = await runCliProcess(["--chatgpt-status"], env, homeDirectory);
+      assert.equal(status.exitCode, 0);
+      assert.match(status.stdout.toString(), /account-test/);
+      const models = await runCliProcess(
+        ["--chatgpt-models", "--chatgpt-account", "account-test"],
+        env,
+        homeDirectory,
+      );
+      assert.equal(models.exitCode, 2);
+      assert.match(models.stderr.toString(), /ChatGPT sign-in is required/);
+      const logout = await runCliProcess(
+        ["--chatgpt-logout", "--chatgpt-account", "account-test"],
+        env,
+        homeDirectory,
+      );
+      assert.equal(logout.exitCode, 0);
+      assert.equal(await readFile(path, "utf8"), configContent);
+    } finally {
+      await rm(homeDirectory, { recursive: true, force: true });
+    }
+  });
+}
 
 for (const corruptConfig of [false, true]) {
   test(`--version 在非 TTY、${corruptConfig ? "配置损坏" : "未初始化"}时从任意工作目录输出包版本`, async () => {
@@ -447,3 +673,14 @@ async function closeServer(server: Server): Promise<void> {
 function isAddressInfo(address: AddressInfo | string | null): address is AddressInfo {
   return typeof address === "object" && address !== null;
 }
+
+test("--version 用法错误仅输出错误与 Usage，退出码为 2", async () => {
+  for (const args of [["--version=true"], ["--version", "--init"], ["question", "--version"]]) {
+    const { value, logs, errors } = await captureConsoleOutput(() => run(args));
+    assert.equal(value.exitCode, 2);
+    assert.deepEqual(logs, []);
+    assert.match(errors.join("\n"), /--version (?:does not accept a value|must be used alone)/);
+    assert.match(errors.join("\n"), /Usage: howto/);
+    assert.match(errors.join("\n"), /howto --version/);
+  }
+});

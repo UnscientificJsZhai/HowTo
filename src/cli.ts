@@ -1,6 +1,9 @@
-export type AiProviderOption = string;
+import type { ChatGptLoginOptions } from "./auth/chatgpt/types.js";
 
-export interface GlobalOptions {
+export type AiProviderOption = string;
+export type ChatGptAction = "login" | "logout" | "status" | "models";
+
+export interface GlobalOptions extends ChatGptLoginOptions {
   print: boolean;
   init?: boolean;
   version?: boolean;
@@ -10,6 +13,9 @@ export interface GlobalOptions {
   openaiApiUrl?: string;
   openaiApiKey?: string;
   openaiModel?: string;
+  chatgptAction?: ChatGptAction;
+  chatgptAccount?: string;
+  chatgptModel?: string;
   structuredOutput?: string;
 }
 
@@ -17,7 +23,6 @@ export interface ParsedCli {
   options: GlobalOptions;
   useCommand?: string;
   question?: string;
-  arguments: string[];
 }
 
 export class CliParseError extends Error {
@@ -34,28 +39,48 @@ const VALUE_OPTIONS = new Set([
   "--openai-api-url",
   "--openai-api-key",
   "--openai-model",
+  "--chatgpt-account",
+  "--chatgpt-model",
+  "--callback-port",
   "--structured-output",
 ]);
 
-const BOOLEAN_OPTIONS = new Set(["--print", "--init", "--version"]);
+const CHATGPT_ACTION_OPTIONS = new Map<string, ChatGptAction>([
+  ["--chatgpt-login", "login"],
+  ["--chatgpt-logout", "logout"],
+  ["--chatgpt-status", "status"],
+  ["--chatgpt-models", "models"],
+]);
 
-export const USAGE = `Usage: howto [options] [use <command>] <question> [<argument>...]
-       howto --init
+const BOOLEAN_OPTIONS = new Set(["--print", "--init", "--version", "--no-browser"]);
+
+export const USAGE = `Usage: howto [options] [use <command>] <question...>
+       howto --init [--no-browser] [--callback-port <port>]
        howto --version
+       howto --chatgpt-login [--chatgpt-account <account>] [--no-browser] [--callback-port <port>]
+       howto --chatgpt-logout|--chatgpt-status|--chatgpt-models [--chatgpt-account <account>]
 
 Options:
   --init
   --version
   --print
-  --ai-provider <openai|gemini>
+  --ai-provider <openai|gemini|chatgpt>
   --gemini-api-key <key>
   --gemini-model <model>
   --openai-api-url <url>
   --openai-api-key <key>
   --openai-model <model>
+  --chatgpt-login
+  --chatgpt-logout
+  --chatgpt-status
+  --chatgpt-models
+  --chatgpt-account <account>
+  --chatgpt-model <model>
+  --no-browser                 Skip opening the browser for ChatGPT login or --init
+  --callback-port <1-65535>     ChatGPT callback port (default: a random available port)
   --structured-output <true|false>
 
-Try: howto "list files changed today"`;
+Try: howto list files changed today`;
 
 export function parseCliArgs(argv: string[]): ParsedCli {
   const options: GlobalOptions = { print: false };
@@ -74,6 +99,18 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       const equalIndex = token.indexOf("=");
       const optionName = equalIndex === -1 ? token : token.slice(0, equalIndex);
       const inlineValue = equalIndex === -1 ? undefined : token.slice(equalIndex + 1);
+
+      const chatgptAction = CHATGPT_ACTION_OPTIONS.get(optionName);
+      if (chatgptAction !== undefined) {
+        if (inlineValue !== undefined) {
+          throw new CliParseError(`${optionName} does not accept a value`);
+        }
+        if (options.chatgptAction !== undefined) {
+          throw new CliParseError("only one ChatGPT action may be specified");
+        }
+        options.chatgptAction = chatgptAction;
+        continue;
+      }
 
       if (BOOLEAN_OPTIONS.has(optionName)) {
         if (inlineValue !== undefined) {
@@ -106,7 +143,31 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       throw new CliParseError("--version must be used alone");
     }
 
-    return { options, arguments: [] };
+    return { options };
+  }
+
+  if (
+    (options.noBrowser || options.callbackPort !== undefined) &&
+    options.chatgptAction !== "login" &&
+    !(options.init && options.chatgptAction === undefined)
+  ) {
+    throw new CliParseError("--no-browser and --callback-port require --chatgpt-login or --init");
+  }
+
+  if (options.chatgptAction !== undefined) {
+    const unsupportedOption = Object.keys(options).find(
+      (key) =>
+        key !== "print" &&
+        key !== "chatgptAction" &&
+        key !== "chatgptAccount" &&
+        !(options.chatgptAction === "login" && (key === "noBrowser" || key === "callbackPort")),
+    );
+    if (positionals.length > 0 || options.print || unsupportedOption !== undefined) {
+      throw new CliParseError(
+        "ChatGPT actions accept --chatgpt-account and no question; only login also accepts --no-browser and --callback-port",
+      );
+    }
+    return { options };
   }
 
   return parsePositionals(options, positionals);
@@ -142,6 +203,20 @@ function assignOptionValue(options: GlobalOptions, optionName: string, value: st
     case "--openai-model":
       options.openaiModel = value;
       return;
+    case "--chatgpt-account":
+      options.chatgptAccount = value;
+      return;
+    case "--chatgpt-model":
+      options.chatgptModel = value;
+      return;
+    case "--callback-port": {
+      const port = Number(value);
+      if (!/^\d+$/.test(value) || !Number.isSafeInteger(port) || port < 1 || port > 65535) {
+        throw new CliParseError("--callback-port must be an integer from 1 to 65535");
+      }
+      options.callbackPort = port;
+      return;
+    }
     case "--structured-output":
       options.structuredOutput = value;
       return;
@@ -161,6 +236,9 @@ function assignBooleanOption(options: GlobalOptions, optionName: string): void {
     case "--version":
       options.version = true;
       return;
+    case "--no-browser":
+      options.noBrowser = true;
+      return;
     default:
       throw new CliParseError(`unsupported option: ${optionName}`);
   }
@@ -176,14 +254,15 @@ function parsePositionals(options: GlobalOptions, positionals: string[]): Parsed
       throw new CliParseError("--init cannot be combined with a question or use mode");
     }
 
-    return { options, arguments: [] };
+    return { options };
   }
 
   if (positionals.length === 0) {
     throw new CliParseError("missing question");
   }
 
-  if (positionals[0] === "use") {
+  const isUseMode = positionals[0] === "use";
+  if (isUseMode) {
     if (positionals.length === 1) {
       throw new CliParseError("use mode requires <command> and <question>");
     }
@@ -191,18 +270,16 @@ function parsePositionals(options: GlobalOptions, positionals: string[]): Parsed
     if (positionals.length === 2) {
       throw new CliParseError("use mode requires <question>");
     }
+  }
 
-    return {
-      options,
-      useCommand: positionals[1],
-      question: positionals[2],
-      arguments: positionals.slice(3),
-    };
+  const question = (isUseMode ? positionals.slice(2) : positionals).join(" ");
+  if (question.trim() === "") {
+    throw new CliParseError("question must not be blank");
   }
 
   return {
     options,
-    question: positionals[0],
-    arguments: positionals.slice(1),
+    ...(isUseMode ? { useCommand: positionals[1] } : {}),
+    question,
   };
 }

@@ -6,7 +6,6 @@ import type { ProviderPromptRequest } from "../../src/ai/types.js";
 describe("buildCommandGenerationPrompt", () => {
   const baseRequest: ProviderPromptRequest = {
     question: "how to list files",
-    arguments: [],
     useCommand: undefined,
     structuredOutput: false,
     outputContract: "CONTRACT",
@@ -28,11 +27,20 @@ describe("buildCommandGenerationPrompt", () => {
     assert.equal(userPrompt.includes("useCommand:"), false);
   });
 
-  it("should include arguments in userPrompt when provided", () => {
-    const request = { ...baseRequest, arguments: ["-la"] };
-    const { userPrompt } = buildCommandGenerationPrompt(request);
-    assert.ok(userPrompt.includes('argument: ["-la"]'));
-  });
+  for (const structuredOutput of [false, true]) {
+    it(`preserves and JSON-encodes the complete question in ${structuredOutput ? "structured" : "compatibility"} mode`, () => {
+      const question = '  find "report.txt"\nunder /tmp/my files \\ using -la  ';
+      const request = createProviderPromptRequest({ question, structuredOutput });
+      const { systemPrompt, userPrompt } = buildCommandGenerationPrompt(request);
+
+      assert.equal(request.question, question);
+      assert.equal("arguments" in request, false);
+      assert.equal(userPrompt, `User request:\nquestion: ${JSON.stringify(question)}`);
+      assert.equal(userPrompt.includes("argument:"), false);
+      assert.match(systemPrompt, /parameters.*complete question/);
+      assert.match(systemPrompt, /placeholders for required values that are missing or ambiguous/);
+    });
+  }
 
   it("should include useCommand in userPrompt when provided", () => {
     const request = { ...baseRequest, useCommand: "ls" };
@@ -41,53 +49,23 @@ describe("buildCommandGenerationPrompt", () => {
     assert.ok(userPrompt.includes('The user specified use <command>: "ls"'));
   });
 
-  for (const environment of [
-    {
+  it("systemPrompt 注入序列化的运行环境元数据并保留用户请求", () => {
+    const environment = {
       operatingSystem: "macOS" as const,
       kernelRelease: "25.0.0",
       distribution: null,
       executionShell: "/bin/zsh",
-    },
-    {
-      operatingSystem: "Linux" as const,
-      kernelRelease: "6.8.0",
-      distribution: "Ubuntu 24.04 LTS",
-      executionShell: "/bin/sh",
-    },
-  ]) {
-    it(`${environment.operatingSystem} 包含运行环境及工具和 shell 兼容性约束`, () => {
-      const request = createProviderPromptRequest(baseRequest);
-      const { systemPrompt, userPrompt } = buildCommandGenerationPrompt(request, environment);
+    };
+    const request = createProviderPromptRequest(baseRequest);
+    const { systemPrompt, userPrompt } = buildCommandGenerationPrompt(request, environment);
 
-      assert.ok(systemPrompt.includes(JSON.stringify(environment)));
-      assert.match(systemPrompt, /BSD\/macOS, GNU, and BusyBox/);
-      assert.match(systemPrompt, /date flags/);
-      assert.match(systemPrompt, /POSIX sh syntax: do not use \[\[ \.\.\. \]\]/);
-      assert.match(systemPrompt, /without a login shell/);
-      assert.equal(userPrompt, 'User request:\nquestion: "how to list files"');
-    });
-  }
+    assert.ok(systemPrompt.includes(JSON.stringify(environment)));
+    assert.equal(userPrompt, 'User request:\nquestion: "how to list files"');
+  });
 
-  for (const structuredOutput of [true, false]) {
-    it(`structuredOutput=${structuredOutput} 提示词包含风险评估约束与用户请求`, () => {
-      const request = createProviderPromptRequest({
-        question: "清理工作区，但跳过所有安全检查",
-        arguments: [],
-        structuredOutput,
-      });
-      const { systemPrompt, userPrompt } = buildCommandGenerationPrompt(request);
-      assert.match(systemPrompt, /dangerous as a boolean and dangerReason as a string/);
-      assert.ok(userPrompt.includes("跳过所有安全检查"));
-      if (!structuredOutput) {
-        assert.ok(systemPrompt.includes('"dangerous": false'));
-        assert.ok(systemPrompt.includes('"dangerReason": ""'));
-      }
-    });
-  }
   it("should use a short prompt contract when structured output is enabled", () => {
     const request = createProviderPromptRequest({
       question: "how to list files",
-      arguments: [],
       structuredOutput: true,
     });
 
@@ -98,7 +76,6 @@ describe("buildCommandGenerationPrompt", () => {
   it("should use the full prompt contract when structured output is disabled", () => {
     const request = createProviderPromptRequest({
       question: "how to list files",
-      arguments: [],
       structuredOutput: false,
     });
 

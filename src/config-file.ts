@@ -10,6 +10,8 @@ export interface FileConfig {
   openaiApiUrl?: string;
   openaiApiKey?: string;
   openaiModel?: string;
+  chatgptAccount?: string;
+  chatgptModel?: string;
   structuredOutput?: string | boolean;
 }
 
@@ -20,6 +22,8 @@ const CONFIG_FILE_FIELDS = new Set<keyof FileConfig>([
   "openaiApiUrl",
   "openaiApiKey",
   "openaiModel",
+  "chatgptAccount",
+  "chatgptModel",
   "structuredOutput",
 ]);
 

@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import React from "react";
+
 import type { CommandCandidateContract } from "../../../src/ai/types.js";
-import { importWithoutColor } from "./import-without-color.js";
+import { importWithoutColor } from "../../helpers/import-without-color.js";
 
 const uiModules = importWithoutColor(async () => {
   const [{ renderToString }, { ResolvePlaceholdersView }, { SelectedCommandDisplay }] =

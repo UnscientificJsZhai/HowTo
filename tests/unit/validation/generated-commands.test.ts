@@ -67,7 +67,6 @@ function createProviderWithRawText(rawText: string): CommandProvider {
 function createRequest(overrides: Partial<GenerateCommandsRequest> = {}): GenerateCommandsRequest {
   return {
     question: "show repo status",
-    arguments: [],
     structuredOutput: true,
     outputContract: "contract",
     safetyConstraints: "safety",

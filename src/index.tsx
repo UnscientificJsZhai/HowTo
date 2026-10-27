@@ -37,6 +37,12 @@ async function run(argv: string[]): Promise<CliResult> {
       return { exitCode: 0 };
     }
 
+    if (parsedCli.options.chatgptAction !== undefined) {
+      const { runChatGptAction } = await import("./auth/chatgpt/commands.js");
+      await runChatGptAction(parsedCli.options);
+      return { exitCode: 0 };
+    }
+
     if (parsedCli.options.init) {
       ensureInteractiveTty(process.stdin, process.stdout);
       const { initializeConfig } = await import("./init/index.js");
@@ -44,8 +50,13 @@ async function run(argv: string[]): Promise<CliResult> {
         cliOptions: parsedCli.options,
         env: process.env,
         session: await getSession(),
+        chatgptService: (await import("./auth/chatgpt/commands.js")).chatGptInitializationService,
       });
       return { exitCode: 0 };
+    }
+
+    if (parsedCli.question === undefined) {
+      throw new CliParseError("missing question");
     }
 
     if (!parsedCli.options.print) {
@@ -53,10 +64,6 @@ async function run(argv: string[]): Promise<CliResult> {
     }
 
     const fileConfig = await readUserConfigFile();
-
-    if (parsedCli.question === undefined) {
-      throw new CliParseError("missing question");
-    }
 
     if (!hasExplicitAiProvider(parsedCli.options, process.env, fileConfig)) {
       if (parsedCli.options.print) {
@@ -76,6 +83,7 @@ async function run(argv: string[]): Promise<CliResult> {
           cliOptions: parsedCli.options,
           env: process.env,
           session: await getSession(),
+          chatgptService: (await import("./auth/chatgpt/commands.js")).chatGptInitializationService,
         });
     const useCommandPathCheck: CommandPathCheck | undefined =
       parsedCli.useCommand === undefined
@@ -88,7 +96,6 @@ async function run(argv: string[]): Promise<CliResult> {
 
     const promptRequest = createProviderPromptRequest({
       question: parsedCli.question,
-      arguments: parsedCli.arguments,
       useCommand: parsedCli.useCommand,
       structuredOutput: config.structuredOutput,
     });
@@ -118,6 +125,9 @@ async function run(argv: string[]): Promise<CliResult> {
       session: await getSession(),
       provider,
       request: { ...promptRequest, systemPrompt, userPrompt },
+      knownCredentials: [config.openai.apiKey, config.gemini.apiKey].filter(
+        (value): value is string => typeof value === "string" && value !== "",
+      ),
     });
     return { exitCode };
   } catch (error: unknown) {

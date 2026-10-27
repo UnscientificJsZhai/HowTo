@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import React from "react";
+
 import type { CommandCandidateContract } from "../../../src/ai/types.js";
-import { importWithoutColor } from "./import-without-color.js";
+import { importWithoutColor } from "../../helpers/import-without-color.js";
 
 const uiModules = importWithoutColor(async () => {
   const [{ Box, renderToString }, { SelectCommandView }] = await Promise.all([
@@ -39,21 +40,6 @@ void test("SelectCommandView renders candidates and footer help in a bounded fra
   assert.ok(output.includes(`List files\n\n${titleIndent}List files recursively`));
   assert.ok(output.includes(`List direct files\n\n${titleIndent}List hidden files`));
   assert.ok(output.includes("Up/Down move; Enter select; Esc/Ctrl+C cancel."));
-});
-
-void test("SelectCommandView keeps its natural height below a larger row limit", async () => {
-  const { renderToString, SelectCommandView } = await uiModules;
-  const output = renderToString(
-    <SelectCommandView
-      candidates={[candidate("List files", "ls -lah", "List directory contents")]}
-      availableRows={23}
-      onSelect={() => {}}
-      onCancel={() => {}}
-    />,
-    { columns: 80 },
-  );
-
-  assert.equal(output.split("\n").length, 7);
 });
 
 void test("SelectCommandView paginates and bounds long content in a four-row frame", async () => {

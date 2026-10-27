@@ -1,9 +1,15 @@
 import React from "react";
 import { render, type Instance } from "ink";
 import type { GlobalOptions } from "../cli.js";
+import type { ChatGptLoginOptions } from "../auth/chatgpt/types.js";
 import type { AiProvider, AppConfig, ConfigEnvironment } from "../config.js";
 import { loadConfig } from "../config.js";
-import { getConfigFilePath, writeUserConfigFile, type FileConfig } from "../config-file.js";
+import {
+  getConfigFilePath,
+  readUserConfigFile,
+  writeUserConfigFile,
+  type FileConfig,
+} from "../config-file.js";
 import type { InteractiveSession } from "../ui/interactive-session.js";
 import { InteractiveSessionProvider } from "../ui/InteractiveSessionProvider.js";
 import type { InteractiveOutput } from "../ui/tty.js";
@@ -14,19 +20,47 @@ export interface InitializeConfigOptions {
   cliOptions: GlobalOptions;
   env: ConfigEnvironment & NodeJS.ProcessEnv;
   session: InteractiveSession;
+  chatgptService?: ChatGptInitializationService;
 }
 
-export interface InitializationValues {
-  provider: AiProvider;
-  apiKey: string;
-  model: string;
-  openaiBaseUrl?: string;
+export interface ChatGptInitializationAccount {
+  id: string;
+  label: string;
+  email?: string;
+  signedIn: boolean;
+  planUsageEnabled: boolean;
 }
+
+export interface ChatGptInitializationModel {
+  slug: string;
+  displayName: string;
+}
+
+export interface ChatGptInitializationService {
+  listAccounts(options: { signal: AbortSignal }): Promise<ChatGptInitializationAccount[]>;
+  login(
+    options: ChatGptLoginOptions & {
+      accountId?: string;
+      signal: AbortSignal;
+      onAuthorizationUrl: (url: string) => void;
+    },
+  ): Promise<ChatGptInitializationAccount>;
+  listModels(options: {
+    accountId: string;
+    signal: AbortSignal;
+  }): Promise<ChatGptInitializationModel[]>;
+}
+
+export type InitializationValues =
+  | { provider: "openai"; apiKey: string; model: string; openaiBaseUrl?: string }
+  | { provider: "gemini"; apiKey: string; model: string }
+  | { provider: "chatgpt"; account: string; model: string };
 
 export async function initializeConfig({
   cliOptions,
   env,
   session,
+  chatgptService,
 }: InitializeConfigOptions): Promise<AppConfig> {
   return await new Promise<AppConfig>((resolve, reject) => {
     let settled = false;
@@ -49,6 +83,11 @@ export async function initializeConfig({
     const instance: Instance = render(
       <InteractiveSessionProvider session={session}>
         <InitializationApp
+          chatgptService={chatgptService}
+          chatgptLoginOptions={{
+            noBrowser: cliOptions.noBrowser,
+            callbackPort: cliOptions.callbackPort,
+          }}
           onSubmit={async (values) => {
             return validateAndPersistInitializationConfig(values, cliOptions, env);
           }}
@@ -86,9 +125,17 @@ export async function validateAndPersistInitializationConfig(
   cliOptions: GlobalOptions,
   env: ConfigEnvironment & NodeJS.ProcessEnv,
 ): Promise<AppConfig> {
-  const fileConfig = createFileConfig(values);
-  const config = loadConfig(cliOptions, env, fileConfig);
   const configFilePath = getConfigFilePath(env);
+  const fileConfig = await readUserConfigFile(configFilePath);
+  // 仅替换当前 provider 的字段；其他 provider 与已保存的输出设置继续保留。
+  const providerFields: Record<AiProvider, (keyof FileConfig)[]> = {
+    openai: ["openaiApiKey", "openaiModel", "openaiApiUrl"],
+    gemini: ["geminiApiKey", "geminiModel"],
+    chatgpt: ["chatgptAccount", "chatgptModel"],
+  };
+  for (const field of providerFields[values.provider]) delete fileConfig[field];
+  Object.assign(fileConfig, createFileConfig(values));
+  const config = loadConfig(cliOptions, env, fileConfig);
 
   await writeUserConfigFile(fileConfig, configFilePath);
   return config;
@@ -135,6 +182,14 @@ function getOutputColumns(output: InteractiveOutput): number {
 }
 
 export function createFileConfig(values: InitializationValues): FileConfig {
+  if (values.provider === "chatgpt") {
+    return {
+      aiProvider: "chatgpt",
+      chatgptAccount: values.account,
+      chatgptModel: values.model,
+    };
+  }
+
   if (values.provider === "gemini") {
     return {
       aiProvider: "gemini",

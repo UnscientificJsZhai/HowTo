@@ -2,9 +2,15 @@ import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
 import { setImmediate as nextTurn } from "node:timers/promises";
 import React from "react";
+
 import type { CommandCandidateContract } from "../../../src/ai/types.js";
-import { importWithoutColor } from "./import-without-color.js";
-import { sessionHarness, testCandidate, testRequest, waitFor } from "./session-test-helpers.js";
+import { importWithoutColor } from "../../helpers/import-without-color.js";
+import {
+  sessionHarness,
+  testCandidate,
+  testRequest,
+  waitFor,
+} from "../../helpers/interactive-session.js";
 
 const modules = importWithoutColor(async () => {
   const [{ render }, { App }, { SelectCommandView }, { InteractiveSessionProvider }] =
@@ -62,14 +68,9 @@ for (const scenario of [cases[0], cases[2]]) {
   });
 }
 
-for (const [rows, columns] of [
-  [2, 20],
-  [4, 32],
-]) {
-  void test(`完整会话 App 在 ${columns} 列 ${rows} 行终端使用同块输入后的最新候选`, async (t) => {
-    await checkAppSelection(t, [down + enter], 1, rows, columns);
-  });
-}
+void test("完整会话 App 在 20 列 2 行微型终端使用同块输入后的最新候选", async (t) => {
+  await checkAppSelection(t, [down + enter], 1, 2, 20);
+});
 
 for (const [label, availableRows, isInputActive] of [
   ["不可见", 0, true],
@@ -157,7 +158,6 @@ async function checkAppSelection(
   await waitFor(() => {
     const output = view.text().slice(confirmationOffset);
     if (rows >= 4) return output.includes("Final command:");
-    if (rows === 3) return output.includes("Enter=run Esc=cancel");
     return output
       .split("\n")
       .some((line) => line.includes(" Enter Esc") && !line.includes("UD Enter Esc"));
@@ -243,9 +243,9 @@ void test("候选页首次写入终端时输入处理器已经就绪", async (t)
     const result = Reflect.apply(write, h.output, [chunk, ...args]) as boolean;
     if (!sent && chunk.toString().includes("Select a command")) {
       sent = true;
-      // 同步交付给 Ink，固定复现 render commit 与被动 effect 之间的输入窗口。
-      h.session.input.emit("readable");
-      h.session.input.push("\r");
+      // 经原始会话同步交付并保留归属，复现 commit 与被动 effect 之间的输入窗口。
+      h.input.write("\r");
+      h.session.checkExecutionPolicy();
       h.session.input.emit("readable");
     }
     return result;
