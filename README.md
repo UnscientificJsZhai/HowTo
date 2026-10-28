@@ -265,6 +265,8 @@ This project is built with TypeScript, React, Ink, OpenAI SDK, Gemini GenAI SDK,
 
 For development and the full test suite, use **Node.js 22.x (22.22.1 or later) or 24.x (24.3.0 or later)**. These versions satisfy the development dependencies.
 
+Builds use TypeScript 7 through the `@typescript/native` npm alias. ESLint retains the TypeScript 6 JavaScript API through `typescript` → `@typescript/typescript6` (currently forwarding to 6.0.3), following the [official side-by-side setup](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0). Build scripts invoke the native compiler explicitly because incremental npm installs can change the shared `tsc` symlink. `npm run check:toolchain` verifies compiler versions, compatibility API resolution, and explicit build compiler paths. Run `npm run lint` to check project code with the existing type-aware rules. Keep both compilers compatible with the project until typescript-eslint supports the new API; this does not give ESLint TypeScript 7-only language support.
+
 ```bash
 npm ci
 npm run build

@@ -5,7 +5,7 @@ const SAFE_INK_ROWS = Number.MAX_SAFE_INTEGER;
 const DEFAULT_PHYSICAL_ROWS = 24;
 
 const physicalToProxy = new WeakMap<NodeJS.WriteStream, NodeJS.WriteStream>();
-const proxyToPhysical = new WeakMap<NodeJS.WriteStream, NodeJS.WriteStream>();
+const proxyToPhysical = new WeakMap<NodeJS.WritableStream, NodeJS.WriteStream>();
 
 export function toResizeSafeOutput(output: NodeJS.WriteStream): NodeJS.WriteStream {
   if (proxyToPhysical.has(output)) {
@@ -54,13 +54,15 @@ export function toResizeSafeOutput(output: NodeJS.WriteStream): NodeJS.WriteStre
   return proxy;
 }
 
-export function unwrapResizeSafeOutput(output: NodeJS.WriteStream): NodeJS.WriteStream {
+export function unwrapResizeSafeOutput<T extends NodeJS.WritableStream>(
+  output: T,
+): T | NodeJS.WriteStream {
   return proxyToPhysical.get(output) ?? output;
 }
 
 export function usePhysicalStdoutRows(): number {
   const { stdout } = useStdout();
-  const physicalStdout = unwrapResizeSafeOutput(stdout);
+  const physicalStdout: NodeJS.WritableStream = unwrapResizeSafeOutput(stdout);
   const [rows, setRows] = useState(() => readPhysicalRows(physicalStdout));
 
   useEffect(() => {
@@ -87,6 +89,6 @@ export function normalizePhysicalRows(value: unknown): number {
   return Math.max(0, Math.floor(value));
 }
 
-function readPhysicalRows(output: NodeJS.WriteStream): number {
-  return normalizePhysicalRows(output.rows);
+export function readPhysicalRows(output: NodeJS.WritableStream): number {
+  return normalizePhysicalRows("rows" in output ? output.rows : undefined);
 }

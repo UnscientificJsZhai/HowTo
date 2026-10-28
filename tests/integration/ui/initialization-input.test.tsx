@@ -277,10 +277,7 @@ void test("initialization keeps provider and field controls visible across three
   );
   t.after(() => close(view));
 
-  assert.equal(
-    stripVTControlCharacters(view.output()).trimEnd(),
-    "1 OAI 2 G 3 ChatGPT\nUD Ent 1/2/3 Esc ^C",
-  );
+  assert.equal(renderedUpdate(view, 0), "1 OAI 2 G 3 ChatGPT\nUD Ent 1/2/3 Esc ^C");
 
   let outputOffset = view.output().length;
   await send(view, "\u001B[B");
@@ -1287,7 +1284,14 @@ async function close(view: RenderedInitialization): Promise<void> {
 }
 
 function renderedUpdate(view: RenderedInitialization, outputOffset: number): string {
-  return stripVTControlCharacters(view.output().slice(outputOffset)).trimEnd();
+  let output = view.output().slice(outputOffset);
+  // Ink 8 会先绘制空帧，再用 eraseLines(2) 回到同一行。不能把已擦除的换行计入视图高度。
+  const eraseEmptyFrame = "\u001b[2K\u001b[1A\u001b[2K\u001b[G";
+  const eraseOffset = output.indexOf(eraseEmptyFrame);
+  if (eraseOffset >= 0 && /^\r?\n$/.test(stripVTControlCharacters(output.slice(0, eraseOffset)))) {
+    output = output.slice(eraseOffset + eraseEmptyFrame.length);
+  }
+  return stripVTControlCharacters(output).trimEnd();
 }
 
 function renderedUpdateLines(view: RenderedInitialization, outputOffset: number): string[] {

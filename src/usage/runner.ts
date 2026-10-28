@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { accessSync, constants, realpathSync, statSync } from "node:fs";
 import { delimiter, isAbsolute, resolve } from "node:path";
-import signalExit from "signal-exit";
+import { onExit as signalExit } from "signal-exit";
 import { validateUsageArgumentList, validateUsageLookupArguments } from "./arguments.js";
 import { sanitizeUsageLookupResult, UsageOutputCapture } from "./output.js";
 import type { UsageLookupResult, UsageLookupStatus } from "./types.js";

@@ -28,8 +28,8 @@
     "THIRD_PARTY_NOTICES.md"
   ],
   "scripts": {
-    "build": "npm run clean:dist && tsc",
-    "build:test": "npm run clean:dist-test && tsc -p tsconfig.test.json",
+    "build": "npm run clean:dist && node ./node_modules/@typescript/native/bin/tsc",
+    "build:test": "npm run clean:dist-test && node ./node_modules/@typescript/native/bin/tsc -p tsconfig.test.json",
     "clean:dist": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "clean:dist-test": "node -e \"require('node:fs').rmSync('dist-test', { recursive: true, force: true })\"",
     "format": "prettier . --write",
@@ -41,29 +41,30 @@
     "test": "npm run build:test && node --test dist-test/tests/unit/*.test.js dist-test/tests/unit/**/*.test.js dist-test/tests/integration/*.test.js dist-test/tests/integration/**/*.test.js",
     "test:integration": "npm run build:test && node --test dist-test/tests/integration/*.test.js dist-test/tests/integration/**/*.test.js",
     "test:package": "npm run build:test && node dist-test/tests/package-smoke.js",
-    "test:unit": "npm run build:test && node --test dist-test/tests/unit/*.test.js dist-test/tests/unit/**/*.test.js"
+    "test:unit": "npm run build:test && node --test dist-test/tests/unit/*.test.js dist-test/tests/unit/**/*.test.js",
+    "check:toolchain": "node scripts/check-toolchain.mjs"
   },
   "dependencies": {
-    "@google/genai": "^2.18.0",
-    "ink": "^7.1.1",
+    "@google/genai": "^2.31.0",
+    "ink": "^8.0.0",
     "jose": "^6.2.13",
-    "openai": "^7.5.0",
-    "react": "^19.2.8",
-    "signal-exit": "^3.0.7",
-    "string-width": "^8.2.2"
+    "openai": "^7.43.0",
+    "react": "^19.3.1",
+    "signal-exit": "^4.1.0",
+    "string-width": "^8.3.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^26.2.0",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
-    "@types/signal-exit": "^3.0.4",
-    "eslint": "^10.9.0",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "eslint": "^10.13.0",
     "husky": "^9.1.7",
-    "lint-staged": "^17.3.0",
-    "prettier": "^3.9.6",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "^8.67.0"
+    "lint-staged": "^17.6.0",
+    "prettier": "^3.9.10",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-eslint": "^8.72.0"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

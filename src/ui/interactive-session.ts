@@ -2,7 +2,7 @@ import { closeSync, constants, openSync, readSync } from "node:fs";
 import { Readable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
 import { ReadStream } from "node:tty";
-import signalExit from "signal-exit";
+import { onExit as signalExit } from "signal-exit";
 import { normalizePhysicalRows, toResizeSafeOutput } from "./resize-safe-output.js";
 import { PasteFramingError, PasteFramingFilter } from "./paste-framing.js";
 import { KeyboardFramingFilter } from "./keyboard-framing.js";
@@ -549,11 +549,13 @@ export class InteractiveSession {
         if (property === "write") {
           return (chunk: unknown, ...args: unknown[]): unknown => {
             const text = Buffer.isBuffer(chunk) ? chunk.toString("utf8") : chunk;
+            // Ink 8 可在 session 清理后才卸载；粘贴租约始终归 session，异常时仍允许恢复光标。
             if (
-              this.failure ||
+              (this.failure && text !== "\u001b[?25h") ||
               target.destroyed ||
               target.writableEnded ||
-              (!this.closed && (text === ENABLE_PASTE || text === DISABLE_PASTE))
+              text === ENABLE_PASTE ||
+              text === DISABLE_PASTE
             ) {
               const callback = args.find((arg) => typeof arg === "function") as
                 (() => void) | undefined;
