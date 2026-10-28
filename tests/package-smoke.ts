@@ -7,6 +7,7 @@ import { createServer } from "node:http";
 import { once } from "node:events";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // 只使用 Node 标准库；目标必须是隔离安装后的 npm bin，可用最低支持 Node 运行。
 const entryArgument = process.argv[2];
@@ -117,7 +118,40 @@ try {
     stderr: "",
   });
   assert.equal(requests, 1);
-  for (const mode of ["confirm", "paste"]) {
+  for (const mode of ["valid", "incomplete", "http-error"]) {
+    const streamed = await run(
+      process.execPath,
+      [
+        "--experimental-test-module-mocks",
+        "--disable-warning=ExperimentalWarning",
+        "--import",
+        fileURLToPath(new URL("./helpers/package-stream-preload.js", import.meta.url)),
+        entry,
+        "--print",
+        "offline stream",
+      ],
+      {
+        HOWTO_AI_PROVIDER: "chatgpt",
+        HOWTO_CHATGPT_MODEL: "offline-stream",
+        HOWTO_TEST_PACKAGE_ROOT: packageRoot,
+        HOWTO_TEST_STREAM_MODE: mode,
+      },
+    );
+    assert.equal(streamed.code, mode === "valid" ? 0 : 1, streamed.stderr);
+    assert.equal(streamed.signal, null);
+    assert.equal(streamed.stdout, mode === "valid" ? "printf 'STREAM_OK\\n'\n" : "");
+    assert.equal(streamed.stderr.includes("UPSTREAM_PRIVATE_DETAIL"), false);
+    if (mode === "valid") assert.equal(streamed.stderr, "");
+    else
+      assert.equal(
+        streamed.stderr,
+        mode === "incomplete"
+          ? "AI provider request failed (provider: chatgpt, model: offline-stream)\n"
+          : "ChatGPT denied this request. Check the account's app access and workspace policy.\n",
+      );
+    console.log(JSON.stringify({ mode, exitCode: streamed.code }));
+  }
+  for (const mode of ["confirm", "paste", "cancel", "sigterm"]) {
     const result = await run("python3", [
       "-c",
       String.raw`
@@ -153,7 +187,9 @@ try:
         wait_for('当前页面忽略粘贴'.encode())
         assert b'PACKAGE_EXECUTED\r\n' not in output, repr(bytes(output[-2000:]))
         assert os.waitpid(pid,os.WNOHANG)==(0,0), 'paste must not confirm execution'
-    os.write(fd,b'\r')
+    if mode=='cancel': os.write(fd,b'\x03')
+    elif mode=='sigterm': os.kill(pid,signal.SIGTERM)
+    else: os.write(fd,b'\r')
     deadline=time.monotonic()+5
     while status is None and time.monotonic()<deadline:
         exited,value=os.waitpid(pid,os.WNOHANG)
@@ -161,12 +197,14 @@ try:
         else: read_ready(min(deadline,time.monotonic()+0.02))
     assert status is not None, 'package CLI hung'
     read_ready(time.monotonic()+0.05)
-    assert os.waitstatus_to_exitcode(status)==0, repr(bytes(output[-2000:]))
+    expected_code = -signal.SIGTERM if mode=='sigterm' else 130 if mode=='cancel' else 0
+    assert os.waitstatus_to_exitcode(status)==expected_code, repr(bytes(output[-2000:]))
     assert output.count(b'\x1b[?2004h')==1 and output.count(b'\x1b[?2004l')==1
     mask=termios.ICANON|termios.ECHO
     assert termios.tcgetattr(fd)[3]&mask==mask
-    assert output.count(b'PACKAGE_EXECUTED\r\n')==1, repr(bytes(output[-2000:]))
-    print(json.dumps({'mode':mode,'exitCode':0,'executions':1}))
+    executions = 0 if mode in ('cancel','sigterm') else 1
+    assert output.count(b'PACKAGE_EXECUTED\r\n')==executions, repr(bytes(output[-2000:]))
+    print(json.dumps({'mode':mode,'exitCode':expected_code,'executions':executions}))
 finally:
     if status is None:
         try: os.killpg(pid,signal.SIGKILL)
@@ -196,7 +234,7 @@ finally:
     entry,
   ]);
   assert.equal(closedOutput.code, 0, closedOutput.stderr);
-  assert.equal(requests, 3);
+  assert.equal(requests, 5);
   console.log(
     JSON.stringify({
       node: process.version,
@@ -204,7 +242,7 @@ finally:
       platform: process.platform,
       arch: process.arch,
       version: manifest.version,
-      checks: 7,
+      checks: 12,
       requests,
     }),
   );

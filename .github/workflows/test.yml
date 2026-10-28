@@ -22,6 +22,7 @@ jobs:
           node-version: "24.19.0"
           cache: npm
       - run: npm ci
+      - run: npm run check:toolchain
       - run: npm run lint
       - run: npm run format:check
 

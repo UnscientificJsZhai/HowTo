@@ -85,7 +85,7 @@ export class ChatGptCommandProvider implements CommandProvider {
           }
           // 重试和后续轮次也重新处理历史结果，避免沿用旧凭据集合下的序列化内容。
           for (const item of input) {
-            if (item.type !== "function_call_output") continue;
+            if (item.type !== "function_call_output" || typeof item.call_id !== "string") continue;
             const result = toolResults.get(item.call_id);
             if (result === undefined) continue;
             const sanitized = sanitizeUsageLookupResult(result, [...knownCredentials]);

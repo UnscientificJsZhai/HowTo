@@ -43,7 +43,9 @@ export const ConfirmView: React.FC<Props> = ({
   const finishedRef = useRef(false);
   const { stdout } = useStdout();
   const stdoutColumns =
-    typeof stdout.columns === "number" && stdout.columns > 0 ? stdout.columns : 80;
+    "columns" in stdout && typeof stdout.columns === "number" && stdout.columns > 0
+      ? stdout.columns
+      : 80;
   const columns = availableColumns ?? stdoutColumns;
 
   const inputReady = usePasteAwareInput({

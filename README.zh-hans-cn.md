@@ -265,6 +265,8 @@ Linux 还覆盖 apk、pacman、zypper 的系统包变更及 OpenRC 的服务和�
 
 开发和运行完整测试使用 **Node.js 22.x（22.22.1 及以上）或 24.x（24.3.0 及以上）**。这些版本满足开发依赖的要求。
 
+构建使用 `@typescript/native` npm alias 提供的 TypeScript 7；ESLint 通过 `typescript` → `@typescript/typescript6` 保留 TypeScript 6 JavaScript API（目前转发到 6.0.3），采用[官方双版本方案](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0)。构建脚本显式调用原生编译器，避免增量 npm 安装改变共享 `tsc` 链接。`npm run check:toolchain` 检查编译器版本、兼容 API 解析和显式构建编译器路径。使用 `npm run lint` 按现有类型感知规则检查项目代码。在 typescript-eslint 支持新 API 前，需要保持项目同时兼容两套编译器；这不会让 ESLint 获得 TypeScript 7 独有语法的支持。
+
 ```bash
 npm ci
 npm run build

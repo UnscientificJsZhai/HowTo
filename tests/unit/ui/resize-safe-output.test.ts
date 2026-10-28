@@ -4,6 +4,7 @@ import { finished } from "node:stream/promises";
 import { test } from "node:test";
 import {
   normalizePhysicalRows,
+  readPhysicalRows,
   toResizeSafeOutput,
   unwrapResizeSafeOutput,
 } from "../../../src/ui/resize-safe-output.js";
@@ -128,3 +129,12 @@ class TestOutput extends PassThrough {
   public columns = 80;
   public rows = 24;
 }
+
+void test("generic Ink output streams retain identity and default missing physical rows", () => {
+  const output = new PassThrough();
+  assert.equal(unwrapResizeSafeOutput(output), output);
+  assert.equal(readPhysicalRows(output), 24);
+  Object.assign(output, { rows: 0 });
+  assert.equal(readPhysicalRows(output), 0);
+  output.destroy();
+});
