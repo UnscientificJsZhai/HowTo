@@ -61,7 +61,7 @@ test("initialization returns merged overrides but persists only submitted provid
       model: "submitted-openai-model",
       baseUrl: "https://submitted.example/v1",
     },
-    chatgpt: { account: undefined, model: undefined },
+    chatgpt: { account: undefined, model: undefined, fast: true, timings: false },
     structuredOutput: false,
   });
   assert.deepEqual(
@@ -120,7 +120,12 @@ test("ChatGPT 初始化保存选择并保留两个 API provider 与输出设置�
     },
     { HOME: homeDirectory, HOWTO_GEMINI_API_KEY: "env-key" },
   );
-  assert.deepEqual(config.chatgpt, { account: "cli-account", model: "cli-model" });
+  assert.deepEqual(config.chatgpt, {
+    account: "cli-account",
+    model: "cli-model",
+    fast: true,
+    timings: false,
+  });
   assert.equal(config.openai.apiKey, "cli-key");
   assert.equal(config.gemini.apiKey, "env-key");
   assert.equal(config.structuredOutput, true);
@@ -178,4 +183,28 @@ test("初始化不覆盖损坏的现有配置", async (t) => {
     ConfigError,
   );
   assert.equal(await readFile(configPath, "utf8"), previous);
+});
+
+test("ChatGPT Fast choice persists and reinitializing unknown model clears it", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "howto-fast-init-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const path = join(home, ".howto", "config.json");
+  const values = { provider: "chatgpt" as const, account: "fake-account", model: "fake-model" };
+  const selected = await validateAndPersistInitializationConfig(
+    { ...values, fast: true },
+    { print: false },
+    { HOME: home },
+  );
+  assert.equal(selected.chatgpt.fast, true);
+  assert.equal(
+    (JSON.parse(await readFile(path, "utf8")) as { chatgptFast: boolean }).chatgptFast,
+    true,
+  );
+  const reset = await validateAndPersistInitializationConfig(
+    values,
+    { print: false },
+    { HOME: home },
+  );
+  assert.equal(reset.chatgpt.fast, true);
+  assert.ok(!Object.hasOwn(JSON.parse(await readFile(path, "utf8")) as object, "chatgptFast"));
 });

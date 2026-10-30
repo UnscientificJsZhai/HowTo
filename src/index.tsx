@@ -108,6 +108,8 @@ async function run(argv: string[]): Promise<CliResult> {
         systemPrompt,
         userPrompt,
       });
+      const feedback = provider.getFeedback?.();
+      if (feedback) console.error(feedback);
       candidates.forEach((candidate) => {
         console.log(candidate.command);
       });

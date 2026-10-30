@@ -221,7 +221,7 @@ function harness(
             },
           )
         : new ChatGptCommandProvider(
-            { model: MODEL },
+            { fast: false, model: MODEL },
             {
               timeoutMilliseconds,
               getAccessToken: () =>
@@ -553,7 +553,7 @@ test("ChatGPT 凭据轮换后重新脱敏历史与当前结果，并省略已截
   ];
   let round = 0;
   const provider = new ChatGptCommandProvider(
-    { model: MODEL },
+    { fast: false, model: MODEL },
     {
       getAccessToken: ({ onCredentials }) => {
         round++;
@@ -655,7 +655,7 @@ test("ChatGPT 读取凭据期间取消后，迟到凭据和回复不修改会话
   let finishCredentials!: () => void;
   const requests: Record<string, unknown>[] = [];
   const provider = new ChatGptCommandProvider(
-    { model: MODEL },
+    { fast: false, model: MODEL },
     {
       getAccessToken: async ({ onCredentials }) => {
         const attempt = ++tokenCalls;
@@ -716,7 +716,7 @@ test("ChatGPT 观察到令牌旋转后取消，重试仍省略已截断的输出
   let attempt = 0;
   const rotated = "FAKE-rotated-private-key";
   const provider = new ChatGptCommandProvider(
-    { model: MODEL },
+    { fast: false, model: MODEL },
     {
       getAccessToken: ({ onCredentials }) => {
         attempt++;
@@ -773,7 +773,7 @@ test("ChatGPT 完成流清理期间取消时，迟到工具调用不能污染重
   const controller = new AbortController();
   const requests: Record<string, unknown>[] = [];
   const provider = new ChatGptCommandProvider(
-    { model: MODEL },
+    { fast: false, model: MODEL },
     {
       getAccessToken: () => Promise.resolve({ accessToken: KEY, accountId: "test-account" }),
       fetch: (input, init) => {

@@ -1355,3 +1355,45 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   });
   return { promise, resolve };
 }
+
+void test("ChatGPT Fast setup defaults on, explicitly opts in with usage notice", async () => {
+  for (const enabled of [false, true]) {
+    let submitted: InitializationValues | undefined;
+    const view = await renderInitialization(
+      { columns: 80, rows: 12 },
+      (values) => {
+        submitted = values;
+        return Promise.resolve(testConfig());
+      },
+      undefined,
+      undefined,
+      chatgptService({
+        listModels: () =>
+          Promise.resolve([
+            { slug: "model-a", displayName: "Model A", serviceTiers: ["priority"] },
+          ]),
+      }),
+    );
+    try {
+      await send(view, "3");
+      await waitFor(() => view.output().includes("Main"), "account picker missing");
+      await send(view, "\r");
+      await waitFor(() => view.output().includes("Model A"), "model picker missing");
+      await send(view, "\r");
+      await waitFor(() => view.output().includes("Standard (Fast off)"), "Fast picker missing");
+      assert.ok(view.output().includes("may use more plan usage/credits"));
+      assert.equal(submitted, undefined);
+      if (!enabled) await send(view, "\u001B[A");
+      await send(view, "\r");
+      await waitFor(() => submitted !== undefined, "Fast setup not submitted");
+      assert.deepEqual(submitted, {
+        provider: "chatgpt",
+        account: "account-main",
+        model: "model-a",
+        fast: enabled,
+      });
+    } finally {
+      await close(view);
+    }
+  }
+});

@@ -43,7 +43,7 @@ async function loopbackProvider(
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   return new ChatGptCommandProvider(
-    { model: CHATGPT_TEST_MODEL },
+    { fast: false, model: CHATGPT_TEST_MODEL },
     {
       getAccessToken: () =>
         Promise.resolve({ accessToken: CHATGPT_TEST_TOKEN, accountId: "test-account" }),

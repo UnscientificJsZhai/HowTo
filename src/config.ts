@@ -15,6 +15,8 @@ export interface AppConfig {
     baseUrl?: string;
   };
   chatgpt: {
+    fast?: boolean;
+    timings?: boolean;
     account?: string;
     model?: string;
   };
@@ -30,6 +32,8 @@ export interface ConfigEnvironment {
   HOWTO_OPENAI_MODEL?: string;
   HOWTO_CHATGPT_ACCOUNT?: string;
   HOWTO_CHATGPT_MODEL?: string;
+  HOWTO_CHATGPT_FAST?: string;
+  HOWTO_CHATGPT_TIMINGS?: string;
   HOWTO_STRUCTURED_OUTPUT?: string;
 }
 
@@ -100,6 +104,19 @@ export function loadConfig(
       ),
     },
     chatgpt: {
+      fast: parseBooleanSetting(
+        pickConfigValue(options.chatgptFast, env.HOWTO_CHATGPT_FAST, fileConfig.chatgptFast),
+        "chatgptFast",
+        true,
+      ),
+      timings: parseBooleanSetting(
+        pickConfigValue(
+          options.chatgptTimings,
+          env.HOWTO_CHATGPT_TIMINGS,
+          fileConfig.chatgptTimings,
+        ),
+        "chatgptTimings",
+      ),
       account: pickConfigValue(
         options.chatgptAccount,
         env.HOWTO_CHATGPT_ACCOUNT,
@@ -181,4 +198,15 @@ function parseStructuredOutput(value: string | boolean | undefined): boolean {
   }
 
   throw new ConfigError("invalid structuredOutput value; expected true or false");
+}
+
+function parseBooleanSetting(
+  value: string | boolean | undefined,
+  name: string,
+  defaultValue = false,
+): boolean {
+  if (value === undefined) return defaultValue;
+  if (value === false || value === "false") return false;
+  if (value === true || value === "true") return true;
+  throw new ConfigError(`invalid ${name} value; expected true or false`);
 }

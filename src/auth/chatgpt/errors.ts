@@ -1,4 +1,12 @@
 const MESSAGES = {
+  model_unavailable: [
+    2,
+    "The selected ChatGPT model is unavailable. Run howto --chatgpt-models or howto --init; the saved selection was not changed.",
+  ],
+  fast_unsupported: [
+    2,
+    "ChatGPT Fast was denied for this account/model. Check plan access or set --chatgpt-fast false; no standard-tier retry was sent.",
+  ],
   login_required: [2, "ChatGPT sign-in is required. Run howto --chatgpt-login."],
   account_required: [2, "Choose a ChatGPT account with --chatgpt-account or howto --init."],
   account_not_found: [2, "The selected ChatGPT account is not registered on this host."],
@@ -60,6 +68,26 @@ export const TERMINAL_REFRESH_ERRORS = new Set([
 
 export function classifyChatGptHttpError(status: number, code?: string): ChatGptError {
   code = code?.replace(/^subscription_sharing_/, "");
+  if (
+    status !== 401 &&
+    status !== 429 &&
+    [
+      "model_not_found",
+      "model_not_available",
+      "model_unavailable",
+      "unsupported_model",
+      "model_not_supported",
+    ].includes(code ?? "")
+  )
+    return new ChatGptError("model_unavailable");
+  if (
+    status !== 401 &&
+    status !== 429 &&
+    (code === "unsupported_service_tier" ||
+      code === "service_tier_not_supported" ||
+      code === "service_tier_not_allowed")
+  )
+    return new ChatGptError("fast_unsupported");
   if (code === "user_not_eligible") return new ChatGptError("ineligible");
   if (code === "usage_limit_exceeded" || status === 429) return new ChatGptError("quota");
   if (code === "unsupported_capability" || code === "route_not_supported")

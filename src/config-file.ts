@@ -12,6 +12,8 @@ export interface FileConfig {
   openaiModel?: string;
   chatgptAccount?: string;
   chatgptModel?: string;
+  chatgptFast?: string | boolean;
+  chatgptTimings?: string | boolean;
   structuredOutput?: string | boolean;
 }
 
@@ -24,6 +26,8 @@ const CONFIG_FILE_FIELDS = new Set<keyof FileConfig>([
   "openaiModel",
   "chatgptAccount",
   "chatgptModel",
+  "chatgptFast",
+  "chatgptTimings",
   "structuredOutput",
 ]);
 
@@ -84,12 +88,12 @@ export async function readUserConfigFile(path = getConfigFilePath()): Promise<Fi
       continue;
     }
 
-    if (key === "structuredOutput") {
+    if (key === "structuredOutput" || key === "chatgptFast" || key === "chatgptTimings") {
       if (typeof value !== "string" && typeof value !== "boolean") {
         throw new ConfigError(`config file field ${key} must be a boolean or string`);
       }
 
-      config.structuredOutput = value;
+      config[key] = value;
       continue;
     }
 
