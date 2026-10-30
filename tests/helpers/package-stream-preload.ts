@@ -26,11 +26,30 @@ globalThis.fetch = (input, init) => {
   if (request.url === "https://api.openai.com/v1/models") {
     return Promise.resolve(
       Response.json({
-        models: [{ slug: "offline-stream", display_name: "Offline stream", visibility: "list" }],
+        models: [
+          {
+            slug: "offline-stream",
+            display_name: "Offline stream",
+            visibility: "list",
+            service_tiers:
+              mode === "fast-unknown" || mode === "fast-default-unknown"
+                ? undefined
+                : mode === "fast-unsupported"
+                  ? []
+                  : [{ id: "priority" }],
+          },
+        ],
       }),
     );
   }
   assert.equal(request.url, "https://api.openai.com/v1/responses");
+  assert.equal(typeof init?.body, "string");
+  const body = JSON.parse(init?.body as string) as Record<string, unknown>;
+  assert.equal(body.service_tier, mode?.startsWith("fast-") ? "priority" : "default");
+  if (mode === "fast-unsupported")
+    return Promise.resolve(
+      Response.json({ error: { code: "unsupported_service_tier" } }, { status: 400 }),
+    );
   if (mode === "http-error") {
     return Promise.resolve(Response.json({ message: "UPSTREAM_PRIVATE_DETAIL" }, { status: 403 }));
   }
@@ -53,6 +72,12 @@ globalThis.fetch = (input, init) => {
           type: "response.completed",
           response: {
             status: "completed",
+            service_tier:
+              mode === "fast-downgrade"
+                ? "default"
+                : mode === "fast-missing"
+                  ? undefined
+                  : "priority",
             output: [
               {
                 type: "message",
@@ -79,4 +104,4 @@ globalThis.fetch = (input, init) => {
     ),
   );
 };
-process.once("beforeExit", () => assert.equal(requests, 2));
+process.once("beforeExit", () => assert.equal(requests, mode === "fast-unsupported" ? 2 : 1));

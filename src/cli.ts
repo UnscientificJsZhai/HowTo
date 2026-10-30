@@ -16,6 +16,8 @@ export interface GlobalOptions extends ChatGptLoginOptions {
   chatgptAction?: ChatGptAction;
   chatgptAccount?: string;
   chatgptModel?: string;
+  chatgptFast?: string;
+  chatgptTimings?: string;
   structuredOutput?: string;
 }
 
@@ -41,6 +43,8 @@ const VALUE_OPTIONS = new Set([
   "--openai-model",
   "--chatgpt-account",
   "--chatgpt-model",
+  "--chatgpt-fast",
+  "--chatgpt-timings",
   "--callback-port",
   "--structured-output",
 ]);
@@ -76,6 +80,8 @@ Options:
   --chatgpt-models
   --chatgpt-account <account>
   --chatgpt-model <model>
+  --chatgpt-fast <true|false>   Request Fast (default on; may consume more plan usage)
+  --chatgpt-timings <true|false> Show privacy-safe request timings
   --no-browser                 Skip opening the browser for ChatGPT login or --init
   --callback-port <1-65535>     ChatGPT callback port (default: a random available port)
   --structured-output <true|false>
@@ -205,6 +211,12 @@ function assignOptionValue(options: GlobalOptions, optionName: string, value: st
       return;
     case "--chatgpt-account":
       options.chatgptAccount = value;
+      return;
+    case "--chatgpt-fast":
+      options.chatgptFast = value;
+      return;
+    case "--chatgpt-timings":
+      options.chatgptTimings = value;
       return;
     case "--chatgpt-model":
       options.chatgptModel = value;

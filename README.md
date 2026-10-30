@@ -329,3 +329,71 @@ howto --print "show disk usage"
 ### Gemini key is required
 
 Gemini cannot run without an API key. Set `HOWTO_GEMINI_API_KEY`, pass `--gemini-api-key`, or rerun `howto --init`.
+
+### ChatGPT Fast, saved models and request timings
+
+`howto --init` retrieves fresh account-specific choices and saves the selected
+account/model in `~/.howto/config.json`. The selection survives CLI restarts.
+Ordinary generation, `--print`, and every `use` turn directly use that configured
+model, without a preliminary catalog GET. CLI/environment model overrides remain
+per-invocation overrides; they do not overwrite the saved selection. Run
+`howto --init` to persist a different selection or `howto --chatgpt-models` to
+explicitly refresh/list choices. No disk or process-local catalog cache is needed.
+
+Fast defaults on, requesting `service_tier: priority`; explicit false requests
+`default`. Model and reasoning behavior are unchanged. The initialization picker
+uses validated tier metadata to offer Fast (selected by default) when advertised;
+missing catalog metadata does not prohibit a direct configured request. The server
+is authoritative for actual account/model entitlement. Completed responses report
+Fast, standard (including downgrade), or unconfirmed for absent/unknown metadata.
+No partial generated command is executable before complete response validation.
+
+Only explicit structured model/tier-unavailable errors trigger one catalog GET
+using the same request credentials. That discovery is bounded to at most five
+seconds, never retries inference, never changes model/tier, and never replaces the
+original error if refresh fails. Generic network, authentication, quota, policy,
+or unrelated unsupported errors do not trigger discovery. Explicitly disable Fast
+with `--chatgpt-fast false` or select a different model when access is denied.
+
+Fast may consume more plan usage/credits; Codex multipliers are not universal SIWC
+promises. The official SIWC OAuth public `/v1/models` and `/v1/responses` routes are
+retained, without private endpoints or API-key fallback. No speed gain is promised.
+
+`--chatgpt-timings true` (default false) reports `catalog=not-requested`, time from
+inference start to first SSE event, and completion time. A first event need not be
+an output token. Diagnostics include no prompts, tokens, account IDs or response
+content. Six independent successful CLI runs now send zero catalog GETs and six
+inference POSTs; authentication refresh requests can still occur.
+
+References: [Fast mode](https://developers.openai.com/api/docs/guides/fast-mode),
+[SIWC models and inference](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference),
+[SIWC UI/UX](https://developers.openai.com/siwc/ui-ux-guidelines).
+
+Runtime controls (replace `YOUR_MODEL_SLUG` with a slug from your account):
+
+```sh
+howto --chatgpt-models
+export HOWTO_AI_PROVIDER=chatgpt
+export HOWTO_CHATGPT_MODEL='YOUR_MODEL_SLUG'
+# Optional when multiple accounts exist:
+export HOWTO_CHATGPT_ACCOUNT='YOUR_ACCOUNT_ID'
+
+howto 'list files'                         # Fast on unless explicitly overridden
+howto --chatgpt-fast true 'list files'
+howto --chatgpt-fast false 'list files'
+howto --chatgpt-timings true 'list files'   # timings default off
+howto --chatgpt-timings false 'list files'
+howto --print --chatgpt-fast=false 'list files'  # print only, no execution
+howto --chatgpt-fast true use git 'show changed files'  # interactive usage lookup
+HOWTO_CHATGPT_FAST=false HOWTO_CHATGPT_TIMINGS=true howto --print 'list files'
+HOWTO_CHATGPT_FAST=false howto --chatgpt-fast=true --print 'list files' # CLI wins
+```
+
+Equivalent file keys are `aiProvider`, `chatgptAccount`, `chatgptModel`,
+`chatgptFast`, `chatgptTimings`. Fast/timings accept JSON booleans or the strings
+`"true"`/`"false"`. CLI/environment accept exactly lowercase `true` or `false`;
+`1`, `0`, `yes`, uppercase and whitespace-padded values are invalid. Both
+`--chatgpt-fast false` and `--chatgpt-fast=false` work; a bare flag is not a toggle
+and requires a value. Timings obey the same precedence and syntax.
+Account/model actions (`--chatgpt-models`, `--chatgpt-status`, login/logout) do not
+accept Fast/timing flags. There is no runtime catalog cache, TTL, or clear control.

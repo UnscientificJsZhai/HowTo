@@ -118,7 +118,18 @@ try {
     stderr: "",
   });
   assert.equal(requests, 1);
-  for (const mode of ["valid", "incomplete", "http-error"]) {
+  for (const mode of [
+    "valid",
+    "incomplete",
+    "http-error",
+    "fast-on",
+    "fast-default",
+    "fast-default-unknown",
+    "fast-downgrade",
+    "fast-missing",
+    "fast-unknown",
+    "fast-unsupported",
+  ]) {
     const streamed = await run(
       process.execPath,
       [
@@ -135,14 +146,40 @@ try {
         HOWTO_CHATGPT_MODEL: "offline-stream",
         HOWTO_TEST_PACKAGE_ROOT: packageRoot,
         HOWTO_TEST_STREAM_MODE: mode,
+        ...(mode.startsWith("fast-default")
+          ? {}
+          : { HOWTO_CHATGPT_FAST: mode.startsWith("fast-") ? "true" : "false" }),
       },
     );
-    assert.equal(streamed.code, mode === "valid" ? 0 : 1, streamed.stderr);
+    const succeeds = [
+      "valid",
+      "fast-on",
+      "fast-default",
+      "fast-downgrade",
+      "fast-missing",
+      "fast-unknown",
+      "fast-default-unknown",
+    ].includes(mode);
+    const blocked = mode === "fast-unsupported";
+    assert.equal(streamed.code, succeeds ? 0 : blocked ? 2 : 1, streamed.stderr);
     assert.equal(streamed.signal, null);
-    assert.equal(streamed.stdout, mode === "valid" ? "printf 'STREAM_OK\\n'\n" : "");
+    assert.equal(streamed.stdout, succeeds ? "printf 'STREAM_OK\\n'\n" : "");
     assert.equal(streamed.stderr.includes("UPSTREAM_PRIVATE_DETAIL"), false);
     if (mode === "valid") assert.equal(streamed.stderr, "");
-    else
+    else if (mode.startsWith("fast-")) {
+      assert.match(
+        streamed.stderr,
+        mode === "fast-on" || mode === "fast-default"
+          ? /actual tier: Fast/
+          : mode === "fast-downgrade"
+            ? /actual tier: standard/
+            : mode === "fast-missing"
+              ? /actual tier: unconfirmed/
+              : mode === "fast-unknown" || mode === "fast-default-unknown"
+                ? /actual tier: Fast/
+                : /Fast was denied/,
+      );
+    } else
       assert.equal(
         streamed.stderr,
         mode === "incomplete"
@@ -242,7 +279,7 @@ finally:
       platform: process.platform,
       arch: process.arch,
       version: manifest.version,
-      checks: 12,
+      checks: 19,
       requests,
     }),
   );

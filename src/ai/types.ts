@@ -37,6 +37,7 @@ export interface GenerateCommandsResult {
 }
 
 export interface CommandProvider {
+  getFeedback?(): string | undefined;
   createUsageSession?(request: GenerateCommandsRequest): UsageGenerationSession;
   generateCommands(
     request: GenerateCommandsRequest,

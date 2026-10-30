@@ -32,6 +32,7 @@ export interface ChatGptInitializationAccount {
 }
 
 export interface ChatGptInitializationModel {
+  serviceTiers?: string[];
   slug: string;
   displayName: string;
 }
@@ -54,7 +55,7 @@ export interface ChatGptInitializationService {
 export type InitializationValues =
   | { provider: "openai"; apiKey: string; model: string; openaiBaseUrl?: string }
   | { provider: "gemini"; apiKey: string; model: string }
-  | { provider: "chatgpt"; account: string; model: string };
+  | { provider: "chatgpt"; account: string; model: string; fast?: boolean };
 
 export async function initializeConfig({
   cliOptions,
@@ -131,7 +132,7 @@ export async function validateAndPersistInitializationConfig(
   const providerFields: Record<AiProvider, (keyof FileConfig)[]> = {
     openai: ["openaiApiKey", "openaiModel", "openaiApiUrl"],
     gemini: ["geminiApiKey", "geminiModel"],
-    chatgpt: ["chatgptAccount", "chatgptModel"],
+    chatgpt: ["chatgptAccount", "chatgptModel", "chatgptFast"],
   };
   for (const field of providerFields[values.provider]) delete fileConfig[field];
   Object.assign(fileConfig, createFileConfig(values));
@@ -187,6 +188,7 @@ export function createFileConfig(values: InitializationValues): FileConfig {
       aiProvider: "chatgpt",
       chatgptAccount: values.account,
       chatgptModel: values.model,
+      ...(values.fast === undefined ? {} : { chatgptFast: values.fast }),
     };
   }
 

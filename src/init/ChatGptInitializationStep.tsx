@@ -32,6 +32,7 @@ type SetupState =
       models: ChatGptInitializationModel[];
       selectedIndex: number;
     }
+  | { step: "fast"; account: ChatGptInitializationAccount; model: string; selectedIndex: number }
   | { step: "error"; message: string };
 
 export const ChatGptInitializationStep: React.FC<Props> = ({
@@ -180,7 +181,11 @@ export const ChatGptInitializationStep: React.FC<Props> = ({
         return;
       }
       const count =
-        current.step === "accounts" ? current.accounts.length + 1 : current.models.length;
+        current.step === "accounts"
+          ? current.accounts.length + 1
+          : current.step === "fast"
+            ? 2
+            : current.models.length;
       if (key.upArrow || key.downArrow) {
         updateState({
           ...current,
@@ -197,7 +202,26 @@ export const ChatGptInitializationStep: React.FC<Props> = ({
       }
       if (current.step === "accounts") {
         selectAccount(current.accounts[selectedIndex]);
+      } else if (current.step === "fast") {
+        finish(() =>
+          onComplete({
+            provider: "chatgpt",
+            account: current.account.id,
+            model: current.model,
+            fast: selectedIndex === 1,
+          }),
+        );
       } else {
+        const selected = current.models[selectedIndex];
+        if (selected.serviceTiers?.some((tier) => tier === "priority" || tier === "fast")) {
+          updateState({
+            step: "fast",
+            account: current.account,
+            model: selected.slug,
+            selectedIndex: 1,
+          });
+          return;
+        }
         finish(() =>
           onComplete({
             provider: "chatgpt",
@@ -224,9 +248,13 @@ export const ChatGptInitializationStep: React.FC<Props> = ({
         ]
       : state.step === "models"
         ? state.models.map((model) => model.displayName || model.slug)
-        : [];
+        : state.step === "fast"
+          ? ["Standard (Fast off)", "Fast (may use more plan usage/credits)"]
+          : [];
   const selectedIndex =
-    state.step === "accounts" || state.step === "models" ? state.selectedIndex : 0;
+    state.step === "accounts" || state.step === "models" || state.step === "fast"
+      ? state.selectedIndex
+      : 0;
   const selectedLine = choices[selectedIndex];
   const status =
     state.step === "loading" || state.step === "error" ? state.message : `> ${selectedLine}`;
@@ -248,11 +276,13 @@ export const ChatGptInitializationStep: React.FC<Props> = ({
   const title =
     state.step === "accounts"
       ? "? ChatGPT account"
-      : state.step === "models"
-        ? "? ChatGPT model"
-        : state.step === "error"
-          ? "ChatGPT setup failed"
-          : "ChatGPT sign-in";
+      : state.step === "fast"
+        ? "? ChatGPT Fast (optional)"
+        : state.step === "models"
+          ? "? ChatGPT model"
+          : state.step === "error"
+            ? "ChatGPT setup failed"
+            : "ChatGPT sign-in";
   const availableChoices = Math.max(1, frameRows - 2);
   const firstChoice = Math.min(selectedIndex, Math.max(0, choices.length - availableChoices));
 

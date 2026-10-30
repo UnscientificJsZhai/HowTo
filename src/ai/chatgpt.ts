@@ -3,8 +3,9 @@ import type {
   ResponseInputItem,
 } from "openai/resources/responses/responses";
 
+import { performance } from "node:perf_hooks";
 import { getChatGptAccessToken } from "../auth/chatgpt/index.js";
-import { classifyChatGptHttpError } from "../auth/chatgpt/errors.js";
+import { ChatGptError, classifyChatGptHttpError } from "../auth/chatgpt/errors.js";
 import { type AppConfig, ConfigError } from "../config.js";
 import type { UsageGenerationSession, UsageLookupResult, UsageToolCall } from "../usage/types.js";
 import { sanitizeUsageLookupResult } from "../usage/output.js";
@@ -34,6 +35,96 @@ const MAX_OUTPUT_BYTES = 256 * 1024;
 
 export class ChatGptCommandProvider implements CommandProvider {
   private readonly model: string;
+  private feedback?: string;
+  private get fast(): boolean {
+    return this.config.fast ?? true;
+  }
+
+  getFeedback(): string | undefined {
+    return this.feedback;
+  }
+
+  private observer(): StreamObserver {
+    this.feedback = undefined;
+    const started = performance.now();
+    let first: number | undefined;
+    return {
+      event: () => {
+        first ??= Math.round(performance.now() - started);
+      },
+      completed: (tier) => {
+        const actual =
+          tier === "priority" || tier === "fast"
+            ? "Fast"
+            : tier === "default"
+              ? "standard"
+              : "unconfirmed";
+        const parts: string[] = [];
+        if (this.fast)
+          parts.push(
+            `ChatGPT Fast requested; actual tier: ${actual}. Fast may consume more plan usage/credits.`,
+          );
+        if (this.config.timings)
+          parts.push(
+            `ChatGPT timing: catalog=not-requested first-event=${first ?? 0}ms completion=${Math.round(performance.now() - started)}ms; actual tier: ${actual}.`,
+          );
+        this.feedback = parts.length ? parts.join(" ") : undefined;
+      },
+    };
+  }
+
+  private async run<T>(
+    signal: AbortSignal | undefined,
+    operation: (
+      signal: AbortSignal,
+      remember: (credentials: { accountId: string; accessToken: string }) => void,
+    ) => Promise<T>,
+  ): Promise<T> {
+    let credentials: { accountId: string; accessToken: string } | undefined;
+    this.feedback = undefined;
+    try {
+      return await runChatGptRequest(this.model, signal, this.dependencies, (requestSignal) =>
+        operation(requestSignal, (value) => {
+          credentials = value;
+        }),
+      );
+    } catch (error) {
+      this.feedback = undefined;
+      if (
+        credentials &&
+        !signal?.aborted &&
+        error instanceof ChatGptError &&
+        (error.code === "model_unavailable" || error.code === "fast_unsupported")
+      ) {
+        // Refresh discovery only. Never replay inference, change selection or tier.
+        // A failed/slow refresh must not replace the original useful error.
+        try {
+          const token = credentials.accessToken;
+          const models = await runChatGptRequest(
+            "models",
+            signal,
+            {
+              ...this.dependencies,
+              timeoutMilliseconds: Math.min(this.dependencies.timeoutMilliseconds ?? 5000, 5000),
+            },
+            (refreshSignal) =>
+              requestChatGptModels(
+                token,
+                refreshSignal,
+                this.dependencies.fetch ?? globalThis.fetch,
+              ),
+          );
+          const selected = models.find((model) => model.slug === this.model);
+          error.message += selected
+            ? " Model list refreshed; the selection was retained. Check account/model tier access or use --chatgpt-fast false."
+            : " Model list refreshed; the selected model is not listed. Run howto --init to choose another model.";
+        } catch {
+          /* Preserve the original error, including on discovery failure. */
+        }
+      }
+      throw error;
+    }
+  }
 
   constructor(
     private readonly config: AppConfig["chatgpt"],
@@ -48,17 +139,16 @@ export class ChatGptCommandProvider implements CommandProvider {
   }
 
   createUsageSession(request: GenerateCommandsRequest): UsageGenerationSession {
-    const initial = buildChatGptResponseRequest(this.model, request);
+    const initial = buildChatGptResponseRequest(this.model, request, this.fast);
     const input = initial.input as ResponseInputItem[];
     const tracker = new UsageReplyTracker("chatgpt", this.model);
     const knownCredentials = new Set<string>();
     const toolResults = new Map<string, UsageLookupResult>();
     let credentialsChanged = false;
-    let modelVerified = false;
     return {
       getKnownCredentials: () => [...knownCredentials],
       next: (replies, options, signal) =>
-        runChatGptRequest(this.model, signal, this.dependencies, async (requestSignal) => {
+        this.run(signal, async (requestSignal, remember) => {
           const previousCredentialCount = knownCredentials.size;
           const observeCredentials = (values: readonly string[]) => {
             if (requestSignal.aborted) return;
@@ -72,6 +162,7 @@ export class ChatGptCommandProvider implements CommandProvider {
             signal: requestSignal,
             onCredentials: observeCredentials,
           });
+          remember(credentials);
           requestSignal.throwIfAborted();
           observeCredentials([credentials.accessToken]);
           // 审批期间凭据可能已刷新；在序列化工具结果前再次按最新的整组令牌脱敏。
@@ -103,19 +194,7 @@ export class ChatGptCommandProvider implements CommandProvider {
             item.output = JSON.stringify(sanitized);
           }
           const fetch = this.dependencies.fetch ?? globalThis.fetch;
-          if (!modelVerified) {
-            const models = await requestChatGptModels(
-              credentials.accessToken,
-              requestSignal,
-              fetch,
-            );
-            if (!models.some((model) => model.slug === this.model)) {
-              throw new ConfigError(
-                "The selected ChatGPT model is unavailable for this account. Run howto --chatgpt-models or howto --init to select an available model.",
-              );
-            }
-            modelVerified = true;
-          }
+          const observer = this.observer();
           requestSignal.throwIfAborted();
           const parameters: ResponseCreateParamsStreaming = {
             ...initial,
@@ -179,6 +258,7 @@ export class ChatGptCommandProvider implements CommandProvider {
             requestSignal,
             this.model,
             options.toolsEnabled,
+            observer,
           );
           requestSignal.throwIfAborted();
           const calls: UsageToolCall[] = [];
@@ -210,18 +290,14 @@ export class ChatGptCommandProvider implements CommandProvider {
     request: GenerateCommandsRequest,
     signal?: AbortSignal,
   ): Promise<GenerateCommandsResult> {
-    return runChatGptRequest(this.model, signal, this.dependencies, async (requestSignal) => {
+    return this.run(signal, async (requestSignal, remember) => {
       const credentials = await (this.dependencies.getAccessToken ?? getChatGptAccessToken)({
         accountId: this.config.account,
         signal: requestSignal,
       });
       const fetch = this.dependencies.fetch ?? globalThis.fetch;
-      const models = await requestChatGptModels(credentials.accessToken, requestSignal, fetch);
-      if (!models.some((model) => model.slug === this.model)) {
-        throw new ConfigError(
-          "The selected ChatGPT model is unavailable for this account. Run howto --chatgpt-models or howto --init to select an available model.",
-        );
-      }
+      remember(credentials);
+      const observer = this.observer();
       requestSignal.throwIfAborted();
       // 使用显式 fetch，不读取 SDK 隐式环境头，也不经过可能记录原始 SSE 的 SDK 解码器。
       const response = await fetch(RESPONSES_URL, {
@@ -231,7 +307,7 @@ export class ChatGptCommandProvider implements CommandProvider {
           Accept: "text/event-stream",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(buildChatGptResponseRequest(this.model, request)),
+        body: JSON.stringify(buildChatGptResponseRequest(this.model, request, this.fast)),
         redirect: "error",
         signal: requestSignal,
       });
@@ -244,7 +320,9 @@ export class ChatGptCommandProvider implements CommandProvider {
         void response.body?.cancel().catch(() => undefined);
         throw new AiProviderError("chatgpt", this.model);
       }
-      return { rawText: await collectChatGptResponse(response, requestSignal, this.model) };
+      return {
+        rawText: await collectChatGptResponse(response, requestSignal, this.model, observer),
+      };
     });
   }
 }
@@ -252,9 +330,11 @@ export class ChatGptCommandProvider implements CommandProvider {
 export function buildChatGptResponseRequest(
   model: string,
   request: GenerateCommandsRequest,
+  fast = true,
 ): ResponseCreateParamsStreaming {
   return {
     model,
+    service_tier: fast ? "priority" : "default",
     instructions: request.systemPrompt,
     input: [
       {
@@ -313,11 +393,13 @@ async function collectChatGptUsageOutput(
   signal: AbortSignal,
   model: string,
   toolsEnabled: boolean,
+  observer: StreamObserver,
 ): Promise<Record<string, unknown>[]> {
   const fail = () => new AiProviderError("chatgpt", model);
   const completed = new Map<number, Record<string, unknown>>();
   let completedBytes = 0;
   for await (const frame of decodeChatGptEvents(response, signal)) {
+    observer.event();
     if (
       frame.event !== "" &&
       frame.event !== "message" &&
@@ -398,6 +480,7 @@ async function collectChatGptUsageOutput(
             });
       if (items.length === 0 || Buffer.byteLength(JSON.stringify(items), "utf8") > MAX_OUTPUT_BYTES)
         throw fail();
+      observer.completed(final.service_tier);
       return items;
     }
   }
@@ -426,10 +509,12 @@ async function collectChatGptResponse(
   response: Response,
   signal: AbortSignal,
   model: string,
+  observer: StreamObserver,
 ): Promise<string> {
   const completedItems = new Map<number, string>();
   let completedBytes = 0;
   for await (const frame of decodeChatGptEvents(response, signal)) {
+    observer.event();
     // 忽略其它协议事件；尤其不把未知事件的正文交给日志或异常消息。
     if (
       frame.event !== "" &&
@@ -484,7 +569,9 @@ async function collectChatGptResponse(
     }
     if (event.type === "response.completed") {
       signal.throwIfAborted();
-      return readCompletedText(event.response, model, completedItems);
+      const text = readCompletedText(event.response, model, completedItems);
+      observer.completed(isRecord(event.response) ? event.response.service_tier : undefined);
+      return text;
     }
   }
   throw new AiProviderError("chatgpt", model);
@@ -592,4 +679,9 @@ async function* decodeChatGptLines(
   }
   pending += decoder.decode();
   if (pending.endsWith("\r")) yield pending.slice(0, -1);
+}
+
+interface StreamObserver {
+  event(): void;
+  completed(tier: unknown): void;
 }

@@ -85,7 +85,7 @@ const { toAppError } = await import("../../../src/errors.js");
 
 try {
   const provider = new ChatGptCommandProvider(
-    { model: CHATGPT_TEST_MODEL },
+    { fast: false, model: CHATGPT_TEST_MODEL },
     {
       getAccessToken: () => {
         if (mode === "auth-error") throw new Error(CHATGPT_TEST_SECRET);

@@ -237,3 +237,13 @@ test("并发初始化只能留下完整的单份配置，权限为 0600", async 
   assert.equal((await stat(path)).mode & 0o777, 0o600);
   assert.deepEqual(await readdir(dirname(path)), ["config.json"]);
 });
+
+test("ChatGPT Fast and timing settings accept booleans/strings and reject objects", async (t) => {
+  const path = await tempConfigPath(t);
+  for (const value of [true, false, "true", "false"]) {
+    await writeUserConfigFile({ chatgptFast: value, chatgptTimings: value }, path);
+    assert.deepEqual(await readUserConfigFile(path), { chatgptFast: value, chatgptTimings: value });
+  }
+  await writeRawConfig(path, '{"chatgptFast":{}}');
+  await assert.rejects(readUserConfigFile(path), ConfigError);
+});

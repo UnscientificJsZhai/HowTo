@@ -55,6 +55,10 @@ export const App: React.FC<Props> = ({
   const { write: writeStderr } = useStderr();
   const writeStderrRef = useRef(writeStderr);
   writeStderrRef.current = writeStderr;
+  const feedback = provider.getFeedback?.();
+  useEffect(() => {
+    if (feedback) writeStderrRef.current(`${feedback}\n`);
+  }, [feedback]);
   const [status, setStatus] = useState<Status>("loading");
   const [candidates, setCandidates] = useState<CommandCandidateContract[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState<CommandCandidateContract | null>(null);

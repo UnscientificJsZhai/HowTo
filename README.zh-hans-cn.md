@@ -329,3 +329,57 @@ howto --print "show disk usage"
 ### Gemini key 必填
 
 Gemini 不能在没有 API key 的情况下运行。请设置 `HOWTO_GEMINI_API_KEY`，传入 `--gemini-api-key`，或重新运行 `howto --init`。
+
+### ChatGPT Fast、保存的模型与请求计时
+
+`howto --init` 获取账号最新模型目录，并将选择保存在 `~/.howto/config.json`，跨 CLI
+启动保留。普通生成、`--print` 和每一轮 `use` 直接使用已配置模型，不再先发送目录 GET。
+CLI/环境变量模型覆盖仅对当前调用生效，不改写保存的选择。需要持久换模型时运行
+`howto --init`；主动刷新列表使用 `howto --chatgpt-models`。不需要磁盘或进程内目录缓存。
+
+Fast 默认开启，请求 `service_tier: priority`；显式 false 请求 `default`，不改变模型或
+推理设置。初始化根据验证过的能力元数据提供默认选中的 Fast 选项；目录字段缺失不再
+阻止直接请求已配置模型，实际账号/模型权限由服务器判断。完整响应反馈实际 Fast、
+standard（含降级）或 unconfirmed（元数据缺失/未知），命令仍需完整响应和原有校验。
+
+仅结构化错误明确表示模型或档位不可用时，使用本次凭据重新获取一次目录，最多等待
+五秒。不会重试推理、自动换模型或降档；目录刷新失败/超时也保留有用原始错误。
+一般网络、认证、限流、策略拒绝或无关的不支持错误不会触发目录查询。
+Fast 被拒时可显式 `--chatgpt-fast false`，或通过初始化选择其他模型。
+
+Fast 可能增加套餐用量/积分消耗，不套用 Codex 固定倍率，不承诺速度收益。保留官方 SIWC
+OAuth 公共 `/v1/models` 和 `/v1/responses` 路线，不使用私有接口或 API Key 回退。
+
+计时默认关闭；`--chatgpt-timings true` 报告 `catalog=not-requested`、从推理启动至首 SSE
+事件及完成的耗时。首事件不一定是输出 token；不记录提示词、令牌、账号标识或响应正文。
+六次独立成功 CLI 调用现在是零次目录 GET、六次推理 POST；认证刷新仍可能产生请求。
+
+参见[官方 Fast 文档](https://developers.openai.com/api/docs/guides/fast-mode)及
+[SIWC 模型与推理](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference)。
+
+运行时例子（模型必须替换为账号目录中的 slug）：
+
+```sh
+howto --chatgpt-models
+export HOWTO_AI_PROVIDER=chatgpt
+export HOWTO_CHATGPT_MODEL='YOUR_MODEL_SLUG'
+# 多账号时按需选择：
+export HOWTO_CHATGPT_ACCOUNT='YOUR_ACCOUNT_ID'
+
+howto '列出文件'                         # 无显式覆盖时 Fast 默认开启
+howto --chatgpt-fast true '列出文件'
+howto --chatgpt-fast false '列出文件'
+howto --chatgpt-timings true '列出文件'   # 计时默认关闭
+howto --chatgpt-timings false '列出文件'
+howto --print --chatgpt-fast=false '列出文件'  # 仅打印，不执行
+howto --chatgpt-fast true use git '查看改动文件'  # 交互式用法查询
+HOWTO_CHATGPT_FAST=false HOWTO_CHATGPT_TIMINGS=true howto --print '列出文件'
+HOWTO_CHATGPT_FAST=false howto --chatgpt-fast=true --print '列出文件' # CLI 优先
+```
+
+配置文件对应键为 `aiProvider`、`chatgptAccount`、`chatgptModel`、`chatgptFast`、
+`chatgptTimings`；后两个键接受 JSON 布尔值或字符串 `"true"` / `"false"`。
+CLI 和环境变量仅接受小写 `true` / `false`，不接受 `1`、`0`、`yes`、大写或两端空白。
+支持空格和等号两种写法，裸 `--chatgpt-fast` / `--chatgpt-timings` 不是切换开关，必须传值。
+计时选项也遵循 CLI > 环境变量 > 文件 > 默认值。
+账号/模型管理命令不接受 Fast 和计时选项。现在没有目录缓存，也没有 TTL、清空或缓存开关。

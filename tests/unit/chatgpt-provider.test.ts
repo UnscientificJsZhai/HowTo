@@ -66,7 +66,7 @@ function providerFor(
   options: { contentType?: string; omitContentType?: boolean; timeoutMilliseconds?: number } = {},
 ): ChatGptCommandProvider {
   return new ChatGptCommandProvider(
-    { model: MODEL, account: "account-test" },
+    { fast: false, model: MODEL, account: "account-test" },
     {
       getAccessToken: credentials,
       timeoutMilliseconds: options.timeoutMilliseconds,
@@ -91,8 +91,9 @@ function assertProviderError(error: unknown): boolean {
 
 test("ChatGPT 复用现有 schema，并使用 instructions、数组 input 和持久化关闭的流请求", () => {
   const source = testRequest();
-  assert.deepEqual(buildChatGptResponseRequest(MODEL, source), {
+  assert.deepEqual(buildChatGptResponseRequest(MODEL, source, false), {
     model: MODEL,
+    service_tier: "default",
     instructions: source.systemPrompt,
     input: [{ role: "user", content: source.userPrompt }],
     store: false,
@@ -169,23 +170,9 @@ test("ChatGPT 目录每次使用所选账户令牌，不复用另一账户的缓
   ]);
 });
 
-test("ChatGPT 模型必须显式选择，目录不再提供该模型时不发送推理请求", async () => {
-  for (const model of [undefined, "", " \n"]) {
-    assert.throws(() => new ChatGptCommandProvider({ model }), ConfigError);
-  }
-  let requests = 0;
-  const provider = new ChatGptCommandProvider(
-    { model: "not-in-catalog" },
-    {
-      getAccessToken: credentials,
-      fetch: () => {
-        requests++;
-        return Promise.resolve(Response.json(CATALOG));
-      },
-    },
-  );
-  await assert.rejects(provider.generateCommands(testRequest()), ConfigError);
-  assert.equal(requests, 1);
+test("ChatGPT 模型必须显式选择，不自动选默认模型", () => {
+  for (const model of [undefined, "", " "])
+    assert.throws(() => new ChatGptCommandProvider({ fast: false, model }), ConfigError);
 });
 
 test("ChatGPT 保留认证层的明确恢复提示，不在授权缺失时访问模型或推理", async () => {
@@ -200,13 +187,15 @@ test("ChatGPT 保留认证层的明确恢复提示，不在授权缺失时访问
   };
   await assert.rejects(listChatGptModels({}, dependencies), (error: unknown) => error === expected);
   await assert.rejects(
-    new ChatGptCommandProvider({ model: MODEL }, dependencies).generateCommands(testRequest()),
+    new ChatGptCommandProvider({ fast: false, model: MODEL }, dependencies).generateCommands(
+      testRequest(),
+    ),
     (error: unknown) => error === expected,
   );
   assert.equal(requests, 0);
 });
 
-test("ChatGPT 目录的额度与过大错误按固定分类失败，不请求推理或重试", async () => {
+test("ChatGPT 推理的额度与过大错误按固定分类失败，不请求推理或重试", async () => {
   for (const body of [
     JSON.stringify({
       error: { code: "subscription_sharing_usage_limit_exceeded", message: "secret" },
@@ -215,7 +204,7 @@ test("ChatGPT 目录的额度与过大错误按固定分类失败，不请求推
   ]) {
     let requests = 0;
     const provider = new ChatGptCommandProvider(
-      { model: MODEL },
+      { fast: false, model: MODEL },
       {
         getAccessToken: credentials,
         fetch: () => {
@@ -234,11 +223,11 @@ test("ChatGPT 目录的额度与过大错误按固定分类失败，不请求推
   }
 });
 
-test("ChatGPT 的目录和推理使用同一凭证与固定公共端点", async () => {
+test("ChatGPT 直接使用配置模型和固定公共推理端点", async () => {
   const requests: Request[] = [];
   let credentialReads = 0;
   const provider = new ChatGptCommandProvider(
-    { model: MODEL, account: "account-test" },
+    { fast: false, model: MODEL, account: "account-test" },
     {
       getAccessToken: (options) => {
         assert.equal(options.accountId, "account-test");
@@ -248,29 +237,27 @@ test("ChatGPT 的目录和推理使用同一凭证与固定公共端点", async 
       fetch: (input, init) => {
         requests.push(new Request(input, init));
         return Promise.resolve(
-          requests.length === 1
-            ? Response.json(CATALOG)
-            : new Response(frame(completed()), {
-                headers: { "content-type": "text/event-stream" },
-              }),
+          new Response(frame(completed()), {
+            headers: { "content-type": "text/event-stream" },
+          }),
         );
       },
     },
   );
   assert.deepEqual(await provider.generateCommands(testRequest()), { rawText: RAW_TEXT });
   assert.equal(credentialReads, 1);
-  assert.equal(requests.length, 2);
+  assert.equal(requests.length, 1);
   assert.deepEqual(
     requests.map((request) => [request.url, request.method, request.redirect]),
-    [
-      ["https://api.openai.com/v1/models", "GET", "error"],
-      ["https://api.openai.com/v1/responses", "POST", "error"],
-    ],
+    [["https://api.openai.com/v1/responses", "POST", "error"]],
   );
   for (const request of requests) {
     assert.equal(request.headers.get("authorization"), `Bearer ${TOKEN}`);
   }
-  assert.deepEqual(await requests[1].json(), buildChatGptResponseRequest(MODEL, testRequest()));
+  assert.deepEqual(
+    await requests[0].json(),
+    buildChatGptResponseRequest(MODEL, testRequest(), false),
+  );
 });
 
 test("ChatGPT 只读取终态文本，不重复 delta，也不混入 reasoning 或 commentary", async () => {
@@ -563,7 +550,7 @@ test("ChatGPT 预取消不读取凭证，流中取消丢弃已有文本并关闭
   controller.abort(new Error("private reason"));
   let credentialReads = 0;
   const provider = new ChatGptCommandProvider(
-    { model: MODEL },
+    { fast: false, model: MODEL },
     {
       getAccessToken: (options) => {
         credentialReads++;
@@ -608,7 +595,7 @@ test("ChatGPT 预取消不读取凭证，流中取消丢弃已有文本并关闭
 
 test("ChatGPT 超时覆盖凭证与流读取，即使依赖不主动响应 signal 也结束等待", async () => {
   const provider = new ChatGptCommandProvider(
-    { model: MODEL },
+    { fast: false, model: MODEL },
     {
       timeoutMilliseconds: 10,
       getAccessToken: () => new Promise(() => undefined),

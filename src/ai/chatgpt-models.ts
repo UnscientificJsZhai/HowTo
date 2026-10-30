@@ -8,6 +8,7 @@ import { AiProviderError, UsageToolsUnsupportedError } from "./errors.js";
 export interface ChatGptModel {
   slug: string;
   displayName: string;
+  serviceTiers?: string[];
 }
 
 export interface ChatGptRequestOptions {
@@ -75,7 +76,17 @@ export function parseChatGptModels(value: unknown): ChatGptModel[] {
     if (!isModelLabel(entry.slug) || !isModelLabel(entry.display_name) || slugs.has(entry.slug)) {
       throw new AiProviderError("chatgpt", "models");
     }
-    models.push({ slug: entry.slug, displayName: entry.display_name });
+    const tiers = entry.service_tiers;
+    // Only the modern, validated catalog schema conveys tier capability.
+    const serviceTiers =
+      Array.isArray(tiers) && tiers.every((tier) => isRecord(tier) && isModelLabel(tier.id))
+        ? [...new Set(tiers.map((tier) => (tier as { id: string }).id))]
+        : undefined;
+    models.push({
+      slug: entry.slug,
+      displayName: entry.display_name,
+      ...(serviceTiers === undefined ? {} : { serviceTiers }),
+    });
     slugs.add(entry.slug);
   }
   return models;

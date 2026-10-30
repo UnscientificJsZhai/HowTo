@@ -41,7 +41,7 @@ test("loadConfig uses model defaults after provider is configured", () => {
       model: DEFAULT_OPENAI_MODEL,
       baseUrl: undefined,
     },
-    chatgpt: { account: undefined, model: undefined },
+    chatgpt: { account: undefined, model: undefined, fast: true, timings: false },
     structuredOutput: true,
   });
 });
@@ -72,7 +72,7 @@ test("loadConfig lets CLI options override environment values", () => {
         model: DEFAULT_OPENAI_MODEL,
         baseUrl: undefined,
       },
-      chatgpt: { account: undefined, model: undefined },
+      chatgpt: { account: undefined, model: undefined, fast: true, timings: false },
       structuredOutput: true,
     },
   );
@@ -108,7 +108,7 @@ test("loadConfig applies priority CLI over env over config file over defaults", 
         model: "cli-openai-model",
         baseUrl: "https://file.example/v1",
       },
-      chatgpt: { account: undefined, model: undefined },
+      chatgpt: { account: undefined, model: undefined, fast: true, timings: false },
       structuredOutput: true,
     },
   );
@@ -128,7 +128,7 @@ test("loadConfig lets config file override defaults", () => {
         model: "file-model",
         baseUrl: undefined,
       },
-      chatgpt: { account: undefined, model: undefined },
+      chatgpt: { account: undefined, model: undefined, fast: true, timings: false },
       structuredOutput: true,
     },
   );
@@ -211,16 +211,25 @@ test("ChatGPT 配置按 CLI、环境、文件顺序选择账号和模型，无�
     fileConfig,
   );
   assert.equal(config.aiProvider, "chatgpt");
-  assert.deepEqual(config.chatgpt, { account: "cli-account", model: "cli-model" });
+  assert.deepEqual(config.chatgpt, {
+    account: "cli-account",
+    model: "cli-model",
+    fast: true,
+    timings: false,
+  });
   assert.equal(config.openai.apiKey, "saved-api-key");
   assert.equal(config.gemini.apiKey, "saved-gemini-key");
   assert.deepEqual(loadConfig({ print: false }, environment, fileConfig).chatgpt, {
     account: "environment-account",
     model: "environment-model",
+    fast: true,
+    timings: false,
   });
   assert.deepEqual(loadConfig({ print: false }, {}, fileConfig).chatgpt, {
     account: "file-account",
     model: "file-model",
+    fast: true,
+    timings: false,
   });
   assert.equal(
     loadConfig({ print: false, aiProvider: "chatgpt", chatgptModel: "available-model" }, {}).openai

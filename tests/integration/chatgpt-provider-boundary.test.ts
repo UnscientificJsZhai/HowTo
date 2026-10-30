@@ -87,12 +87,6 @@ function expectedOutput(exitCode: number, noRequests = false): string {
     ? []
     : [
         {
-          url: "https://api.openai.com/v1/models",
-          method: "GET",
-          credentialsMatch: true,
-          headersIsolated: true,
-        },
-        {
           url: "https://api.openai.com/v1/responses",
           method: "POST",
           credentialsMatch: true,
