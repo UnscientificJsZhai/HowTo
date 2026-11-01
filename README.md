@@ -9,7 +9,7 @@ _Use AI to quickly find commands within the terminal._
 
 English | [简体中文](README.zh-hans-cn.md)
 
-[Features](#features) • [Install](#install) • [Usage](#usage) • [Configuration](#configuration) • [Development](#development) • [Troubleshooting](#troubleshooting)
+[Features](#features) • [Install](#install) • [Usage](#usage) • [Configuration](#configuration) • [Troubleshooting](#troubleshooting)
 
 `howto` is a TypeScript CLI that turns a natural-language question into up to three executable command candidates. It never runs AI output directly: you choose a command in the terminal, fill any placeholders, review the final command, and confirm before execution.
 
@@ -22,14 +22,13 @@ English | [简体中文](README.zh-hans-cn.md)
 - **Tool-constrained mode** - use `howto use <command>` to require candidates around a specific CLI tool.
 - **Interactive review flow** - select a candidate, resolve placeholders, and confirm the final command before execution.
 - **Non-interactive print mode** - use `--print` to output candidates without TTY interaction or command execution.
-- **ChatGPT, OpenAI, and Gemini support** - sign in with ChatGPT to use an eligible plan, or keep using API keys and OpenAI-compatible services.
-- **Local validation first** - AI JSON output, placeholder references, `use <command>` candidates, and obvious dangerous commands are checked locally.
+- **ChatGPT sign-in, OpenAI API, and Gemini API support** - sign in with ChatGPT to use an eligible plan, or keep using API keys and OpenAI-compatible services.
 
 ## Install
 
 Requires **Node.js 22 or newer**. The npm package declares this through `engines.node`, matching the minimum version required by its existing runtime dependencies.
 
-Only **macOS and Linux** are supported. Native Windows is unsupported, including CMD, PowerShell, and Git Bash/MSYS2 using Windows Node.js. WSL requires Node.js installed and running inside Linux; dedicated WSL acceptance testing has not been completed. Both npm installation and CLI startup check the operating system.
+Supports **macOS and Linux**. Native Windows is unsupported, including CMD, PowerShell, and Git Bash/MSYS2 using Windows Node.js. WSL requires Node.js installed and running inside Linux; dedicated WSL acceptance testing has not been completed. Both npm installation and CLI startup check the operating system.
 
 Interactive execution only supports `sh`, `bash`, and `zsh`. `SHELL` may be one of these bare names or an absolute path with one of these filenames, such as `/bin/zsh` or `/opt/homebrew/bin/bash`; relative paths and additional arguments are rejected. A missing or whitespace-only `SHELL` defaults to `/bin/sh`, including the system-provided `/bin/sh` symlink. Other shells are rejected before initialization or AI requests, without silently switching interpreters; the check runs again immediately before execution. To select an execution shell explicitly, use `env SHELL=/bin/bash howto "list files"`.
 
@@ -153,6 +152,8 @@ Options:
 - `--print` - print validated command candidates and exit without executing.
 - `--ai-provider <openai|gemini|chatgpt>` - select the AI provider.
 - `--chatgpt-account <id>` / `--chatgpt-model <slug>` - choose a local registration and an available ChatGPT model.
+- `--chatgpt-fast <true|false>` - select the ChatGPT Fast tier; defaults to `true`.
+- `--chatgpt-timings <true|false>` - report ChatGPT request timings; defaults to `false`.
 - `--no-browser` - skip the ChatGPT browser launcher and print the authorization URL; only with `--chatgpt-login` or `--init`.
 - `--callback-port <port>` - use a specific ChatGPT loopback callback port (`1`–`65535`, random available port by default); only with `--chatgpt-login` or `--init`.
 - `--gemini-api-key <key>` - provide a Gemini API key.
@@ -161,6 +162,12 @@ Options:
 - `--openai-api-key <key>` - provide an OpenAI API key.
 - `--openai-model <model>` - override the OpenAI model.
 - `--structured-output <true|false>` - enable SDK-level schema structured output; default `true`.
+
+### Interactive Usage Lookup
+
+Interactive `use <command>` lets AI request local usage information. Each lookup shows the program, arguments, and purpose for approval, rejection, or argument editing. Local danger, inconclusive analysis, or an AI risk flag requires typing `EXECUTE`. Lookups invoke the resolved program with an argument array, without a shell or stdin. Output is limited and known credentials are redacted before results are sent back to AI.
+
+Each generation handles at most 6 lookup calls, reuses results for identical arguments within the session, and gives each lookup a default timeout of 10 seconds. If the service explicitly rejects native tool support, howto displays a notice, disables lookups for that request, and continues generating commands or explains why it cannot. Lookup approval still requires separate candidate selection, placeholder entry, and final command confirmation. `--print` performs no local lookups and executes no generated commands.
 
 ### Argument Parsing
 
@@ -200,6 +207,8 @@ For each setting, the first configured source in that order wins:
 - `--ai-provider` / `HOWTO_AI_PROVIDER` / `aiProvider` - `openai`, `gemini`, or `chatgpt`; no default.
 - `--chatgpt-account` / `HOWTO_CHATGPT_ACCOUNT` / `chatgptAccount` - local ChatGPT registration ID; required when more than one account is saved.
 - `--chatgpt-model` / `HOWTO_CHATGPT_MODEL` / `chatgptModel` - visible model slug from `--chatgpt-models`; no static default.
+- `--chatgpt-fast` / `HOWTO_CHATGPT_FAST` / `chatgptFast` - request the ChatGPT Fast tier; default `true`.
+- `--chatgpt-timings` / `HOWTO_CHATGPT_TIMINGS` / `chatgptTimings` - report ChatGPT request timings; default `false`.
 - `--gemini-api-key` / `HOWTO_GEMINI_API_KEY` / `geminiApiKey` - Gemini API key; required for Gemini.
 - `--gemini-model` / `HOWTO_GEMINI_MODEL` / `geminiModel` - Gemini model; default `gemini-3.5-flash-lite`.
 - `--openai-api-url` / `HOWTO_OPENAI_API_URL` / `openaiApiUrl` - OpenAI-compatible base URL; defaults to `https://api.openai.com/v1`.
@@ -229,7 +238,7 @@ howto --print "show current branch"
 - `use <command>` candidates clearly start with the requested tool after conservative prefix handling;
 - commands flagged by local checks, inconclusive local analysis, or AI require typing `EXECUTE` before they can run; matching is case-insensitive.
 
-In the same request that generates candidates, AI must return a boolean `dangerous` and a string `dangerReason` for each candidate. A flagged command requires a brief, non-whitespace reason; an unflagged command requires exactly `""`. Missing fields, incorrect types, or inconsistent combinations reject the entire response with exit code `2`, including older responses without these fields. Both providers and output modes use the same contract.
+In the same request that generates candidates, AI must return a boolean `dangerous` and a string `dangerReason` for each candidate. A flagged command requires a brief, non-whitespace reason; an unflagged command requires exactly `""`. Missing fields, incorrect types, or inconsistent combinations reject the entire response with exit code `2`, including older responses without these fields. All three providers use this contract in both structured and compatibility output modes.
 
 The prompt asks AI to assess complete commands for data loss, important data overwrites, destructive history changes, system or permission changes, service disruption, sensitive information disclosure, and untrusted code execution, supplementing operations local rules may miss. Ordinary queries, file creation, and routine builds are not automatically flagged merely because they have side effects.
 
@@ -258,45 +267,6 @@ These rules cover complete, valid bracketed paste. The terminal protocol cannot 
 
 > [!WARNING]
 > A command that passes local checks and is not flagged by AI is not guaranteed to be safe. These checks add confirmation requirements; they do not provide a complete safety proof or guarantee AI assessment accuracy.
-
-## Development
-
-This project is built with TypeScript, React, Ink, OpenAI SDK, Gemini GenAI SDK, and Node's built-in test runner.
-
-For development and the full test suite, use **Node.js 22.x (22.22.1 or later) or 24.x (24.3.0 or later)**. These versions satisfy the development dependencies.
-
-Builds use TypeScript 7 through the `@typescript/native` npm alias. ESLint retains the TypeScript 6 JavaScript API through `typescript` → `@typescript/typescript6` (currently forwarding to 6.0.3), following the [official side-by-side setup](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0). Build scripts invoke the native compiler explicitly because incremental npm installs can change the shared `tsc` symlink. `npm run check:toolchain` verifies compiler versions, compatibility API resolution, and explicit build compiler paths. Run `npm run lint` to check project code with the existing type-aware rules. Keep both compilers compatible with the project until typescript-eslint supports the new API; this does not give ESLint TypeScript 7-only language support.
-
-```bash
-npm ci
-npm run build
-npm test
-npm run lint
-npm run format:check
-```
-
-Useful paths:
-
-- `src/index.tsx` - CLI orchestration and execution flow.
-- `src/cli.ts` - argument parsing.
-- `src/config.ts` - config merging and provider validation.
-- `src/prompt.ts` - prompt and AI output contract.
-- `src/validation/` - AI response and command-tool validation.
-- `src/safety/` - dangerous command rules.
-- `src/ui/` - Ink-based terminal UI.
-- `tests/unit/` - argument parsing, configuration merging, validation, prompts, pure UI logic and static rendering, and providers with dependency stubs.
-- `tests/integration/` - filesystem and credential storage, real SDK serialization, Ink component interactions and complete UI flows, CLI processes, loopback HTTP providers, and PTY sessions.
-- `tests/helpers/` - input streams, request data, and rendering helpers shared by both suites.
-
-`npm test` runs both suites; use `npm run test:unit` or `npm run test:integration` to run one suite independently.
-
-### Linux validation
-
-The 1.0.2 local validation used Debian 13.6 x86_64 in a Cloud container, Node 22.22.1 / 24.19.0, and real kernel PTYs with dash (`/bin/sh`), bash 5.2.37 and zsh 5.9. Both Node versions passed 719 tests without skips, including 42 PTY cases; stability rounds and additional boundary evidence are recorded in the validation report. The installed package was checked separately on Node 22.0.0 with npm 10.5.1. Evidence, fixes and coverage limits are recorded in the validation report delivered separately with this task.
-
-The full POSIX suite requires Python 3 available on `/usr/bin:/bin`, sh/bash/zsh, an allocatable PTY, and a non-root user for permission checks. Some Linux process-group checks use a subprocess supervisor and are explicitly inapplicable to macOS. Tests use isolated temporary homes and fake providers; they do not require API keys. To verify a separately installed package, run `npm run test:package -- /absolute/path/to/bin/howto`; this compiles and runs `tests/package-smoke.ts`, uses a local HTTP fixture, and only executes a harmless print command after confirmation.
-
-Test CI runs only on Ubuntu 24.04 with Node 24.19.0. Pushes run unit tests; pull requests and manual runs execute both unit and integration tests. All runs also build the project and check lint and formatting. macOS runners, Node 22 jobs, and installed-package smoke jobs are excluded from CI; the local package smoke command remains available. Alpine, native arm64, WSL, and real terminal-emulator visuals remain unverified; a PTY or a configured job is not evidence for those platforms. A separate environment passed bounded live Gemini native and OpenAI-compatible protocol smoke checks; native structured-output OFF, the default model, and the full live CLI remain unverified.
 
 ## Troubleshooting
 

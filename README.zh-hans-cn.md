@@ -22,14 +22,13 @@ _在终端中用 AI 快速找到可执行命令。_
 - **指定工具模式** - 使用 `howto use <command>` 要求候选项围绕某个 CLI 工具生成。
 - **交互式确认流程** - 选择候选项、填写占位符，并在执行前确认最终命令。
 - **非交互打印模式** - 使用 `--print` 输出候选命令，不进入 TTY 交互，也不执行命令。
-- **支持 ChatGPT、OpenAI 和 Gemini** - 可使用 ChatGPT 登录与符合条件的账户额度，也可继续使用 API key 和 OpenAI 兼容服务。
-- **本地优先校验** - 本地校验 AI JSON 输出、占位符引用、`use <command>` 候选项以及明显危险命令。
+- **支持 ChatGPT 登录、OpenAI API 和 Gemini API** - 可使用 ChatGPT 登录与符合条件的账户额度，也可继续使用 API key 和 OpenAI 兼容服务。
 
 ## 安装
 
 需要 **Node.js 22 或更高版本**。npm 包通过 `engines.node` 声明此要求，与现有运行依赖的最低版本保持一致。
 
-仅支持 **macOS 和 Linux**。不支持原生 Windows，包括 CMD、PowerShell，以及使用 Windows 版 Node.js 的 Git Bash／MSYS2。WSL 必须在 Linux 环境内安装并运行 Node.js；目前尚未完成 WSL 专项验收。npm 安装和 CLI 启动均检查操作系统。
+支持 **macOS 和 Linux**。不支持原生 Windows，包括 CMD、PowerShell，以及使用 Windows 版 Node.js 的 Git Bash／MSYS2。WSL 必须在 Linux 环境内安装并运行 Node.js；目前尚未完成 WSL 专项验收。npm 安装和 CLI 启动均检查操作系统。
 
 交互执行只允许 `sh`、`bash`、`zsh`。`SHELL` 可以是这三个裸名称之一，或文件名为这三个名称之一的绝对路径（例如 `/bin/zsh`、`/opt/homebrew/bin/bash`）；不接受相对路径或附加参数。`SHELL` 缺失或仅含空白时使用 `/bin/sh`，包括系统提供的 `/bin/sh` 符号链接。其他 shell 会在初始化或请求 AI 之前被拒绝，不会静默切换解释器；实际执行前会再次检查。可用 `env SHELL=/bin/bash howto "列出文件"` 显式选择执行 shell。
 
@@ -153,6 +152,8 @@ howto --ai-provider openai --print 列出监听的端口
 - `--print` - 打印已校验的命令候选项并退出，不执行命令。
 - `--ai-provider <openai|gemini|chatgpt>` - 选择 AI provider。
 - `--chatgpt-account <id>` / `--chatgpt-model <slug>` - 选择已保存的 ChatGPT 注册和当前可用模型。
+- `--chatgpt-fast <true|false>` - 选择 ChatGPT Fast 档位，默认 `true`。
+- `--chatgpt-timings <true|false>` - 输出 ChatGPT 请求计时，默认 `false`。
 - `--no-browser` - 跳过 ChatGPT 浏览器启动器并输出授权链接，仅用于 `--chatgpt-login` 或 `--init`。
 - `--callback-port <port>` - 指定 ChatGPT 回环回调端口（`1`–`65535`，默认随机分配可用端口），仅用于 `--chatgpt-login` 或 `--init`。
 - `--gemini-api-key <key>` - 提供 Gemini API key。
@@ -200,6 +201,8 @@ howto --ai-provider openai --print 列出监听的端口
 - `--ai-provider` / `HOWTO_AI_PROVIDER` / `aiProvider` - `openai`、`gemini` 或 `chatgpt`；无默认值。
 - `--chatgpt-account` / `HOWTO_CHATGPT_ACCOUNT` / `chatgptAccount` - 本机 ChatGPT 注册 ID；保存了多个账号时必须明确指定。
 - `--chatgpt-model` / `HOWTO_CHATGPT_MODEL` / `chatgptModel` - `--chatgpt-models` 返回的可见模型 slug；没有固定默认值。
+- `--chatgpt-fast` / `HOWTO_CHATGPT_FAST` / `chatgptFast` - 请求 ChatGPT Fast 档位；默认 `true`。
+- `--chatgpt-timings` / `HOWTO_CHATGPT_TIMINGS` / `chatgptTimings` - 输出 ChatGPT 请求计时；默认 `false`。
 - `--gemini-api-key` / `HOWTO_GEMINI_API_KEY` / `geminiApiKey` - Gemini API key；Gemini 必填。
 - `--gemini-model` / `HOWTO_GEMINI_MODEL` / `geminiModel` - Gemini 模型；默认 `gemini-3.5-flash-lite`。
 - `--openai-api-url` / `HOWTO_OPENAI_API_URL` / `openaiApiUrl` - OpenAI 兼容 base URL；默认 `https://api.openai.com/v1`。
@@ -229,7 +232,7 @@ howto --print "show current branch"
 - `use <command>` 候选项在保守处理前缀后，明确以指定工具开头；
 - 静态检查命中危险、无法判定或 AI 标记危险的命令，需要输入 `EXECUTE` 才能继续执行；大小写不敏感。
 
-AI 在生成候选的同一次请求中逐个返回必填的 `dangerous` 布尔值和 `dangerReason` 字符串。标记危险时必须提供非空白的简短原因；未标记时原因必须为 `""`。缺失字段、类型错误或不合法组合会拒绝整份响应并返回退出码 `2`，旧格式响应不自动兼容；两种 Provider 和输出模式使用相同规则。
+AI 在生成候选的同一次请求中逐个返回必填的 `dangerous` 布尔值和 `dangerReason` 字符串。标记危险时必须提供非空白的简短原因；未标记时原因必须为 `""`。缺失字段、类型错误或不合法组合会拒绝整份响应并返回退出码 `2`，旧格式响应不自动兼容；三个 provider 在结构化与兼容输出模式下均使用相同规则。
 
 提示词要求 AI 结合完整命令评估数据损失、重要数据覆盖、破坏性历史改写、系统或权限变更、服务中断、敏感信息外发和不可信代码执行等风险，补充静态规则可能未覆盖的操作。普通查询、创建文件和常规构建不因具有副作用而一律标记。
 
@@ -258,45 +261,6 @@ Linux 还覆盖 apk、pacman、zypper 的系统包变更及 OpenRC 的服务和�
 
 > [!WARNING]
 > 静态检查未命中且 AI 未标记危险，也不表示命令一定安全。两者用于增加确认要求，不构成完整安全证明或 AI 判断准确率保证。
-
-## 开发
-
-本项目使用 TypeScript、React、Ink、OpenAI SDK、Gemini GenAI SDK 和 Node 内置测试运行器构建。
-
-开发和运行完整测试使用 **Node.js 22.x（22.22.1 及以上）或 24.x（24.3.0 及以上）**。这些版本满足开发依赖的要求。
-
-构建使用 `@typescript/native` npm alias 提供的 TypeScript 7；ESLint 通过 `typescript` → `@typescript/typescript6` 保留 TypeScript 6 JavaScript API（目前转发到 6.0.3），采用[官方双版本方案](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0)。构建脚本显式调用原生编译器，避免增量 npm 安装改变共享 `tsc` 链接。`npm run check:toolchain` 检查编译器版本、兼容 API 解析和显式构建编译器路径。使用 `npm run lint` 按现有类型感知规则检查项目代码。在 typescript-eslint 支持新 API 前，需要保持项目同时兼容两套编译器；这不会让 ESLint 获得 TypeScript 7 独有语法的支持。
-
-```bash
-npm ci
-npm run build
-npm test
-npm run lint
-npm run format:check
-```
-
-常用路径：
-
-- `src/index.tsx` - CLI 编排和执行流程。
-- `src/cli.ts` - 参数解析。
-- `src/config.ts` - 配置合并和 provider 校验。
-- `src/prompt.ts` - prompt 和 AI 输出契约。
-- `src/validation/` - AI 响应和命令工具校验。
-- `src/safety/` - 危险命令规则。
-- `src/ui/` - 基于 Ink 的终端 UI。
-- `tests/unit/` - 参数解析、配置合并、校验、Prompt、UI 纯逻辑与静态渲染，以及使用依赖替身的 provider 测试。
-- `tests/integration/` - 文件系统与凭据存储、真实 SDK 序列化、Ink 组件交互及完整 UI 流程、CLI 进程、本地回环 HTTP Provider 与 PTY 终端会话测试。
-- `tests/helpers/` - 两类测试共享的输入流、请求数据及渲染辅助工具。
-
-`npm test` 运行单元与集成测试；仅运行其中一类可使用 `npm run test:unit` 或 `npm run test:integration`。
-
-### Linux 验证范围
-
-1.0.2 本地验证使用 Cloud 容器中的 Debian 13.6 x86_64、Node 22.22.1 / 24.19.0，以及 dash（`/bin/sh`）、bash 5.2.37、zsh 5.9 和真实内核 PTY。两个 Node 版本均通过 719 项测试且无跳过，其中 42 项为 PTY 用例；稳定性轮次和新增边界证据见验收报告。已安装发行包另以 Node 22.0.0 和 npm 10.5.1 验证。证据、修复及覆盖边界记录在随本次任务单独交付的验收报告中。
-
-完整 POSIX 测试需要 `/usr/bin:/bin` 中可找到的 Python 3、sh/bash/zsh、可分配的 PTY，以及用于权限检查的非 root 用户。部分 Linux 进程组测试使用监督子进程，明确不适用于 macOS。测试使用隔离临时主目录和假 provider，不需要 API Key。单独验证已安装包可运行 `npm run test:package -- /absolute/path/to/bin/howto`；该命令将 `tests/package-smoke.ts` 编译后运行，使用本地 HTTP fixture，确认后只执行无害打印命令。
-
-测试 CI 统一使用 Ubuntu 24.04 和 Node 24.19.0。推送仅运行单元测试，PR 和手动触发运行单元测试及集成测试；所有触发均保留构建、Lint 和格式检查。CI 不再使用 macOS Runner、Node 22 或独立的安装包烟测 job，本地包验收命令继续保留。Alpine、原生 arm64、WSL、真实终端模拟器视觉体验仍未验收；PTY 或已配置的 job 不能替代这些平台的运行证据。独立新版环境已完成有限的 Gemini 原生及 OpenAI 兼容协议实网烟测；原生结构化 OFF、默认模型和完整 CLI 实网仍未验证。
 
 ## 故障排查
 

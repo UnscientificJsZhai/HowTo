@@ -41,8 +41,7 @@
     "test": "npm run build:test && node --test dist-test/tests/unit/*.test.js dist-test/tests/unit/**/*.test.js dist-test/tests/integration/*.test.js dist-test/tests/integration/**/*.test.js",
     "test:integration": "npm run build:test && node --test dist-test/tests/integration/*.test.js dist-test/tests/integration/**/*.test.js",
     "test:package": "npm run build:test && node dist-test/tests/package-smoke.js",
-    "test:unit": "npm run build:test && node --test dist-test/tests/unit/*.test.js dist-test/tests/unit/**/*.test.js",
-    "check:toolchain": "node scripts/check-toolchain.mjs"
+    "test:unit": "npm run build:test && node --test dist-test/tests/unit/*.test.js dist-test/tests/unit/**/*.test.js"
   },
   "dependencies": {
     "@google/genai": "^2.31.0",
