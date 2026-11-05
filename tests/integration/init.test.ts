@@ -57,6 +57,7 @@ test("initialization returns merged overrides but persists only submitted provid
       model: "environment-gemini-model",
     },
     openai: {
+      fast: false,
       apiKey: "submitted-openai-secret",
       model: "submitted-openai-model",
       baseUrl: "https://submitted.example/v1",

@@ -13,6 +13,7 @@ export interface GlobalOptions extends ChatGptLoginOptions {
   openaiApiUrl?: string;
   openaiApiKey?: string;
   openaiModel?: string;
+  openaiFast?: string;
   chatgptAction?: ChatGptAction;
   chatgptAccount?: string;
   chatgptModel?: string;
@@ -41,6 +42,7 @@ const VALUE_OPTIONS = new Set([
   "--openai-api-url",
   "--openai-api-key",
   "--openai-model",
+  "--openai-fast",
   "--chatgpt-account",
   "--chatgpt-model",
   "--chatgpt-fast",
@@ -74,6 +76,7 @@ Options:
   --openai-api-url <url>
   --openai-api-key <key>
   --openai-model <model>
+  --openai-fast <true|false>    Request Priority processing (default off; premium API pricing)
   --chatgpt-login
   --chatgpt-logout
   --chatgpt-status
@@ -208,6 +211,9 @@ function assignOptionValue(options: GlobalOptions, optionName: string, value: st
       return;
     case "--openai-model":
       options.openaiModel = value;
+      return;
+    case "--openai-fast":
+      options.openaiFast = value;
       return;
     case "--chatgpt-account":
       options.chatgptAccount = value;

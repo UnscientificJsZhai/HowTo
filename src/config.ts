@@ -13,6 +13,7 @@ export interface AppConfig {
     apiKey: string;
     model: string;
     baseUrl?: string;
+    fast?: boolean;
   };
   chatgpt: {
     fast?: boolean;
@@ -30,6 +31,7 @@ export interface ConfigEnvironment {
   HOWTO_OPENAI_API_URL?: string;
   HOWTO_OPENAI_API_KEY?: string;
   HOWTO_OPENAI_MODEL?: string;
+  HOWTO_OPENAI_FAST?: string;
   HOWTO_CHATGPT_ACCOUNT?: string;
   HOWTO_CHATGPT_MODEL?: string;
   HOWTO_CHATGPT_FAST?: string;
@@ -91,6 +93,10 @@ export function loadConfig(
         DEFAULT_GEMINI_MODEL,
     },
     openai: {
+      fast: parseBooleanSetting(
+        pickConfigValue(options.openaiFast, env.HOWTO_OPENAI_FAST, fileConfig.openaiFast),
+        "openaiFast",
+      ),
       apiKey:
         pickConfigValue(options.openaiApiKey, env.HOWTO_OPENAI_API_KEY, fileConfig.openaiApiKey) ??
         "",

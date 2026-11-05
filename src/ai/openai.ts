@@ -27,11 +27,13 @@ export interface OpenAiDependencies {
 export class OpenAiCommandProvider implements CommandProvider {
   private readonly client: OpenAI;
   private readonly model: string;
+  private readonly fast: boolean;
   private readonly apiKey: string;
   private readonly timeoutMilliseconds: number | undefined;
 
   constructor(config: AppConfig["openai"], dependencies: OpenAiDependencies = {}) {
     this.model = config.model;
+    this.fast = config.fast ?? false;
     this.apiKey = config.apiKey;
     this.timeoutMilliseconds = dependencies.timeoutMilliseconds;
     if (dependencies.client !== undefined) {
@@ -69,7 +71,7 @@ export class OpenAiCommandProvider implements CommandProvider {
                 content: JSON.stringify(reply.result),
               });
             }
-            const parameters = buildOpenAiChatCompletionRequest(this.model, request);
+            const parameters = buildOpenAiChatCompletionRequest(this.model, request, this.fast);
             parameters.messages = [...messages];
             if (request.structuredOutput) {
               parameters.response_format = {
@@ -133,7 +135,7 @@ export class OpenAiCommandProvider implements CommandProvider {
   ): Promise<GenerateCommandsResult> {
     let rawText: unknown;
     try {
-      const parameters = buildOpenAiChatCompletionRequest(this.model, request);
+      const parameters = buildOpenAiChatCompletionRequest(this.model, request, this.fast);
       // SDK 重试等待不响应取消；交互请求关闭自动重试，避免取消后残留计时器。
       const response =
         signal === undefined
@@ -203,8 +205,11 @@ export function buildOpenAiClientOptions(config: AppConfig["openai"]): ClientOpt
 export function buildOpenAiChatCompletionRequest(
   model: string,
   request: GenerateCommandsRequest,
+  fast = false,
 ): ChatCompletionCreateParamsNonStreaming {
   return {
+    // Omit the field entirely unless opted in: compatible APIs may reject even default.
+    ...(fast ? { service_tier: "priority" as const } : {}),
     model,
     messages: [
       { role: "system", content: request.systemPrompt },

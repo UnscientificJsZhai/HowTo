@@ -37,6 +37,7 @@ test("loadConfig uses model defaults after provider is configured", () => {
       model: DEFAULT_GEMINI_MODEL,
     },
     openai: {
+      fast: false,
       apiKey: "",
       model: DEFAULT_OPENAI_MODEL,
       baseUrl: undefined,
@@ -68,6 +69,7 @@ test("loadConfig lets CLI options override environment values", () => {
         model: "cli-gemini-model",
       },
       openai: {
+        fast: false,
         apiKey: "",
         model: DEFAULT_OPENAI_MODEL,
         baseUrl: undefined,
@@ -104,6 +106,7 @@ test("loadConfig applies priority CLI over env over config file over defaults", 
         model: DEFAULT_GEMINI_MODEL,
       },
       openai: {
+        fast: false,
         apiKey: "env-openai-key",
         model: "cli-openai-model",
         baseUrl: "https://file.example/v1",
@@ -124,6 +127,7 @@ test("loadConfig lets config file override defaults", () => {
         model: DEFAULT_GEMINI_MODEL,
       },
       openai: {
+        fast: false,
         apiKey: "",
         model: "file-model",
         baseUrl: undefined,

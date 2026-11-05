@@ -161,6 +161,7 @@ Options:
 - `--openai-api-url <url>` - use a custom OpenAI-compatible base URL.
 - `--openai-api-key <key>` - provide an OpenAI API key.
 - `--openai-model <model>` - override the OpenAI model.
+- `--openai-fast <true|false>` - request API Fast processing; defaults off, premium API pricing may apply.
 - `--structured-output <true|false>` - enable SDK-level schema structured output; default `true`.
 
 ### Interactive Usage Lookup
@@ -214,6 +215,7 @@ For each setting, the first configured source in that order wins:
 - `--openai-api-url` / `HOWTO_OPENAI_API_URL` / `openaiApiUrl` - OpenAI-compatible base URL; defaults to `https://api.openai.com/v1`.
 - `--openai-api-key` / `HOWTO_OPENAI_API_KEY` / `openaiApiKey` - OpenAI API key; defaults to an empty string for local services.
 - `--openai-model` / `HOWTO_OPENAI_MODEL` / `openaiModel` - OpenAI model; default `gpt-6-luna`.
+- `--openai-fast` / `HOWTO_OPENAI_FAST` / `openaiFast` - request API Fast (Priority) processing; default `false`.
 - `--structured-output` / `HOWTO_STRUCTURED_OUTPUT` / `structuredOutput` - use provider schema structured output; default `true`.
 
 howto sets the request endpoint and Gemini API mode explicitly. `OPENAI_BASE_URL`, `GOOGLE_GEMINI_BASE_URL`, `GOOGLE_VERTEX_BASE_URL`, and the Google SDK's Vertex/Enterprise environment switches do not override them. Gemini uses the official `generativelanguage.googleapis.com` `v1beta` API. Use the HOWTO settings above for a custom OpenAI endpoint.
@@ -227,6 +229,30 @@ HOWTO_AI_PROVIDER=openai \
 HOWTO_OPENAI_MODEL=gpt-6-luna \
 howto --print "show current branch"
 ```
+
+### OpenAI API key Fast
+
+Use `howto --ai-provider openai --openai-fast true 'list files'`,
+`HOWTO_OPENAI_FAST=true`, or `"openaiFast": true` in `~/.howto/config.json`.
+CLI options override environment variables, then the config file. Both
+`--openai-fast true` and `--openai-fast=true` require an explicit boolean value.
+This setting is independent of ChatGPT Fast and applies to ordinary generation,
+`--print`, and every request in `use` mode, including tool-free requests.
+
+Fast is opt-in: enabling it sends `service_tier: "priority"` to the configured
+OpenAI-compatible endpoint without changing the model or output format. Check
+that the endpoint, model, and account support Priority processing before enabling
+it; OpenAI charges premium API rates. See the [official Fast guide](https://developers.openai.com/api/docs/guides/fast-mode).
+
+By default, or with `--openai-fast false`, howto omits `service_tier` entirely,
+including for local services with an empty API key. This preserves compatibility
+with APIs that reject unknown fields; false restores the endpoint's existing tier
+behavior rather than forcing `default`. Servers may downgrade or ignore a tier
+request, so requesting Fast does not guarantee Fast processing or latency.
+Unsupported-tier errors use the existing sanitized provider error; howto does not
+retry at a different tier. Disable Fast explicitly to use an unsupported endpoint.
+Reinitializing the OpenAI provider clears the saved `openaiFast` setting so it does
+not carry over to a new endpoint; CLI and environment overrides still apply.
 
 ## Safety Model
 

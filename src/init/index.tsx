@@ -130,7 +130,7 @@ export async function validateAndPersistInitializationConfig(
   const fileConfig = await readUserConfigFile(configFilePath);
   // 仅替换当前 provider 的字段；其他 provider 与已保存的输出设置继续保留。
   const providerFields: Record<AiProvider, (keyof FileConfig)[]> = {
-    openai: ["openaiApiKey", "openaiModel", "openaiApiUrl"],
+    openai: ["openaiApiKey", "openaiModel", "openaiApiUrl", "openaiFast"],
     gemini: ["geminiApiKey", "geminiModel"],
     chatgpt: ["chatgptAccount", "chatgptModel", "chatgptFast"],
   };

@@ -161,6 +161,7 @@ howto --ai-provider openai --print 列出监听的端口
 - `--openai-api-url <url>` - 使用自定义 OpenAI 兼容 base URL。
 - `--openai-api-key <key>` - 提供 OpenAI API key。
 - `--openai-model <model>` - 覆盖 OpenAI 模型。
+- `--openai-fast <true|false>` - 请求 API Fast 档位，默认关闭，可能产生额外费用。
 - `--structured-output <true|false>` - 启用 SDK 级 schema 结构化输出；默认 `true`。
 
 ### 参数解析
@@ -208,6 +209,7 @@ howto --ai-provider openai --print 列出监听的端口
 - `--openai-api-url` / `HOWTO_OPENAI_API_URL` / `openaiApiUrl` - OpenAI 兼容 base URL；默认 `https://api.openai.com/v1`。
 - `--openai-api-key` / `HOWTO_OPENAI_API_KEY` / `openaiApiKey` - OpenAI API key；默认为空字符串以支持本地服务。
 - `--openai-model` / `HOWTO_OPENAI_MODEL` / `openaiModel` - OpenAI 模型；默认 `gpt-6-luna`。
+- `--openai-fast` / `HOWTO_OPENAI_FAST` / `openaiFast` - 请求 API Fast（Priority）档位；默认 `false`。
 - `--structured-output` / `HOWTO_STRUCTURED_OUTPUT` / `structuredOutput` - 使用 provider schema 结构化输出；默认 `true`。
 
 请求地址和 Gemini API 模式由 howto 显式设置。`OPENAI_BASE_URL`、`GOOGLE_GEMINI_BASE_URL`、`GOOGLE_VERTEX_BASE_URL` 及 Google SDK 的 Vertex/Enterprise 模式环境开关不会改写它们。Gemini 使用官方 `generativelanguage.googleapis.com` 的 `v1beta` API；自定义 OpenAI 地址请使用上述 HOWTO 配置项。
@@ -221,6 +223,25 @@ HOWTO_AI_PROVIDER=openai \
 HOWTO_OPENAI_MODEL=gpt-6-luna \
 howto --print "show current branch"
 ```
+
+### OpenAI API key Fast
+
+通过 `howto --ai-provider openai --openai-fast true '列出文件'`、
+`HOWTO_OPENAI_FAST=true` 或 `~/.howto/config.json` 中的 `"openaiFast": true` 开启。
+优先级为 CLI、环境变量、配置文件。支持 `--openai-fast true` 和
+`--openai-fast=true`，必须显式传入布尔值。该设置独立于 ChatGPT Fast，适用于普通生成、
+`--print` 及 `use` 模式的每个请求（包括禁用工具的请求）。
+
+Fast 默认关闭。开启后向所配置的 OpenAI 兼容接口发送 `service_tier: "priority"`，
+不改变模型或输出格式。开启前请确认接口、模型及账号支持 Priority；OpenAI API
+采用更高的计费标准。参见[官方 Fast 文档](https://developers.openai.com/api/docs/guides/fast-mode)。
+
+默认或设置 `--openai-fast false` 时完全省略 `service_tier`，空 API key 的本地服务也一样，
+因此不会让拒绝未知字段的兼容 API 收到新参数。false 恢复接口原有的档位行为，而非强制
+`default`。服务端可能降档或忽略该参数，请求 Fast 不代表实际使用 Fast，也不保证延迟。
+不支持档位的错误沿用现有脱敏错误提示，不自动换档重试；请显式关闭 Fast 后使用该接口。
+重新初始化 OpenAI provider 会清除已保存的 `openaiFast`，避免切换接口后沿用；CLI 和环境变量
+覆盖仍然有效。
 
 ## 安全模型
 
